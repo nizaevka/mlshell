@@ -1,0 +1,28 @@
+# Ignore everything except directories
+*
+!*/
+
+# except everything in the child theme and its required plugin
+#!/themes/mytheme-child/**
+#!/plugins/my-plugin/**
+!del/del2.txt
+
+# and this file
+!.gitignore
+!del.txt
+#!del2.txt
+
+# Ignore everything
+#*
+
+# But not these files (if in root)
+#!.gitignore
+#!del2.txt
+
+# ...even if they are in subdirectories (matches any subdirectories (recursively) in current directory)
+#!*/
+
+# if the files to be tracked are in subdirectories
+# !a/b/file1.txt
+# !a/b/c/*
+#!del/del2.txt
