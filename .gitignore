@@ -5,9 +5,11 @@
 # except everything in the child theme and its required plugin
 #!/themes/mytheme-child/**
 #!/plugins/my-plugin/**
-!del/del2.txt
+# except del2 in del dir
+# !del/del2.txt
 
 # and this file
 !.gitignore
-!del.txt
-
+!del.py
+!LICENSE
+!Dockerfile
