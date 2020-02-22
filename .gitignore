@@ -1,5 +1,3 @@
-
-
 # Ignore everything
 *
 # not ignore subdir
@@ -10,7 +8,6 @@ Project*/
 
 # except dirs
 !src/mlshell/
-# src/mlshell/temp/**
 
 !docs/source/**
 !docs/make.bat
@@ -35,9 +32,7 @@ Project*/
 !setup.cfg
 !MANIFEST.in
 !project.toml
-
-# *$py.class;*.hprof;*.pyc;*.pyo;*.rbc;*.yarb;*~;.DS_Store;.git;.hg;.svn;CVS;__pycache__;_svn;vssver.scc;vssver2.scc;
-# LICENSE
+test_del.py
 
 # ignore pattern everywhere
 *$py.class
