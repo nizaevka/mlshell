@@ -34,4 +34,19 @@ src/mlshell/temp/
 !MANIFEST.in
 !project.toml
 
-*$py.class;*.hprof;*.pyc;*.pyo;*.rbc;*.yarb;*~;.DS_Store;.git;.hg;.svn;CVS;__pycache__;_svn;vssver.scc;vssver2.scc;
+*$py.class
+*.hprof
+*.pyc
+*.pyo
+*.rbc
+*.yarb
+*~
+.DS_Store
+.git
+.hg
+.svn
+CVS
+__pycache__
+_svn
+vssver.scc
+vssver2.scc
