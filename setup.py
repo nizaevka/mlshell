@@ -23,7 +23,7 @@ def parse_text(filename, splitlines=False):
 
 # get version
 version = {}
-with open("src/{}/version.py".format(NAME)) as fp:
+with open("src/{}/__version__.py".format(NAME)) as fp:
     exec(fp.read(), version)
 
 

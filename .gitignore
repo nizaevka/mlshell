@@ -2,7 +2,7 @@
 *
 !*/
 Project*/
-.temp/
+.*/
 
 # except dirs
 !src/mlshell/**
@@ -26,10 +26,13 @@ src/mlshell/temp/
 !Dockerfile
 !requirements.txt
 !requirements_dev.txt
+!Pipfile
+!Pipfile.lock
 !setup.py
 !setup.cfg
 !MANIFEST.in
 !project.toml
+
 
 
 

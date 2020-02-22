@@ -1,6 +1,9 @@
 """?"""
 
 
+from mlshell.libs import get_ipython, os, sys
+
+
 def find_path():
     """Get fullpath and name of main script
 

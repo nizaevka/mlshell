@@ -1,0 +1,28 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+pytest = "*"
+
+[packages]
+e1839a8 = {editable = true,path = "."}
+mlshell = {editable = true,path = "."}
+joblib = "*"
+sklearn = "*"
+jsbeautifier = "*"
+numpy = "*"
+pandas = "*"
+numba = "*"
+seaborn = "*"
+tabulate = "*"
+ipython = "*"
+matplotlib = "*"
+statsmodels = "*"
+lightgbm = "*"
+line-profiler = "*"
+memory-profiler = "*"
+
+[requires]
+python_version = "3.7"

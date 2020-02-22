@@ -3,9 +3,9 @@
 TODO: logbook (better developed library)
 """
 
-from .libs import os
-from .libs import sys
-from .libs import copy
+from mlshell.libs import os
+from mlshell.libs import sys
+from mlshell.libs import copy
 import logging.config
 
 
@@ -71,7 +71,7 @@ _dict_log_config = {
     },
     "formatters": {
         "json_message": {
-            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+            # "()": "pythonjsonlogger.jsonlogger.JsonFormatter",  pip install pythonjsonlogger
             "format": "%(levelname)s : %(message)s",
         },
         "message": {

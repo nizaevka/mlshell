@@ -26,24 +26,24 @@ import joblib
 import numpy as np
 import pandas as pd
 import numba as nb
-import tpot
 import jsbeautifier
 import seaborn as sns
 import tabulate
+from IPython import get_ipython
 import lightgbm
+# devs
 import line_profiler
 from memory_profiler import profile as memory_profiler
-sys.path.insert(0, 'C:/Cython/cythoncpp/build/lib.win-amd64-3.7/')
-import fast_chains_search
-from IPython import get_ipython
-import sklearn
-import lightgbm
 
 # code repository sub-package
 import scipy.stats
 import matplotlib.pyplot as plt
 import sklearn.base
 import sklearn.compose
+import sklearn.decomposition
+import sklearn.impute
+import sklearn.preprocessing
+import sklearn.feature_selection
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import statsmodels.stats.api as sms
