@@ -1,8 +1,11 @@
 FROM python:3.7-alpine
 
-WORKDIR /usr/app
+WORKDIR /usr/lib
 
-COPY requirements.txt ./
+COPY mlshell/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY docs/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .

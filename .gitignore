@@ -1,15 +1,35 @@
-# Ignore everything except directories
+# Ignore everything, allow descent in dir
 *
 !*/
+Project*/
+.temp/
 
-# except everything in the child theme and its required plugin
-#!/themes/mytheme-child/**
-#!/plugins/my-plugin/**
-# except del2 in del dir
-# !del/del2.txt
+# except dirs
+!src/mlshell/**
+src/mlshell/temp/
 
-# and this file
+!docs/source/**
+!docs/make.bat
+!docs/Makefile
+
+!tests/**
+
+!docker/**
+
+!examples/**
+
+
+# except this file
 !.gitignore
-!del.py
+!README.md
 !LICENSE
 !Dockerfile
+!requirements.txt
+!requirements_dev.txt
+!setup.py
+!setup.cfg
+!MANIFEST.in
+!project.toml
+
+
+
