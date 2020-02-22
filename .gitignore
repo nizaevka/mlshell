@@ -1,3 +1,45 @@
+
+
+# Ignore everything
+*
+# not ignore subdir
+!*/
+
+Project*/
+.*/
+
+# except dirs
+!src/mlshell/
+# src/mlshell/temp/**
+
+!docs/source/**
+!docs/make.bat
+!docs/Makefile
+
+!tests/**
+
+!docker/**
+
+!examples/**
+
+# except this file
+!.gitignore
+!README.md
+!LICENSE
+!Dockerfile
+!requirements.txt
+!requirements_dev.txt
+!Pipfile
+!Pipfile.lock
+!setup.py
+!setup.cfg
+!MANIFEST.in
+!project.toml
+
+# *$py.class;*.hprof;*.pyc;*.pyo;*.rbc;*.yarb;*~;.DS_Store;.git;.hg;.svn;CVS;__pycache__;_svn;vssver.scc;vssver2.scc;
+# LICENSE
+
+# ignore pattern everywhere
 *$py.class
 *.hprof
 *.pyc
@@ -14,43 +56,3 @@ __pycache__/
 _svn/
 vssver.scc
 vssver2.scc
-
-# Ignore everything
-*
-# not ignore subdir
-!*/
-
-Project*/
-.*/
-
-# except dirs
-!src/mlshell/
-src/mlshell/temp/**
-
-!docs/source/**
-!docs/make.bat
-!docs/Makefile
-
-!tests/**
-
-!docker/**
-
-!examples/**
-
-
-# except this file
-!.gitignore
-!README.md
-# !LICENSE
-!Dockerfile
-!requirements.txt
-!requirements_dev.txt
-!Pipfile
-!Pipfile.lock
-!setup.py
-!setup.cfg
-!MANIFEST.in
-!project.toml
-
-# *$py.class;*.hprof;*.pyc;*.pyo;*.rbc;*.yarb;*~;.DS_Store;.git;.hg;.svn;CVS;__pycache__;_svn;vssver.scc;vssver2.scc;
-# LICENSE
