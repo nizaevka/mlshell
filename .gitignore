@@ -19,9 +19,9 @@ vssver2.scc
 *
 # not ignore subdir
 !*/
+
 Project*/
 .*/
-
 
 # except dirs
 !src/mlshell/
@@ -41,7 +41,7 @@ src/mlshell/temp/**
 # except this file
 !.gitignore
 !README.md
-!LICENSE
+LICENSE
 !Dockerfile
 !requirements.txt
 !requirements_dev.txt
