@@ -15,16 +15,17 @@ _svn/
 vssver.scc
 vssver2.scc
 
-# Ignore everything, allow descent in dir
+# Ignore everything
 *
+# not ignore subdir
 !*/
 Project*/
 .*/
 
 
 # except dirs
-!src/mlshell/**
-src/mlshell/temp/
+!src/mlshell/
+src/mlshell/temp/**
 
 !docs/source/**
 !docs/make.bat
@@ -51,4 +52,4 @@ src/mlshell/temp/
 !MANIFEST.in
 !project.toml
 
-
+# *$py.class;*.hprof;*.pyc;*.pyo;*.rbc;*.yarb;*~;.DS_Store;.git;.hg;.svn;CVS;__pycache__;_svn;vssver.scc;vssver2.scc;
