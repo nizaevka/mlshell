@@ -45,8 +45,8 @@ src/mlshell/temp/
 .git
 .hg
 .svn
-CVS
-__pycache__
-_svn
+CVS/
+__pycache__/
+_svn/
 vssver.scc
 vssver2.scc
