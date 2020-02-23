@@ -1,5 +1,3 @@
-init:
-	pip install pytest
-
 test:
+	pip install pytest
 	pytest tests
