@@ -1,7 +1,7 @@
-# uncomment if not use docker, use make test
-#language: python
-#python:
-#    - "3.7"
+# used by make
+language: python
+python:
+    - "3.7"
 
 sudo: required
 services:
@@ -15,6 +15,7 @@ install: "make"
 # command to run tests
 script:
     - docker run -e CI=true nizaevka/mlshell pytest tests
+#    - make test
 
 deploy:
     provider: script
