@@ -32,6 +32,6 @@ deploy:
 after_deploy:
     - docker build -t nizaevka/mlshell -f Dockerfile .
     # log in to the docker CLI
-    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_ID" --password-s
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_ID" --password-stdin
     # push to dockerhub
     - docker push nizaevka/mlshell
