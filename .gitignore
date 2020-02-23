@@ -32,7 +32,8 @@ Project*/
 !setup.cfg
 !MANIFEST.in
 !project.toml
-test_del.py
+!.travis.yml
+!Makefile
 
 # ignore pattern everywhere
 *$py.class

@@ -60,6 +60,7 @@ import statsmodels.stats.outliers_influence
 #   redefine sys.stdout with custom stream (class with .write method)
 #       like in built-in LogFile  sys.stdout = self.logger.handlers[i].stream
 
+
 # TODO: better use global pprofile.exe for whole script
 # create_decorator, don`t work with other decorators
 time_profiler = line_profiler.LineProfiler()

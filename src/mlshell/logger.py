@@ -1,6 +1,6 @@
 """The :mod:`mlshell.logger_class` module includes CreateLogger class
 
-TODO: logbook (better developed library)
+TODO: logbook (better developed library) some chamges
 """
 
 from mlshell.libs import os
