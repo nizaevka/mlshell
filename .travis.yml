@@ -8,3 +8,9 @@ install: "make"
 # command to run tests
 script:
     - make test
+
+deploy:
+    provider: script
+    script: make deploy
+    on:
+        branch: master
