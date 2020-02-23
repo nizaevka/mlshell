@@ -16,9 +16,9 @@ mlshell.CreateDefaultPipeline
       ~CreateDefaultPipeline.__init__
       ~CreateDefaultPipeline.bining_mask
       ~CreateDefaultPipeline.categor_mask
-      ~CreateDefaultPipeline.handle_outliers
       ~CreateDefaultPipeline.numeric_mask
       ~CreateDefaultPipeline.subcolumns
+      ~CreateDefaultPipeline.subrows
    
    
 
