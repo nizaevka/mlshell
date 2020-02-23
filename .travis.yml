@@ -15,7 +15,6 @@ install: "make"
 # command to run tests
 script:
     - docker run -e CI=true nizaevka/mlshell pytest tests
-#    - make test
 
 deploy:
     provider: script
