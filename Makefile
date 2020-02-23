@@ -1,6 +1,5 @@
 init:
-	pip install pipenv
-	pipenv install pytest  #--dev
+	pip install pytest
 
 test:
-	pipenv run pytest tests
+	pytest tests

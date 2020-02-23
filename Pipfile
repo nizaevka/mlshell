@@ -23,6 +23,8 @@ statsmodels = "*"
 lightgbm = "*"
 line-profiler = "*"
 memory-profiler = "*"
+setuptools = "*"
+wheel = "*"
 
 [requires]
 python_version = "3.7"
