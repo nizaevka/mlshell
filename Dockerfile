@@ -6,5 +6,5 @@ WORKDIR /usr/workspace
 # RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN pip install --user .
+RUN pip install .
 RUN rm -rf *

@@ -1,8 +1,8 @@
 test:
-	pip install --user pytest
+	pip install pytest
 	pytest tests
 deploy:
-	pip install --user --upgrade setuptools wheel
+	pip install --upgrade setuptools wheel
 	python setup.py sdist bdist_wheel
-	pip install --user --upgrade twine
+	pip install --upgrade twine
 	python -m twine upload --repository-url https://test.pypi.org/legacy/ dist/* -u $(TEST_PYPI_USERNAME) -p $(TEST_PYPI_PASSWORD)
