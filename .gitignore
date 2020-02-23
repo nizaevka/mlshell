@@ -24,6 +24,7 @@ Project*/
 !README.md
 !LICENSE
 !Dockerfile
+!Dockerfile.dev
 !requirements.txt
 !requirements_dev.txt
 !Pipfile

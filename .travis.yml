@@ -1,16 +1,37 @@
-language: python
-python:
-    - "3.7"
+# uncomment if not use docker, use make test
+#language: python
+#python:
+#    - "3.7"
+
+sudo: required
+services:
+    - docker
+before_install:
+    - docker build -t nizaevka/mlshell -f Dockerfile.dev .
 
 # command to install dependencies
 install: "make"
 
 # command to run tests
 script:
-    - make test
+    - docker run -e CI=true nizaevka/mlshell pytest tests
+#    - make test
 
 deploy:
     provider: script
     script: make deploy
     on:
         branch: master
+#    provider: pypi
+#    on:
+#        branch: master
+#    user: $TEST_PYPI_USERNAME
+#    password:
+#      secure: $TEST_PYPI_PASSWORD
+
+after_success:
+    - docker build -t nizaevka/mlshell -f Dockerfile .
+    # log in to the docker CLI
+    - echo "$DOCKER_PASSWORD" | docker login -f "$DOCKER_ID" --password-s
+    # push to dockerhub
+    - docker push nizaevka/mlshell
