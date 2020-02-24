@@ -70,6 +70,7 @@ autosummary_imported_members = True
 
 # ignoring third-party packages to build documentation
 autodoc_mock_imports = ["joblib"]
+autosummary_mock_imports = autodoc_mock_imports
 
 # add module attribute annotation
 # def iad_add_directive_header(self, sig):
