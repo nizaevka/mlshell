@@ -36,6 +36,7 @@ docs/source/_pythonapi/
 !project.toml
 !.travis.yml
 !Makefile
+!.readthedocs.yml
 
 # ignore pattern everywhere
 *$py.class

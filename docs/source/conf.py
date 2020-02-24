@@ -18,7 +18,7 @@ import sys
 # from sphinx.ext.autodoc import (ClassLevelDocumenter, InstanceAttributeDocumenter)
 
 sys.path.insert(0, os.path.abspath('../../src/'))  # two levels up from conf.py
-import mlshell
+
 # -- Project information -----------------------------------------------------
 
 project = 'mlshell'
@@ -69,8 +69,8 @@ autosummary_generate = ['Python-API.rst']
 autosummary_imported_members = True
 
 # ignoring third-party packages to build documentation
-autodoc_mock_imports = ["joblib"]
-autosummary_mock_imports = autodoc_mock_imports
+# autosummary_mock_imports = autodoc_mock_imports by default
+# autodoc_mock_imports = ["joblib"]
 
 # add module attribute annotation
 # def iad_add_directive_header(self, sig):
