@@ -61,13 +61,15 @@ autodoc_default_options = {
     "inherited-members": True,
     "show-inheritance": True,
 }
-
 # Combine class and constructor doctrings
 autoclass_content = 'both'
 
 # Generate autosummary pages. Output should be set with: `:toctree: pythonapi/`
 autosummary_generate = ['Python-API.rst']
 autosummary_imported_members = True
+
+# ignoring third-party packages to build documentation
+autodoc_mock_imports = ["joblib"]
 
 # add module attribute annotation
 # def iad_add_directive_header(self, sig):
