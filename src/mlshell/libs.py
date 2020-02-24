@@ -18,7 +18,6 @@ from hashlib import md5
 import warnings
 import time
 import atexit
-import winsound
 
 
 # third-party module or package
@@ -34,6 +33,7 @@ import lightgbm
 # devs
 import line_profiler
 from memory_profiler import profile as memory_profiler
+
 
 # code repository sub-package
 import scipy.stats
@@ -51,6 +51,17 @@ import statsmodels.graphics.regressionplots as smg
 import statsmodels.stats.outliers_influence
 
 
+try:
+    import winsound
+except ImportError:
+    def playsound(frequency, duration):
+        # apt-get install beep
+        os.system('beep -f %s -l %s' % (frequency, duration))
+else:
+    def playsound(frequency, duration):
+        winsound.Beep(frequency, duration)
+
+
 # TODO: raise Exception or signal when memory-profiler exceed
 # https://pypi.org/project/memory-profiler/
 # don`t accept multiple streams, possible variants:
@@ -60,20 +71,20 @@ import statsmodels.stats.outliers_influence
 #   redefine sys.stdout with custom stream (class with .write method)
 #       like in built-in LogFile  sys.stdout = self.logger.handlers[i].stream
 
-
-# TODO: better use global pprofile.exe for whole script
-# create_decorator, don`t work with other decorators
-time_profiler = line_profiler.LineProfiler()
-# run print_stats at the end of script
-atexit.register(time_profiler.print_stats, output_unit=1)
-atexit.register(winsound.Beep, 600, 500)
-atexit.register(winsound.Beep, 400, 2000)  # will be the first
-# turn off FutureWarnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
-# turn on: inf as NaN
-pd.options.mode.use_inf_as_na = True
-np.seterr(all='call')
-rd.seed(42)
+def unfinc():
+    # TODO: better use global pprofile.exe for whole script
+    # create_decorator, don`t work with other decorators
+    time_profiler = line_profiler.LineProfiler()
+    # run print_stats at the end of script
+    atexit.register(time_profiler.print_stats, output_unit=1)
+    atexit.register(playsound, 600, 500)
+    atexit.register(playsound, 400, 2000)  # will be the first
+    # turn off FutureWarnings
+    warnings.simplefilter(action='ignore', category=FutureWarning)
+    # turn on: inf as NaN
+    pd.options.mode.use_inf_as_na = True
+    np.seterr(all='call')
+    rd.seed(42)
 
 
 class MyException(Exception):

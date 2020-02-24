@@ -12,6 +12,7 @@ Project*/
 !docs/source/**
 !docs/make.bat
 !docs/Makefile
+docs/source/_pythonapi/
 
 !tests/**
 
