@@ -28,7 +28,7 @@ with open("src/{}/__version__.py".format(NAME)) as fp:
 
 # prevent install dependencies for readthedoc build (there is no way to set --no-deps in pip install)
 on_rtd = os.environ.get('READTHEDOCS') == 'True'
-if on_rtd and False:
+if on_rtd:
     INSTALL_REQUIRES = []
 else:
     INSTALL_REQUIRES = parse_text('requirements.txt', splitlines=True)
