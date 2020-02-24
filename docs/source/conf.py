@@ -17,7 +17,7 @@ import sys
 
 # from sphinx.ext.autodoc import (ClassLevelDocumenter, InstanceAttributeDocumenter)
 
-sys.path.insert(0, os.path.abspath('../../src/'))  # two levels up from conf.py
+sys.path.insert(0, os.path.abspath('../../src'))  # two levels up from conf.py '../..'
 
 # -- Project information -----------------------------------------------------
 
@@ -66,15 +66,16 @@ autoclass_content = 'both'
 
 # Generate autosummary pages. Output should be set with: `:toctree: pythonapi/`
 autosummary_generate = ['Python-API.rst']
-# autosummary_imported_members = True need document imported in mmodule?
+autosummary_imported_members = True  # need document imported in mmodule?
 
 # ignoring third-party packages to build documentation ['name']
 # autosummary_mock_imports = autodoc_mock_imports by default
+# [NOT work, error can`t find module, try to hide all command under if __main__!=autosummary(find out)]
 # get text
-with open(os.path.abspath('../../requirements.txt'), "r", encoding='utf-8') as f:
-    temp = f.read().splitlines()
-exclude = [i.split('==')[0] if '==' in i else i for i in temp]
-autodoc_mock_imports = exclude
+# with open(os.path.abspath('../../requirements.txt'), "r", encoding='utf-8') as f:
+#     temp = f.read().splitlines()
+# exclude = [i.split('==')[0] if '==' in i else i for i in temp]
+# autodoc_mock_imports = exclude
 
 # add module attribute annotation
 # def iad_add_directive_header(self, sig):
