@@ -12,8 +12,8 @@ Default parameters
 .. autosummary::
     :toctree: _pythonapi/
 
-    default_params
-    CreateDefaultPipeline
+    default.default_params
+    default.CreateDefaultPipeline
 
 Logger
 ------
@@ -21,7 +21,7 @@ Logger
 .. autosummary::
     :toctree: _pythonapi/
 
-    CreateLogger
+    logger.CreateLogger
 
 Workflow
 --------
@@ -29,7 +29,7 @@ Workflow
 .. autosummary::
     :toctree: _pythonapi/
 
-    Workflow
+    general.Workflow
 
 Callbacks
 ---------
@@ -37,7 +37,7 @@ Callbacks
 .. autosummary::
     :toctree: _pythonapi/
 
-    find_path
+    callbacks.find_path
 
 Plotting
 --------
@@ -45,6 +45,6 @@ Plotting
 .. autosummary::
     :toctree: _pythonapi/
 
-    GUI
+    gui.GUI
 
 .. .. warning::

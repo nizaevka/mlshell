@@ -67,7 +67,7 @@ autoclass_content = 'both'
 
 # Generate autosummary pages. Output should be set with: `:toctree: pythonapi/`
 autosummary_generate = ['Python-API.rst']
-# autosummary_imported_members = True
+autosummary_imported_members = True
 
 # add module attribute annotation
 # def iad_add_directive_header(self, sig):
