@@ -26,6 +26,13 @@ version = {}
 with open("src/{}/__version__.py".format(NAME)) as fp:
     exec(fp.read(), version)
 
+# prevent install dependencies for readthedoc build (there is no way to set --no-deps in pip install)
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
+if on_rtd and False:
+    INSTALL_REQUIRES = []
+else:
+    INSTALL_REQUIRES = parse_text('requirements.txt', splitlines=True)
+
 
 setuptools.setup(
     name=NAME,
@@ -39,7 +46,7 @@ setuptools.setup(
     url=URL,
     package_dir={'': 'src'},
     packages=setuptools.find_packages(where='src'),
-    install_requires=parse_text('requirements.txt', splitlines=True),
+    install_requires=INSTALL_REQUIRES,
     # $ pip install package[dev]
     extras_require={
         'dev': parse_text('requirements_dev.txt', splitlines=True),

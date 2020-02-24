@@ -32,7 +32,3 @@ Preprocessor(logger,raw_data) class
 		data after preprocessing
 	.params attribute
 		project`s current run params from conf.py
-
-
-
-
