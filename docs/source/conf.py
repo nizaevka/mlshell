@@ -68,9 +68,13 @@ autoclass_content = 'both'
 autosummary_generate = ['Python-API.rst']
 autosummary_imported_members = True
 
-# ignoring third-party packages to build documentation
+# ignoring third-party packages to build documentation ['name']
 # autosummary_mock_imports = autodoc_mock_imports by default
-# autodoc_mock_imports = ["joblib"]
+# get text
+with open(os.path.abspath('../../requirements'), "r", encoding='utf-8') as f:
+    temp = f.read().splitlines()
+exclude = [i.split('==')[0] if '==' in i else i for i in temp]
+autodoc_mock_imports = exclude
 
 # add module attribute annotation
 # def iad_add_directive_header(self, sig):
