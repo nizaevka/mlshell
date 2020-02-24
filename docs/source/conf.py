@@ -66,7 +66,7 @@ autoclass_content = 'both'
 
 # Generate autosummary pages. Output should be set with: `:toctree: pythonapi/`
 autosummary_generate = ['Python-API.rst']
-autosummary_imported_members = True
+# autosummary_imported_members = True need document imported in mmodule?
 
 # ignoring third-party packages to build documentation ['name']
 # autosummary_mock_imports = autodoc_mock_imports by default
