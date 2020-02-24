@@ -71,7 +71,7 @@ autosummary_imported_members = True
 # ignoring third-party packages to build documentation ['name']
 # autosummary_mock_imports = autodoc_mock_imports by default
 # get text
-with open(os.path.abspath('../../requirements'), "r", encoding='utf-8') as f:
+with open(os.path.abspath('../../requirements.txt'), "r", encoding='utf-8') as f:
     temp = f.read().splitlines()
 exclude = [i.split('==')[0] if '==' in i else i for i in temp]
 autodoc_mock_imports = exclude
