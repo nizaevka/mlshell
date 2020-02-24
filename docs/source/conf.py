@@ -17,7 +17,7 @@ import sys
 
 # from sphinx.ext.autodoc import (ClassLevelDocumenter, InstanceAttributeDocumenter)
 
-sys.path.insert(0, os.path.abspath('../../src'))  # two levels up from conf.py
+sys.path.insert(0, os.path.abspath('../../src/'))  # two levels up from conf.py
 
 # -- Project information -----------------------------------------------------
 
