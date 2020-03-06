@@ -10,6 +10,8 @@ Project*/
 !src/mlshell/**
 src/mlshell/temp
 
+!pictures/**
+
 !docs/source/**
 !docs/make.bat
 !docs/Makefile

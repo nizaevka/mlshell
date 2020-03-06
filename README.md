@@ -23,7 +23,8 @@
 - Common EDA techniques.
 - Pure python.
 
-For more details, please refer to
+For more details, please refer to:
+
 [Concepts](https://mlshell.readthedocs.io/en/latest/Concepts.html>).
 ---
 
@@ -66,8 +67,8 @@ An overview and API documentation can be found here
 [![Docs](https://readthedocs.org/projects/mlshell/badge/?version=latest)](https://readthedocs.org/mlshell/en/latest/?badge=latest)
 
 Check **[examples folder](examples)** of the repository:
-- For regression example please follow [Allstate claims severity](https://github.com/catalyst-team/catalyst/tree/master/examples/rl_gym).
-- For classification example please follow [IEEE-CIS Fraud Detection](https://github.com/catalyst-team/catalyst/tree/master/examples/rl_gym).
+- For regression example please follow [Allstate claims severity](https://github.com/nizaevka/mlshell/tree/master/examples/regression).
+- For classification example please follow [IEEE-CIS Fraud Detection](https://github.com/nizaevka/mlshell/tree/master/examples/classification).
 
 ## Contribution guide
 
