@@ -45,4 +45,5 @@ def test_func():
             for filepath_ in glob.glob(f'{dir_path}/original/models/*predictions.csv'):
                 assert filecmp.cmp(filepath, filepath_)
     except Exception as e:
+        print(e)
         assert False
