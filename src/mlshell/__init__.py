@@ -6,7 +6,6 @@ from .__version__ import __version__
 
 
 import warnings
-from platform import system
 
 
 from .callbacks import find_path
@@ -19,6 +18,6 @@ from .gui import GUI
 
 __all__ = ['find_path', 'CreateLogger', 'GetParams', 'Workflow', 'CreateDefaultPipeline', 'DEFAULT_PARAMS', 'GUI']
 
-
-if system() != 'Windows':
-    warnings.warn("Package was tested only on Windows os", UserWarning)
+# import platform
+# if platform.system() != 'Windows':
+#     warnings.warn("Package was tested only on Windows os", UserWarning)

@@ -1440,7 +1440,7 @@ class Workflow(object):
         filepath = f"{dirpath}/{self.p_hash}_{data_hash}_predictions.csv"
 
         with open(filepath, 'w', newline='') as f:
-            y_pred_df.to_csv(f, mode='w', header=True, index=True, sep=',', line_terminator='\n')
+            y_pred_df.to_csv(f, mode='w', header=True, index=True, sep=',', line_terminator='\n')  # only LF
 
         self.logger.info("Made prediction for new data:    \n{}".format(filepath))
 
