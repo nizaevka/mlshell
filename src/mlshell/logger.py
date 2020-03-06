@@ -119,12 +119,18 @@ class CreateLogger(object):
         _dict_log_config["handlers"]["critical_handler"]["filename"] = '{}/{}_critical.log'.format(fullpath,
                                                                                                    logger_name)
         _dict_log_config["handlers"]["console_handler"]["stream"] = sys.stdout
-        if not url:
-            # del http-handler
-            del _dict_log_config["loggers"][logger_name]['handlers']['http_handler']
-        else:
-            _dict_log_config["loggers"][logger_name]['handlers']['http_handler']['url'] = url
-            _dict_log_config["loggers"][logger_name]['handlers']['http_handler']['host'] = host
+
+        try:
+            index = _dict_log_config["loggers"][logger_name]['handlers'].index('http_handler')
+        except ValueError:
+            index = None
+        if index is not None:
+            if url:
+                _dict_log_config['handlers']['http_handler']['url'] = url
+                _dict_log_config['handlers']['http_handler']['host'] = host
+            else:
+                # del http-handler
+                del _dict_log_config["loggers"][logger_name]['handlers'][index]
 
         # create logger object (auto generate files)
         logging.config.dictConfig(_dict_log_config)
