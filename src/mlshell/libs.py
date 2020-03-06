@@ -56,7 +56,8 @@ try:
 except ImportError:
     def playsound(frequency, duration):
         # apt-get install beep
-        os.system('beep -f %s -l %s' % (frequency, duration))
+        # os.system('beep -f %s -l %s' % (frequency, duration))
+        pass
 else:
     def playsound(frequency, duration):
         winsound.Beep(frequency, duration)
