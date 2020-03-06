@@ -8,3 +8,5 @@ WORKDIR /usr/workspace
 COPY . .
 RUN pip install .
 RUN rm -rf *
+
+CMD ['sh']

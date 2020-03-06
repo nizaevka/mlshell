@@ -4,6 +4,8 @@
 # You can set these variables from the command line.
 SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
+# C:\Users\pc\Desktop\ALGO\ML\.venv\Scripts\python.exe -msphinx
+# C:/Users/pc/AppData/Local/Programs/Python/Python37/Scripts/sphinx-build  # to use local interpreter from venv, default: sphinx-build
 SOURCEDIR     = source
 BUILDDIR      = build
 

@@ -3,34 +3,42 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to mlshell's documentation!
+Welcome to MLshell's documentation!
 ===================================
 
-**MLshell** is a ml workflow framework:
-
-- Unify access to popular ml libraries.
+**MLshell** is a framework for ML research and development:
+- Fast and simple pipeline prototyping and parameters tuning.
+- Unified ml pipeline.
+- Stable CV scheme.
+- Production ready.
+- One conf file rule all.
+- Simple result analyse.
+- Unified plots.
 - Common EDA techniques.
-- Simplify result analyse.
+- Pure python.
 
-For more details, please refer to `Features <./Features.rst>`__.
+For more details, please refer to
+`Concepts <https://mlshell.readthedocs.io/en/latest/Concepts.html>`__.
 
 .. toctree::
    :maxdepth: 1
    :caption: Contents:
 
-   Installation Guide <Installation-Guide>
-   Python Quick Start <Python-Intro>
-   Features <Features>
-   Experiments <Experiments>
+   Installation <Installation>
+   Get started <Get-started>
+   Concepts <Concepts>
+   Default configuration <Default-configuration>
    Python API <Python-API>
+   Examples <Examples>
 
 .. toctree::
    :hidden:
 
-   Advanced Topics <Advanced-Topics>
+   README
+
+..   Advanced Topics <Advanced-Topics>
    FAQ <FAQ>
    Development Guide <Development-Guide>
-   README
 
 Indices and tables
 ==================

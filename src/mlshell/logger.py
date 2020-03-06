@@ -9,7 +9,6 @@ from mlshell.libs import copy
 import logging.config
 
 
-# (dict): logger configuration for logging.config.dictConfig method
 _dict_log_config = {
     "version": 1,
     "handlers": {
@@ -18,7 +17,7 @@ _dict_log_config = {
             "maxBytes": 25000000,  # 25mb 25*10^6 byte
             "backupCount": 3,      # amount of backup files
             "formatter": "message",
-            "filename": 'debug.log',  # just for initialization, will replcace
+            "filename": 'debug.log',  # only for initialization, will be replaced
             "level": "DEBUG",
         },
         "info_handler": {
@@ -51,14 +50,14 @@ _dict_log_config = {
             "class": "logging.StreamHandler",
             "formatter": "message",
             "level": "INFO",
-            "stream": None,  # default in std.err (marked),after generation will set to std.out
+            "stream": None,  # default in std.err (marked),a fter generation will set to std.out
         },
         "http_handler": {   # ignore jsonFormatter (cause use LogRecord object)
             "class": "logging.handlers.HTTPHandler",
-            "formatter": "message",  # игнорируется
+            "formatter": "message",  # ignored
             "level": "ERROR",
-            "host": 'nizaevka.pythonanywhere.com',
-            "url": 'https://nizaevka.pythonanywhere.com/fe0f200d-c9ab-4a7d-8ec8-cf56d4c08ec2',
+            "host": 'www.example.com',
+            "url": 'https://wwww.example.com/address',
             "method": "POST",
         },
     },
@@ -71,7 +70,7 @@ _dict_log_config = {
     },
     "formatters": {
         "json_message": {
-            # "()": "pythonjsonlogger.jsonlogger.JsonFormatter",  pip install pythonjsonlogger
+            # "()": "pythonjsonlogger.jsonlogger.JsonFormatter",  # pip install pythonjsonlogger
             "format": "%(levelname)s : %(message)s",
         },
         "message": {
@@ -79,17 +78,13 @@ _dict_log_config = {
         }
     }
 }
+"""(dict): logger configuration for logging.config.dictConfig method"""
 
 
 class CreateLogger(object):
     """Create logger object."""
 
-    def __init__(self, fullpath, send_http=False):
-        """Initialize class object."""
-        self.logger = None
-        self.__call__(fullpath, send_http)
-
-    def __call__(self, fullpath, send_http=False, logger_name=None):
+    def __init__(self, fullpath, **kwargs):
         """Create logger and files.
 
         use _dict_log_config for logger config
@@ -99,11 +94,16 @@ class CreateLogger(object):
 
         Args:
             fullpath (str): path to dir for logs files
-            send_http (bool): if True send logs over http_handler from dictLogConfig
-                (default: False)
+            url (str): if not None used to send logs over http_handler from dictLogConfig.
+                (default: None)
+            host (str): if url is not None use for http_handler.
             logger_name(str): used in logs files
                 (default: last fullpath dir)
         """
+        self.logger = None
+        self.__call__(fullpath, **kwargs)
+
+    def __call__(self, fullpath, logger_name=None, url=None, host=None):
         # create dir
         if not os.path.exists(fullpath):
             os.makedirs(fullpath)
@@ -119,14 +119,18 @@ class CreateLogger(object):
         _dict_log_config["handlers"]["critical_handler"]["filename"] = '{}/{}_critical.log'.format(fullpath,
                                                                                                    logger_name)
         _dict_log_config["handlers"]["console_handler"]["stream"] = sys.stdout
-        if not send_http:
+        if not url:
             # del http-handler
-            del _dict_log_config["loggers"][logger_name]['handlers'][-1]
+            del _dict_log_config["loggers"][logger_name]['handlers']['http_handler']
+        else:
+            _dict_log_config["loggers"][logger_name]['handlers']['http_handler']['url'] = url
+            _dict_log_config["loggers"][logger_name]['handlers']['http_handler']['host'] = host
+
         # create logger object (auto generate files)
         logging.config.dictConfig(_dict_log_config)
         logger = logging.getLogger(logger_name)
         # add extra in every entry
-        extra = {'delimeter': '\n'+'+' * 100}
+        extra = {'delimeter': '\n' + '+' * 100}
         self.logger = logging.LoggerAdapter(logger, extra)
         # clean debug and warning files
         with open(_dict_log_config["handlers"]["debug_handler"]["filename"], 'w'):

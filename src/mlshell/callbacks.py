@@ -1,11 +1,15 @@
-"""?"""
+"""The module with auxiliary functions"""
 
 
 from mlshell.libs import get_ipython, os, sys
 
 
-def find_path():
+def find_path(filepath=None):
     """Get fullpath and name of main script
+
+    Args:
+        filepath (str): path to main script (default=None)
+            if None get from working directory.
 
     Returns:
         (tuple): tuple containing:
@@ -28,7 +32,12 @@ def find_path():
         except NameError:
             return False  # Probably standard Python interpreter
 
-    work_dir = os.getcwd().replace('\\', '/')
+    if filepath is None:
+        work_dir = os.getcwd().replace('\\', '/')
+    else:
+        temp = filepath.replace('\\', '/').split('/')
+        work_dir = '/'.join(temp[:-1])
+        script_name = temp[-1]
     fullpath = work_dir
     # deprecated: always start from inside of project dir
     # check if we are in project_dir()

@@ -1,3 +1,17 @@
+"""The module with GUI class description
+
+TODO:
+    run button, set slider and push run to calculate
+TODO:
+    set original index as x_ticks
+    mayby some temporary bug
+
+Note:
+    radio 1 template is hidden in fig_element_prepare
+
+"""
+
+
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 import seaborn as sns
@@ -91,9 +105,9 @@ class Draw(object):
             button.on_clicked(self.reseting)
             b_plus.on_clicked(self.plus)
             b_minus.on_clicked(self.minus)
-        if 'temp_param' in self.__dict__:
-            # Параметры для отслеживания изменений
-            self.temp_param()
+
+        # Параметры для отслеживания изменений
+        self.temp_param()
         plt.show()
 
     def tbox_val(self, text):
@@ -119,8 +133,29 @@ class Draw(object):
         # Обновляем элементы графиков
         self.fig_element_replace()
 
-        # обновляем temp текущего состояния
+        # обновляем temp к текущему состоянию как заключительный этап
         self.temp_param()
+
+    def temp_param(self):
+        pass
+
+    def read_val(self):
+        pass
+
+    def radio2_handler(self):
+        pass
+
+    def textbox_handler(self):
+        pass
+
+    def radio1_handler(self):
+        pass
+
+    def slider_handler(self):
+        pass
+
+    def fig_element_replace(self):
+        pass
 
 
 class GUI(Draw):
@@ -209,19 +244,21 @@ class GUI(Draw):
             if self.estimator_type == 'classifier':
                 self.logger.info('score: {} TP: {} FP: {}'.format(round(self.y['score_plot_right'][-1], 4),
                                                                   np.count_nonzero(self.y['TP_scatter'] != 0),
-                                                                  np.count_nonzero(self.y[
-                                                                                       'FP_scatter'] != 0)))  # np.around(self.y[3], 2) не обрубает нули
+                                                                  np.count_nonzero(self.y['FP_scatter'] != 0)))
+                # np.around(self.y[3], 2) не обрубает нули
             else:
                 self.logger.info('score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                                    round(self.y['MAE_plot'][0], 2),
-                                                                    round(self.y['MSE_plot'][0], 2)))
+                                                                    round(self.y['MAE_plot'][-1], 2),
+                                                                    round(self.y['MSE_plot'][-1], 2)))
             # текстовые сообщения
             self.logger.info('{}'.format('\n'.join(
                 map(str, [(val['orig_name'], val['values'][val['current_index']]) for val in self.sliders_params]))))
 
     def current_data(self):
         self.data_current = self.data.loc[self.index_current]
-        self.base_plot_current = self.base_plot[self.index_current]
+        self.base_plot_current = self.base_plot.loc[self.index_current] # .values
+        # [deprecated] no original index
+        # self.base_plot_current = self.base_plot[self.index_current]
 
         columns = self.data_current.columns
         self.X_current = self.data_current[[name for name in columns if 'feature' in name]]
@@ -245,9 +282,13 @@ class GUI(Draw):
         for i, key in enumerate(self.hp_grid_flat.keys()):
             values = self.hp_grid_flat[key]
             l = values.shape[0]
-
+            if not isinstance(values[0], np.object):
+                # FunctionTransformer for example
+                values_sorted = np.ascontiguousarray(np.sort(values))
+            else:
+                values_sorted = np.ascontiguousarray(values)
             self.sliders_params.append({'values': values,
-                                        'sort_values': np.ascontiguousarray(np.sort(values)),  # self.parami
+                                        'sort_values': values_sorted,  # self.parami
                                         'orig_name': key,
                                         'index': np.arange(l),  # self.pi_index
                                         'length': l,
@@ -311,7 +352,7 @@ class GUI(Draw):
                 if key[0] not in sliders_hp_params:
                     sliders_hp_params[key[0]] = {}
                 sliders_hp_params[key[0]][key[1]] = val
-            elif len(val.shape) > 1:  # [[0,100],[25,75]] => (0,100)
+            elif isinstance(val, np.ndarray) and len(val.shape) > 1:  # [[0,100],[25,75]] => (0,100)
                 sliders_hp_params[key] = tuple(val)
             else:
                 sliders_hp_params[key] = val
@@ -320,6 +361,7 @@ class GUI(Draw):
         # Make prediction on current_data
         self.estimator.set_params(**current_hp_params)
         y_pred = self.estimator.fit(self.X_train, self.y_train).predict(self.X_current)
+        print('Train and predict.')
         y_true = self.y_current.values
         # y_true_score = self.y_score.values[self.index_current] deprecated
         score, meta = self.metric(y_true, y_pred, meta=True)
@@ -338,13 +380,14 @@ class GUI(Draw):
         # заголовок
         if self.estimator_type == 'classifier':
             title_text = 'score: {} TP: {} FP: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                          np.count_nonzero(self.y['TP_scatter'] != 0), np.count_nonzero(
-                    self.y['FP_scatter'] != 0))  # np.around(self.y[3], 2) не обрубает нули
+                                                          np.count_nonzero(self.y['TP_scatter'] != 0),
+                                                          np.count_nonzero(self.y['FP_scatter'] != 0))
+                                                            # np.around(self.y[3], 2) не обрубает нули
         else:
             title_text = 'score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                            round(self.y['MAE_plot'][0], 2),
-                                                            round(self.y['MSE_plot'][0],
-                                                                  2))  # np.around(self.y[3], 2) не обрубает нули
+                                                            round(self.y['MAE_plot'][-1], 2),
+                                                            round(self.y['MSE_plot'][-1], 2))
+                                                    # np.around(self.y[3], 2) не обрубает нули
         # текстовые сообщения
         text0 = (0.1, 0.95, '')
         text1 = (0.9, 0.95, '{}'.format('\n'.join(
@@ -371,7 +414,9 @@ class GUI(Draw):
         # radio buttons
         list0 = ['Name1'] + ['Name2']  # берется нулевой из списка
         list1 = ['test', 'train']
-        radio0 = ([0.025, 0., 0.15, 0.27], list0)  # x,y,dx,dy
+        # hide radio0
+        radio0 = ([0, 0, 0, 0], list0)  # x,y,dx,dy
+        # radio0 = ([0.025, 0., 0.15, 0.27], list0)  # x,y,dx,dy
         radio1 = ([0.175, 0., 0.1, 0.1], list1)
         # slider
         sliders = []
@@ -437,6 +482,7 @@ class GUI(Draw):
 
     # Заготовка
     def radio2_handler(self, force_flag=False):
+        print(f'radio2_handler: current={self.current_rad2} temp={self.current_rad2_temp}')
         if self.current_rad2 != self.current_rad2_temp or force_flag:
             if self.current_rad2 == 'test':
                 self.index_current = self.test_index
@@ -451,11 +497,14 @@ class GUI(Draw):
                 val.set_ydata(self.y[key])
             for key, val in self.scatter_dic.items():
                 val.set_offsets(np.c_[self.x, self.y[key]])
-            self.slider_set_best()
-            self.current_rad2_temp = self.current_rad2
+            self.fig_elements['radio'][1][1][0] = self.current_rad2
+            # do in temp_param
+            # self.current_rad2_temp = self.current_rad2
+            # self.slider_set_best()  # => update, would second predict self.axis_y_dynamic()
 
     def textbox_handler(self, force_flag=False):
         # [deprecated] all results come from GS, otherwise be carefull with threshold strategy
+        print(f'textbox_handler: current={self.box_val} temp={self.box_val_temp}')
         if self.box_val != self.box_val_temp or force_flag:
             self.logger.info(self.box_val)
             self.sliders_subgrid()
@@ -466,21 +515,25 @@ class GUI(Draw):
                 val.set_ydata(self.y[key])
             for key, val in self.scatter_dic.items():
                 val.set_offsets(np.c_[self.x, self.y[key]])
+            # self.box_val_temp = self.box_val # do in temp_param
             self.slider_set_best()
-            self.box_val_temp = self.box_val
 
     def radio1_handler(self, force_flag=False):
         # [Заготовка]
+        print(f'radio1_handler: current={self.current_rad1_temp} temp={self.current_rad1_temp}')
         if self.current_rad1 != self.current_rad1_temp or force_flag:
             self.logger.info('recalc_rad1')
-            self.current_rad1_temp = self.current_rad1
             self.text_dic[0].set_text('Ready')
+            # do in temp_param
+            # self.current_rad1_temp = self.current_rad1
+            self.fig_elements['radio'][0][1][0] = self.current_rad1
 
     def slider_handler(self):
-        needrecalc = True
+        needrecalc = False
         for i, val in enumerate(self.sliders_params):
             if val['current_index'] != val['current_index_temp']:
                 needrecalc = True
+        print(f'slider_handler needrecalc: {needrecalc}')
         if needrecalc:
             self.axis_y_dynamic()
 
@@ -501,13 +554,13 @@ class GUI(Draw):
         if self.estimator_type == 'classifier':
             self.title.set_text('score: {} TP: {} FP: {}'.format(round(self.y['score_plot_right'][-1], 4),
                                                                  np.count_nonzero(self.y['TP_scatter'] != 0),
-                                                                 np.count_nonzero(self.y[
-                                                                                      'FP_scatter'] != 0)))  # np.around(self.y[3], 2) не обрубает нули
+                                                                 np.count_nonzero(self.y['FP_scatter'] != 0)))
+                                                                # np.around(self.y[3], 2) не обрубает нули
         else:
             self.title.set_text('score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                                   round(self.y['MAE_plot'][0], 2),
-                                                                   round(self.y['MSE_plot'][0],
-                                                                         2)))  # np.around(self.y[3], 2) не обрубает нули
+                                                                   round(self.y['MAE_plot'][-1], 2),
+                                                                   round(self.y['MSE_plot'][-1], 2)))
+                                                                # np.around(self.y[3], 2) не обрубает нули
 
         self.text_dic[1].set_text('{}'.format('\n'.join(
             map(str, [(val['orig_name'], val['values'][val['current_index']]) for val in self.sliders_params]))))
