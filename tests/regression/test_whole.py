@@ -1,4 +1,7 @@
-"""The module to test code on real data"""
+"""The module to test code on real data
+
+TODO move last output to .temp to gitignore
+"""
 
 
 import shutil

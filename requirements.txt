@@ -34,3 +34,4 @@ traitlets==4.3.3
 wcwidth==0.1.8
 line-profiler==3.0.2
 memory-profiler==0.57.0
+xgboost==1.0.2
