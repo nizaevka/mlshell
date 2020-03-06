@@ -1,6 +1,6 @@
-test:
-	pip install pytest
-	pytest tests
+#test:
+#	pip install pytest
+#	pytest tests
 deploy:
 	pip install --upgrade setuptools wheel
 	python setup.py sdist bdist_wheel
