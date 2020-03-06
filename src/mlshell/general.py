@@ -1,5 +1,7 @@
 ﻿"""ML workflow class
 TODO:
+    make test run auto how to prevent?
+TODO:
     encoder step in pipeline, add choose possibility
     # ('encode_features',    mlshell.custom.encoder(encoder=sklearn.ensemble.RandomTreesEmbedding(n_estimators=300, max_depth=9), skip=True)),
 TODO:
