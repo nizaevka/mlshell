@@ -1,1 +1,5 @@
 pytest==5.3.5
+sphinx==2.4.3
+sphinxcontrib-napoleon
+sphinx-autodoc-typehints
+sphinx_rtd_theme

@@ -5,7 +5,7 @@ from mlshell.libs import *
 import mlshell.custom
 
 
-default_params = {
+DEFAULT_PARAMS = {
     'estimator_type': 'regressor',
     'main_estimator': sklearn.linear_model.LinearRegression(),
     'cv_splitter': sklearn.model_selection.KFold(shuffle=False),
@@ -27,12 +27,11 @@ default_params = {
     'th_strategy': 0,
     'pos_label': 1,
     'train_file': None,
+    'test_file': None,
     'rows_limit': None,
     'random_skip': False,
 }
-
-
-"""(dict): if user skip declaration for any parameter will be used default one.
+"""(dict): if user skip declaration for any parameter the default one will be used.
 
     estimator_type ('regressor' or 'classifier', optional (default='regressor')):
         Sklearn estimator type.
@@ -43,7 +42,7 @@ default_params = {
     score_metrics (dict of ``sklearn.metrics``, optional (default={'score': sklearn.metrics.r2_score})):
         Dict of metrics to be measured. Should consist 'score' key, which val is used for hp tunning.
     split_train_size (train_size for sklearn.model_selection.train_test_split, default=0.7):
-        Split data on train and validation.
+        Split data on train and validation. It is possible to set 1.0 and CV on whole data.
     del_duplicates (bool, optional (default=False)):
         If True remove duplicates rows from input data.
     debug_pipeline (bool, optional (default=False):
@@ -72,8 +71,10 @@ default_params = {
         For classification only. For details see `Features <./Features.html#classification-threshold>`__.
     pos_label (int or str, optional (default=1)):
         For classification only. Label for positive class.
-    train_file (bool, optional (default='train.csv')):
-        Relative path to input csv file.
+    train_file (bool, optional (default=None)):
+        Relative path to csv file with train data (with targets) to cross-validate with reserved validation subset.
+    test_file (bool, optional (default=None)):
+        Relative path to csv file with new data (without targets) to predict.
     rows_limit (int or None, optional (default=None)):
         Number of lines get from input file.
     random_skip' (bool, optional (default=False)):
@@ -110,8 +111,11 @@ class CreateDefaultPipeline(object):
         Args:
             categoric_ind_name (dict): {column_index: ('feature_categr__name',['B','A','C']),}
             numeric_ind_name (dict):  {column_index: ('feature__name',),}
-            set_custom_param: Function to pass GS parameters in Workflow instance `self` attributes.
+            set_custom_param (function): Function to pass GS parameters in Workflow instance `self` attributes.
             p (dict): User parameters, see `default_params <./mlshell.html#mlshell.default.default_params>`__.
+
+        Notes:
+            Target transformer for regression should be the last or absent.
 
         """
         self.default_steps = [
@@ -126,11 +130,12 @@ class CreateDefaultPipeline(object):
                 ('pipeline_numeric',   sklearn.pipeline.Pipeline(steps=[
                     ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices': numeric_ind_name})),
                     ('impute',             sklearn.pipeline.FeatureUnion([
-                        ('gaps',             sklearn.impute.SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0, copy=True)),  # there are add_indicator (False by default) option in fresh release
-                        ('indicators',       sklearn.impute.MissingIndicator(missing_values=np.nan))])),
+                        ('indicators',         sklearn.impute.MissingIndicator(missing_values=np.nan)),
+                        ('gaps',               sklearn.impute.SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0, copy=True)),  # there are add_indicator (False by default) option in fresh release
+                        ])),
                     ('transform_normal',   mlshell.custom.preprocessing_SkippablePowerTransformer(method='yeo-johnson', standardize=False, copy=False, skip=True)),
                     ('scale_row_wise',     sklearn.preprocessing.FunctionTransformer(func=None, validate=False)),
-                    ('scale_column_wise',  sklearn.preprocessing.RobustScaler(quantile_range=(0, 100), copy=False)),  # TODO: add test which is the best
+                    ('scale_column_wise',  sklearn.preprocessing.RobustScaler(quantile_range=(0, 100), copy=False)),
                     ('add_polynomial',     sklearn.preprocessing.PolynomialFeatures(degree=1, include_bias=False)),  # x => degree=1 => x, x => degree=0 => []
                     ('compose_columns',    sklearn.compose.ColumnTransformer([
                         ("discretize",     sklearn.preprocessing.KBinsDiscretizer(n_bins=5, encode='onehot-dense', strategy='quantile'), self.bining_mask)], sparse_threshold=0, remainder='passthrough'))
@@ -138,27 +143,26 @@ class CreateDefaultPipeline(object):
             ])),
             ('select_columns',   sklearn.feature_selection.SelectFromModel(estimator=mlshell.custom.CustomSelectorEstimator(estimator_type=p['estimator_type'], verbose=False, skip=True), prefit=False)),
             ('reduce_dimension', mlshell.custom.decomposition_CustomReducer(skip=True)),
-            # ('encode_forest',    ensemble.RandomTreesEmbedding(n_estimators=300, max_depth=9)),
-            ('estimate',         sklearn.preprocessing.FunctionTransformer(func=None, validate=False)),
+            ('estimate', sklearn.compose.TransformedTargetRegressor(regressor=None, transformer=None, check_inverse=True)),
         ]
 
-    def subcolumns(self, data, **kwargs):
-        """Get subcolumns from data.
+    def subcolumns(self, x, **kwargs):
+        """Get subcolumns from x.
         
         Args: 
-            data (np.ndarray or dataframe of shape=[[row],]): Input data.
+            x (np.ndarray or dataframe of shape=[[row],]): Input x.
             **kwargs: Should contain 'indices' key.
 
         Returns:
-            result (np.ndarray or dataframe): Subcolumns of data.
+            result (np.ndarray or xframe): Subcolumns of x.
         """
         feat_ind_name = kwargs['indices']
         indices = list(feat_ind_name.keys())
         names = [i[0] for i in feat_ind_name.values()]
-        if isinstance(data, pd.DataFrame):
-            return data.loc[:, names]
+        if isinstance(x, pd.DataFrame):
+            return x.loc[:, names]
         else:
-            return data[:, indices]
+            return x[:, indices]
 
     def subrows(self, x):
         """Get rows from x."""

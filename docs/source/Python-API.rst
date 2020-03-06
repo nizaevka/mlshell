@@ -3,18 +3,6 @@ Python API
 
 .. currentmodule:: mlshell
 
-Default parameters
-------------------
-
-.. .. autodata:: default_params
-    :annotation:
-
-.. autosummary::
-    :toctree: _pythonapi/
-
-    default_params
-    CreateDefaultPipeline
-
 Logger
 ------
 
@@ -30,6 +18,14 @@ Workflow
     :toctree: _pythonapi/
 
     Workflow
+
+Read conf file
+--------------
+
+.. autosummary::
+    :toctree: _pythonapi/
+
+    GetParams
 
 Callbacks
 ---------

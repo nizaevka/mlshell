@@ -54,6 +54,14 @@ extensions = [
     'sphinx_autodoc_typehints',
 ]
 
+# Looks for objects in external projects. Api dependent, not work in general, need checks
+intersphinx_mapping = {
+    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/reference/index.html', None),
+    'sklearn': ('https://scikit-learn.org/stable/', None),
+    'numpy': ('https://docs.scipy.org/doc/numpy/reference/', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy/reference/', None),
+}
+
 napoleon_use_param = True
 
 autodoc_default_options = {

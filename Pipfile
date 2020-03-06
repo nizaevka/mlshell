@@ -5,6 +5,10 @@ verify_ssl = true
 
 [dev-packages]
 pytest = "*"
+sphinx = "*"
+sphinxcontrib-napoleon = "*"
+sphinx-autodoc-typehints = "*"
+sphinx-rtd-theme = "*"
 
 [packages]
 e1839a8 = {editable = true,path = "."}
@@ -25,6 +29,7 @@ line-profiler = "*"
 memory-profiler = "*"
 setuptools = "*"
 wheel = "*"
+xgboost = "*"
 
 [requires]
 python_version = "3.7"

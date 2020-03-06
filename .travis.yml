@@ -9,8 +9,8 @@ services:
 before_install:
     - docker build -t nizaevka/mlshell -f Dockerfile.dev .
 
-# command to install dependencies
-install: "make"
+# command to install dependencies (why auto run makefile?)
+# install: "make"
 
 # command to run tests
 script:
@@ -35,3 +35,7 @@ after_deploy:
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_ID" --password-stdin
     # push to dockerhub
     - docker push nizaevka/mlshell
+
+branches:
+  only:
+    - master
