@@ -4,6 +4,8 @@ WORKDIR /usr/lib
 
 # COPY requirements_dev.txt ./
 # RUN pip install --no-cache-dir -r requirements.txt
+
+RUN	pip install --upgrade setuptools wheel
 RUN pip install pytest
 
 COPY . .
