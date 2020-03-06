@@ -35,3 +35,7 @@ after_deploy:
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_ID" --password-stdin
     # push to dockerhub
     - docker push nizaevka/mlshell
+
+branches:
+  only:
+    - master
