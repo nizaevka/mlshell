@@ -1,4 +1,5 @@
-FROM python:3.7-alpine
+FROM ubuntu:18.04
+# FROM python:3.7-alpine  # apk update, apk add
 
 WORKDIR /usr/workspace
 
