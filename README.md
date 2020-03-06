@@ -1,6 +1,6 @@
 <div align="center">
 
-[![Mlshell logo](https://raw.githubusercontent.com/nizaevka/pictures/mlshell_logo.png)](https://github.com/nizaevka/mlshell)
+[![Mlshell logo](https://raw.githubusercontent.com/nizaevka/mlshell/pictures/mlshell_logo.png)](https://github.com/nizaevka/mlshell)
 
 **Unified ML framework**
 
