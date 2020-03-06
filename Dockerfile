@@ -1,4 +1,5 @@
-FROM ubuntu:18.04
+FROM python:3.7
+# FROM ubuntu:18.04
 # FROM python:3.7-alpine  # apk update, apk add
 
 WORKDIR /usr/workspace
@@ -8,21 +9,13 @@ WORKDIR /usr/workspace
 
 RUN apt-get update && apt-get install -y \
     build-essential \
-    libsm6 \
-	libxext6 \
-	libfontconfig1 \
-	libxrender1 \
-    libswscale-dev \
-    libtbb2 \
-    libtbb-dev \
+    libfreetype6-dev \
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
-    libjasper-dev \
-    libavformat-dev \
-    libpq-dev \
-	libturbojpeg \
-	software-properties-common \
+    libssl-dev \
+    libffi-dev \
+    python-dev \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
