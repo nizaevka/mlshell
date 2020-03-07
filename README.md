@@ -1,6 +1,6 @@
 <div align="center">
 
-[![Mlshell logo](https://raw.githubusercontent.com/nizaevka/mlshell/pictures/mlshell_logo.png)](https://github.com/nizaevka/mlshell)
+[![Mlshell logo](https://github.com/nizaevka/mlshell/tree/master/pictures/mlshell_logo.png)](https://github.com/nizaevka/mlshell)
 
 **Unified ML framework**
 
@@ -22,6 +22,8 @@
 - Unified plots.
 - Common EDA techniques.
 - Pure python.
+
+[![Workflow](https://github.com/nizaevka/mlshell/tree/master/docs/source/_pics/workflow.jpg)](https://github.com/nizaevka/mlshell)
 
 For more details, please refer to:
 
