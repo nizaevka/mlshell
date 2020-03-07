@@ -7,6 +7,7 @@ Welcome to MLshell's documentation!
 ===================================
 
 **MLshell** is a framework for ML research and development:
+
 - Fast and simple pipeline prototyping and parameters tuning.
 - Unified ml pipeline.
 - Stable CV scheme.
