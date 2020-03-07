@@ -9,8 +9,9 @@ services:
 before_install:
     - docker build -t nizaevka/mlshell -f Dockerfile.dev .
 
-# command to install dependencies (why auto run makefile?)
-# install: "make"
+# command to install dependencies (default pip install -r requirements.txt)
+# true = do nothing
+install: true
 
 # command to run tests
 script:
