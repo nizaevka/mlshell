@@ -9,6 +9,7 @@ sphinx = "*"
 sphinxcontrib-napoleon = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-rtd-theme = "*"
+twine = "*"
 
 [packages]
 e1839a8 = {editable = true,path = "."}

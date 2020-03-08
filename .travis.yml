@@ -23,9 +23,9 @@ deploy:
     provider: pypi
     on:
         branch: master
-    user: $PYPI_USERNAME
+    user: "$PYPI_USERNAME"
     password:
-      secure: $PYPI_PASSWORD
+      secure: "$PYPI_PASSWORD"
     distributions: "sdist bdist_wheel"
     skip_existing: true
 #     # test PyPi
