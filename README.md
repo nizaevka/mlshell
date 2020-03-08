@@ -26,9 +26,10 @@ ALPHA UNDERCONSTRUCTED
 
 [![Workflow](docs/source/_static/images/workflow.JPG?raw=true)]()
 
-For more details, please refer to
-[Concepts](https://mlshell.readthedocs.io/en/latest/Concepts.html>).
----
+For details, please refer to
+ [Concepts](https://mlshell.readthedocs.io/en/latest/Concepts.html>).
+
+--
 
 ## Installation
 

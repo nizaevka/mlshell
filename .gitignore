@@ -42,6 +42,8 @@ examples/classification/data
 !.travis.yml
 !Makefile
 !.readthedocs.yml
+!CODE_OF_CONDUCT.md
+!CONTRIBUTING.md
 
 # ignore pattern everywhere
 *$py.class

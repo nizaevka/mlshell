@@ -25,4 +25,5 @@ COPY . .
 RUN pip install .
 # RUN rm -rf *   # uncomment finally
 
-CMD ['sh']
+# CMD ['sh'] # alpine
+CMD ['bash']
