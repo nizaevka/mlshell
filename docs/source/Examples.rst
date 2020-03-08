@@ -145,7 +145,7 @@ If time is limited:
 
 .. image:: ./_static/images/result_regression.jpg
   :width: 1000
-  :alt: Alternative text
+  :alt: error
 
 Classification
 ~~~~~~~~~~~~~~

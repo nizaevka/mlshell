@@ -1,9 +1,23 @@
 Concepts
 ========
 
+
+.. image:: ./_static/images/workflow.jpg
+  :width: 1000
+  :alt: error
+
+.. image:: images/workflow.jpg
+  :width: 1000
+  :alt: error
+
+.. image:: ./images/workflow.jpg
+  :width: 1000
+  :alt: error
+
+
 .. image:: _static/images/workflow.jpg
   :width: 1000
-  :alt: Alternative text
+  :alt: error
 
 .. contents:: **Contents**
     :depth: 1
