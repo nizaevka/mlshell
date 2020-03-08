@@ -31,8 +31,8 @@ deploy:
 #     # test PyPi
 #     provider: script
 #     script: make deploy
-#     on:
-#         branch: master
+     on:
+        branch: feature
 
 after_deploy:
     - docker build -t nizaevka/mlshell -f Dockerfile .
@@ -41,7 +41,7 @@ after_deploy:
     # push to dockerhub
     - docker push nizaevka/mlshell
 
-# only on PR to master, otherwise double in PR
+# only on change to master
 # branches:
 #   only:
 #     - master
