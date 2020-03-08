@@ -1,7 +1,7 @@
 ALPHA UNDERCONSTRUCTED
 <div align="center">
 
-[![Mlshell logo](https://github.com/nizaevka/mlshell/tree/master/pictures/mlshell_logo.PNG?raw=true)](https://github.com/nizaevka/mlshell)
+[![Mlshell logo](https://github.com/nizaevka/mlshell/blob/master/pictures/mlshell_logo.PNG?raw=true)](https://github.com/nizaevka/mlshell)
 
 **Unified ML framework**
 
@@ -24,7 +24,7 @@ ALPHA UNDERCONSTRUCTED
 - Common EDA techniques.
 - Pure python.
 
-[![Workflow](https://github.com/nizaevka/mlshell/tree/master/docs/source/_static/images/workflow.JPG?raw=true)]()
+[![Workflow](https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/images/workflow.JPG?raw=true)]
 
 For details, please refer to
  [Concepts](https://mlshell.readthedocs.io/en/latest/Concepts.html>).

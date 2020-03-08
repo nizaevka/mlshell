@@ -22,7 +22,7 @@ deploy:
     # pypi
     provider: pypi
     on:
-        branch: feature
+        branch: master
     user: "$PYPI_USERNAME"
     password:
       secure: "$PYPI_PASSWORD"
