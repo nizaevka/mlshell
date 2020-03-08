@@ -22,6 +22,8 @@ docs/source/_pythonapi/
 !docker/**
 
 !examples/**
+examples/regression/data
+examples/classification/data
 
 # except this file
 !.gitignore

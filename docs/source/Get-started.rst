@@ -9,12 +9,12 @@ Python Quick Start
 Data preparation
 ~~~~~~~~~~~~~~~~
 - Create workdir with the raw data (better to use subdir "data/").
-- Create conf.py in wokdir with workflow configuration (for example see `Examples <https://mlshell.readthedocs.io/en/latest/Examples.html>`_).
+- Create conf.py in wokdir with workflow configuration (for example see `Examples <Examples.html>`_).
 - Implement custom GetData to read the raw data from db (for example see `classes.py <https://github.com/nizaevka/mlshell/examples/regression/classes.py>`_).
 - Implement custom DataPreprocessor to transform readed data in consistence with Workflow class.
 
     * for example see `classes.py <https://github.com/nizaevka/mlshell/examples/regression/classes.py>`_.
-    * for Workflow data requirements see Note for `Workflow class <https://mlshell.readthedocs.io/en/latest/mlshell.html#mlshell.Workflow>`_.
+    * for Workflow data requirements see Note for `Workflow class <_pythonapi/mlshell.Workflow.html#mlshell.Workflow>`_.
 - Create a run script or a notebook to control workflow.
 
 Code example
@@ -91,5 +91,5 @@ to plot "score vs samples" with hp sliders for train data:
 
 For detailed example please follow:
 
-- `regression <https://mlshell.readthedocs.io/en/latest/Examples.html#Regression>`_
-- `classification <https://mlshell.readthedocs.io/en/latest/Examples.html#Classification>`_
+- `regression <Examples.html#regression>`_
+- `classification <Examples.html#classification>`_

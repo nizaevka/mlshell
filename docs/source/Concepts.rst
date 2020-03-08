@@ -1,7 +1,7 @@
 Features
 ========
 
-.. image:: _pics/workflow.jpg
+.. image:: _images/workflow.jpg
   :width: 1000
   :alt: Alternative text
 
@@ -51,7 +51,7 @@ Embedded universal pipeline for grid search:
     ]
 
 
-see `CreateDefaultPipeline <https://mlshell.readthedocs.io/en/latest/_modules/mlshell/default.html#CreateDefaultPipeline>`_ class for details.
+see `CreateDefaultPipeline source <_modules/mlshell/default.html#CreateDefaultPipeline>`_ for details.
 
 By default only OneHot encoder and imputer (gaps and indicators) are activated.
 Set corresopnding parameters in conf.py hp_grid dictionary to overwrite default.
@@ -83,7 +83,7 @@ Data scientist can set all workflow parameters through one configuration file.
         'gs_flag':True,
     }
 
-see `default params <https://mlshell.readthedocs.io/en/latest/Default-Params.html#mlshell.default.DEFAULT_PARAMS>`_ for full list.
+see `default params <Default-configuration.html#mlshell.default.DEFAULT_PARAMS>`_ for full list.
 
 Hyperparameters grid
 ^^^^^^^^^^^^^^^^^^^^
@@ -130,7 +130,7 @@ Workflow
 - Mlshell is production ready.
 - Data scientist can control the workflow through script or notebook.
 
-see `Get started docs <https://mlshell.readthedocs.io/en/latest/Get-started.html>`_ for full worflow file example.
+see `Get started <Get-started.html>`_ for full worflow file example.
 
 Project structure
 ^^^^^^^^^^^^^^^^^
@@ -167,7 +167,7 @@ Results
 
 Every GS run <timestamp>_runs.csv will be dumped.
 
-see `dump_runs docs <https://mlshell.readthedocs.io/en/latest/Workflow.html#dump_runs>`_ for details.
+see `dump_runs method <_pythonapi/mlshell.Workflow.html#mlshell.Workflow.dump_runs>`_ for details.
 
 *_runs.csv files could be merge in dataframe for further analyse.
 
@@ -202,4 +202,4 @@ see `dump_runs docs <https://mlshell.readthedocs.io/en/latest/Workflow.html#dump
     * warning
     * info
     * debug
-see `source <https://mlshell.readthedocs.io/en/latest/_modules/mlshell/logger.html>`_ for details.
+see `logger configuration source <_modules/mlshell/logger.html>`_ for details.

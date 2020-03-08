@@ -142,7 +142,7 @@ If time is limited:
 
 **Results:**
 
-.. image:: _pics/result_regression.jpg
+.. image:: _images/result_regression.jpg
   :width: 1000
   :alt: Alternative text
 
