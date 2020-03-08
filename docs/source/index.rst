@@ -19,7 +19,7 @@ Welcome to MLshell's documentation!
 - Pure python.
 
 For more details, please refer to
-Concepts <Concepts>.
+Concepts <Concepts.html>.
 
 .. toctree::
    :maxdepth: 1
@@ -31,7 +31,7 @@ Concepts <Concepts>.
    Default configuration <Default-configuration>
    Python API <Python-API>
    Examples <Examples>
-   Documentation README
+   Documentation <README>
 
 .. toctree::
    :hidden:

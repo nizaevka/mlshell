@@ -8,7 +8,7 @@ Python Quick Start
 
 Data preparation
 ~~~~~~~~~~~~~~~~
-- Create workdir with the raw data (better to use subdir "data/").
+- Create workdir.
 - Create conf.py in wokdir with workflow configuration (for example see `Examples <Examples.html>`_).
 - Implement custom GetData to read the raw data from db (for example see `classes.py <https://github.com/nizaevka/mlshell/examples/regression/classes.py>`_).
 - Implement custom DataPreprocessor to transform readed data in consistence with Workflow class.

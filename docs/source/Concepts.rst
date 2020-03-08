@@ -169,7 +169,7 @@ Every GS run <timestamp>_runs.csv will be dumped.
 
 see `dump_runs method <_pythonapi/mlshell.Workflow.html#mlshell.Workflow.dump_runs>`_ for details.
 
-*_runs.csv files could be merge in dataframe for further analyse.
+``*_runs.csv`` files could be merge in dataframe for further analyse.
 
 .. code-block:: python
 
@@ -202,4 +202,5 @@ see `dump_runs method <_pythonapi/mlshell.Workflow.html#mlshell.Workflow.dump_ru
     * warning
     * info
     * debug
+
 see `logger configuration source <_modules/mlshell/logger.html>`_ for details.
