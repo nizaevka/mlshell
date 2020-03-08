@@ -42,6 +42,6 @@ after_deploy:
     - docker push nizaevka/mlshell
 
 # only on PR to master, otherwise double in PR
-branches:
-  only:
-    - master
+# branches:
+#   only:
+#     - master
