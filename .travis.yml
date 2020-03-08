@@ -1,7 +1,7 @@
 # used by make
-language: python
-python:
-    - "3.7"
+# language: python
+# python:
+#     - "3.7"
 
 sudo: required
 services:
@@ -19,16 +19,18 @@ script:
 #    - make test
 
 deploy:
-    provider: script
-    script: make deploy
+    # pypi
+    provider: pypi
     on:
         branch: master
-#    provider: pypi
-#    on:
-#        branch: master
-#    user: $TEST_PYPI_USERNAME
-#    password:
-#      secure: $TEST_PYPI_PASSWORD
+    user: $PYPI_USERNAME
+    password:
+      secure: $PYPI_PASSWORD
+#     # test PyPi
+#     provider: script
+#     script: make deploy
+#     on:
+#         branch: master
 
 after_deploy:
     - docker build -t nizaevka/mlshell -f Dockerfile .

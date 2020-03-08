@@ -11,14 +11,14 @@ hp grid:
 +----+----------------------------------------------------------------------------------+-------------------+--------------------+----------------+-----------------+
 |    | param_estimate__transformer                                                      |   mean_test_score |   mean_train_score |   mean_test_r2 |   mean_train_r2 |
 |----+----------------------------------------------------------------------------------+-------------------+--------------------+----------------+-----------------|
-|  0 |                                                                                  |          -1642.71 |           -1124.14 |       0.278562 |        0.706853 |
-|  1 | FunctionTransformer(accept_sparse=False, check_inverse=True, func=<ufunc 'log'>, |          -1521.18 |           -1133.13 |       0.263606 |        0.553639 |
+|  0 |                                                                                  |          -1677.87 |           -1121.57 |       0.205131 |        0.708268 |
+|  1 | FunctionTransformer(accept_sparse=False, check_inverse=True, func=<ufunc 'log'>, |          -1546.52 |           -1136.01 |       0.264608 |        0.55748  |
 |    |                     inv_kw_args=None, inverse_func=<ufunc 'exp'>, kw_args=None,  |                   |                    |                |                 |
 |    |                     validate=False)                                              |                   |                    |                |                 |
 +----+----------------------------------------------------------------------------------+-------------------+--------------------+----------------+-----------------+ 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 GridSearch result:
-    {'mean_fit_time': 0.5792678197224934, 'mean_score_time': 0.05713391304016113} 
+    {'mean_fit_time': 0.49948481718699134, 'mean_score_time': 0.05513532956441243} 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 CV best modifiers:
     {'estimate__transformer': FunctionTransformer(accept_sparse=False, check_inverse=True, func=<ufunc 'log'>,
@@ -31,7 +31,7 @@ CV best hp:
                     validate=False)} 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 CV best mean test score:
-    -1521.1788680560576 
+    -1546.5165365958744 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Errors:
     {} 
@@ -51,11 +51,11 @@ Test r2:
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Save fitted model to file
-  C:/Users/pc/Desktop/ALGO/ML/tests/regression/models/67fae6db4196030a7182cf8129efa522_-8105398847923889655_dump.model
+  C:/Users/pc/Desktop/ALGO/ML/tests/regression/models/c0460b90c5eef94165a35430fde0eb49_-8105398847923889655_dump.model
  
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Load fitted model from file
-  C:/Users/pc/Desktop/ALGO/ML/tests/regression/models/67fae6db4196030a7182cf8129efa522_-8105398847923889655_dump.model
+  C:/Users/pc/Desktop/ALGO/ML/tests/regression/models/c0460b90c5eef94165a35430fde0eb49_-8105398847923889655_dump.model
  
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 MyWarning: no target column 'loss' in df, use 0 values/n'loss' 
@@ -63,5 +63,5 @@ MyWarning: no target column 'loss' in df, use 0 values/n'loss'
 MyWarning: 0 duplicates rows found 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Made prediction for new data:    
-C:/Users/pc/Desktop/ALGO/ML/tests/regression/models/67fae6db4196030a7182cf8129efa522_-7406765052799088334_predictions.csv 
+C:/Users/pc/Desktop/ALGO/ML/tests/regression/models/c0460b90c5eef94165a35430fde0eb49_-7406765052799088334_predictions.csv 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

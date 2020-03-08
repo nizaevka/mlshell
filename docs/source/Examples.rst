@@ -1,5 +1,5 @@
 Examples
-===========
+========
 
 .. contents:: **Contents**
     :depth: 1
@@ -9,7 +9,8 @@ Examples
 Regression
 ~~~~~~~~~~
 `"Allstate claims severity" dataset <https://www.kaggle.com/c/allstate-claims-severity>`_
-`repo with source code <https://github.com/nizaevka/mlshell/examples/regression>`_
+
+`example code regression <https://github.com/nizaevka/mlshell/examples/regression>`_
 
 **For grid search try the ideas:**
 
@@ -142,11 +143,12 @@ If time is limited:
 
 **Results:**
 
-.. image:: _pics/result_regression.jpg
+.. image:: ./_static/images/result_regression.jpg
   :width: 1000
-  :alt: Alternative text
+  :alt: error
 
 Classification
 ~~~~~~~~~~~~~~
 `"IEEE fraud detection" dataset <https://www.kaggle.com/c/ieee-fraud-detection>`_
-`repo with source code <https://github.com/nizaevka/mlshell/examples/classification>`_
+
+`example code classifiction <https://github.com/nizaevka/mlshell/examples/classification>`_

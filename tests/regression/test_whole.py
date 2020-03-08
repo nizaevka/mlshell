@@ -1,6 +1,13 @@
 """The module to test code on real data
 
-TODO move last output to .temp to gitignore
+TODO
+    move last output to .temp to gitignore.
+    explore: filecmp True despite of different file separator in logs.
+    explore: can`t import classes
+    explore: there are difference in model and predictions for windows/unix why?
+        maybe csv problem https://stackoverflow.com/questions/12877189/float64-with-pandas-to-csv
+        or models difference
+
 """
 
 
@@ -37,22 +44,20 @@ def test_func():
         shutil.rmtree(f'{dir_path}/models', ignore_errors=True)
         runpy.run_path(f'{dir_path}/run.py',
                        init_globals={'GetData': GetData, 'DataPreprocessor': DataPreprocessor},
-                       run_name='regression')  # TODO: can`t import classes, explore
-        # TODO: logger проходит проверку несмотря на crlf, почему?
-        # auto disable, any way not work
+                       run_name='regression')
         # find out platform type
-        # if platform.system() == 'Windows':
-        #    os_type = 'windows'
-        # else:
-        #    os_type = 'unix'
-        os_type = ''
+        if platform.system() == 'Windows':
+           os_type = 'windows'
+        else:
+           os_type = 'unix'
+
         # check GS
-        assert filecmp.cmp(f'{dir_path}/original/None_critical_1k{os_type}.log',
+        assert filecmp.cmp(f'{dir_path}/original/None_critical_1k_{os_type}.log',
                            f'{dir_path}/logs_run/None_critical.log')
         # check prediction
-        #for filepath in glob.glob(f'{dir_path}/models/*predictions.csv'):
-        #    for filepath_ in glob.glob(f'{dir_path}/original/models/*predictions{os_type}.csv'):
-        #        assert filecmp.cmp(filepath, filepath_)
+        for filepath in glob.glob(f'{dir_path}/models/*predictions.csv'):
+            for filepath_ in glob.glob(f'{dir_path}/original/models/*predictions_{os_type}.csv'):
+                assert filecmp.cmp(filepath, filepath_)
     except Exception as e:
         print(e)
         assert False
