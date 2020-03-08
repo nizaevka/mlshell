@@ -22,7 +22,7 @@ deploy:
     # pypi
     provider: pypi
     on:
-        branch: master
+        branch: feature
     user: "$PYPI_USERNAME"
     password:
       secure: "$PYPI_PASSWORD"
@@ -31,8 +31,8 @@ deploy:
 #     # test PyPi
 #     provider: script
 #     script: make deploy
-     on:
-        branch: feature
+#     on:
+#        branch: feature
 
 after_deploy:
     - docker build -t nizaevka/mlshell -f Dockerfile .
