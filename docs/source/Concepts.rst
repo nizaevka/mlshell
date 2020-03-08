@@ -1,7 +1,7 @@
-Features
+Concepts
 ========
 
-.. image:: ./_static/images/workflow.jpg
+.. image:: _static/images/workflow.jpg
   :width: 1000
   :alt: Alternative text
 
