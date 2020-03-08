@@ -23,7 +23,7 @@ RUN	pip install --upgrade setuptools wheel
 
 COPY . .
 RUN pip install .
-# RUN rm -rf *   # uncomment finally
+RUN rm -rf *
 
 # CMD ['sh'] # alpine
 CMD ['bash']

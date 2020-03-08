@@ -5,6 +5,8 @@ TODO
     explore: filecmp True despite of different file separator in logs.
     explore: can`t import classes
     explore: there are difference in model and predictions for windows/unix why?
+        maybe csv problem https://stackoverflow.com/questions/12877189/float64-with-pandas-to-csv
+        or models difference
 
 """
 
