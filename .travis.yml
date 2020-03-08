@@ -1,7 +1,7 @@
-# used by make
-# language: python
-# python:
-#     - "3.7"
+# used by make and deploy
+language: python
+python:
+    - "3.7"
 
 sudo: required
 services:
@@ -26,6 +26,8 @@ deploy:
     user: $PYPI_USERNAME
     password:
       secure: $PYPI_PASSWORD
+    distributions: "sdist bdist_wheel"
+    skip_existing: true
 #     # test PyPi
 #     provider: script
 #     script: make deploy
