@@ -19,6 +19,7 @@ docs/source/_pythonapi/
 
 !tests/**
 
+
 !docker/**
 
 !examples/**
@@ -60,5 +61,6 @@ examples/classification/data
 CVS/
 __pycache__/
 _svn/
+.temp/
 vssver.scc
 vssver2.scc

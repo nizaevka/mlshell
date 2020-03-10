@@ -18,7 +18,7 @@ import glob
 from . classes import GetData, DataPreprocessor
 import filecmp
 import platform
-
+import logging
 
 def same_folders(dcmp):
     """Check that two folders are copy"""
@@ -39,6 +39,7 @@ def test_func():
     """
     try:
         dir_path = '/'.join(__file__.replace('\\', '/').split('/')[:-1])
+        shutil.rmtree(f'{dir_path}/.temp', ignore_errors=True)
         shutil.rmtree(f'{dir_path}/logs_run', ignore_errors=True)
         shutil.rmtree(f'{dir_path}/runs', ignore_errors=True)
         shutil.rmtree(f'{dir_path}/models', ignore_errors=True)
@@ -47,9 +48,9 @@ def test_func():
                        run_name='regression')
         # find out platform type
         if platform.system() == 'Windows':
-           os_type = 'windows'
+            os_type = 'windows'
         else:
-           os_type = 'unix'
+            os_type = 'unix'
 
         # check GS
         assert filecmp.cmp(f'{dir_path}/original/None_critical_1k_{os_type}.log',
@@ -58,6 +59,14 @@ def test_func():
         for filepath in glob.glob(f'{dir_path}/models/*predictions.csv'):
             for filepath_ in glob.glob(f'{dir_path}/original/models/*predictions_{os_type}.csv'):
                 assert filecmp.cmp(filepath, filepath_)
+
+        # create .temp if no exist and move toutput there
+        logging.shutdown()  # otherwise error, cause  logger not close in classes
+        dest = f'{dir_path}/.temp'
+        if not os.path.exists(dest):
+            os.mkdir(dest)
+        for dir_name in ['logs_run', 'models', 'runs']:
+            shutil.move(f'{dir_path}/{dir_name}', dest)
     except Exception as e:
         print(e)
         assert False

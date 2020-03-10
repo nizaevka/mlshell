@@ -10,7 +10,7 @@ Regression
 ~~~~~~~~~~
 `"Allstate claims severity" dataset <https://www.kaggle.com/c/allstate-claims-severity>`_
 
-`example code regression <https://github.com/nizaevka/mlshell/examples/regression>`_
+`example code regression <https://github.com/nizaevka/mlshell/tree/master/examples/regression>`_
 
 **For grid search try the ideas:**
 
@@ -151,4 +151,4 @@ Classification
 ~~~~~~~~~~~~~~
 `"IEEE fraud detection" dataset <https://www.kaggle.com/c/ieee-fraud-detection>`_
 
-`example code classifiction <https://github.com/nizaevka/mlshell/examples/classification>`_
+`example code classifiction <https://github.com/nizaevka/mlshell/tree/master/examples/classification>`_
