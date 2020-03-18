@@ -18,6 +18,8 @@ from hashlib import md5
 import warnings
 import time
 import atexit
+import logging
+import pathlib
 
 
 # third-party module or package

@@ -61,8 +61,18 @@ params = {
     'runs': None,
     'plot_analysis': False,
 
-    'train_file': 'data/train_10k.csv',
-    'test_file': 'data/test_10k.csv',
-    'rows_limit': 1000,  # None
-    'random_skip': False,
+    'get_data': {
+        'train': {
+            'args': ['data/train_10k.csv'],
+            'kw_args': {'rows_limit': 1000,
+                        'random_skip': False,
+                        'index_col': 'id'},
+        },
+        'test': {
+            'args': ['data/test_10k.csv'],
+            'kw_args': {'rows_limit': 1000,
+                        'random_skip': False,
+                        'index_col': 'id'},
+        },
+    },
 }

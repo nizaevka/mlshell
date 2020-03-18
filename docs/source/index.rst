@@ -12,7 +12,7 @@ Welcome to MLshell's documentation!
 - Unified ml pipeline.
 - Stable CV scheme.
 - Production ready.
-- One conf file rule all.
+- One conf file rules all.
 - Simple result analyse.
 - Unified plots.
 - Common EDA techniques.

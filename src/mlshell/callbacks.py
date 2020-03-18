@@ -9,12 +9,14 @@ def find_path(filepath=None):
 
     Args:
         filepath (str): path to main script (default=None)
-            if None get from working directory.
+            if None and Ipython get from workdir,
+            | if None and standart get from sys.argv,
+            | if sys.argv empty, get from working directory.
 
     Returns:
         (tuple): tuple containing:
 
-        - fullpath (str): full path to main script
+        - project_dir (str): full path to start script directory
         - script_name (str): name of main script if not Ipython
             else 'ipython'
 
@@ -32,26 +34,18 @@ def find_path(filepath=None):
         except NameError:
             return False  # Probably standard Python interpreter
 
-    if filepath is None:
-        work_dir = os.getcwd().replace('\\', '/')
-    else:
+    if filepath is not None:
         temp = filepath.replace('\\', '/').split('/')
-        work_dir = '/'.join(temp[:-1])
-        script_name = temp[-1]
-    fullpath = work_dir
-    # deprecated: always start from inside of project dir
-    # check if we are in project_dir()
-    # if project_dir is None or project_dir in work_dir:
-    #     fullpath = work_dir
-    # else:
-    #     fullpath='{}/{}'.format(work_dir, project_dir)
-
-    # check if ipython
-    if is_ipython():
+        project_dir = '/'.join(temp[:-1])
+        script_name = temp[-1][:-3]
+    elif is_ipython():
+        project_dir = os.getcwd().replace('\\', '/')
         script_name = 'ipython'
     else:
-        # sys_args provide script_name but not work in Ipython
-        temp = sys.argv  # for example ['path/run.py', '55']
-        script_name = temp[0].split('/')[-1][:-3]  # run
+        # sys.argv provide script_name but not work in Ipython
+        # for example ['path/run.py', '55']
+        ext_size = 3  # '.py'
+        script_name = sys.argv[0].replace('\\', '/').split('/')[-1][:-ext_size]  # run
+        project_dir = sys.argv[0].replace('\\', '/')[:-len(script_name)-ext_size]
 
-    return fullpath, script_name
+    return project_dir, script_name

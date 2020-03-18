@@ -2,8 +2,11 @@ from mlshell.libs import *
 
 
 class GetData(object):
-    def __init__(self, logger):
-        self.logger = logger
+    def __init__(self, logger=None):
+        if logger is None:
+            self.logger = logging.Logger('GetData')
+        else:
+            self.logger = logger
         self.raw = None  # data attribute, fullfil in self.get_data()
 
     # @memory_profiler
@@ -40,7 +43,11 @@ class GetData(object):
 class DataPreprocessor(object):
     # @time_profiler
     # @memory_profiler
-    def __init__(self, logger, raw):
+    def __init__(self, raw, logger=None):
+        if logger is None:
+            self.logger = logging.Logger('DataPreprocessor')
+        else:
+            self.logger = logger
         self.logger = logger
         index = raw.index
         self.raw_index_names = raw.index.name

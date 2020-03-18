@@ -15,6 +15,7 @@ DEFAULT_PARAMS = {
     'split_train_size': 0.7,
     'hp_grid': {},
     'gs_flag': False,
+    'estimator_fit_params': {},
     'del_duplicates': False,
     'debug_pipeline': False,
     'isneed_cache': False,
@@ -43,6 +44,8 @@ DEFAULT_PARAMS = {
         Dict of metrics to be measured. Should consist 'score' key, which val is used for hp tunning.
     split_train_size (train_size for sklearn.model_selection.train_test_split, default=0.7):
         Split data on train and validation. It is possible to set 1.0 and CV on whole data.
+    estimator_fit_params (dict, optional (default={})):
+        Parametes will be passed to estimator.fit(**estimator_fit_params) method.
     del_duplicates (bool, optional (default=False)):
         If True remove duplicates rows from input data.
     debug_pipeline (bool, optional (default=False):
@@ -68,17 +71,18 @@ DEFAULT_PARAMS = {
     plot_analysis (bool, optional (default=False)):
         Use ``mlshell.GUI`` class for result visualisation.
     th_strategy ( 0,1,2,3, optional (default=0)):
-        For classification only. For details see `Features <./Features.html#classification-threshold>`__.
+        For classification only. For details see `Features <./Concepts.html#classification-threshold>`__.
     pos_label (int or str, optional (default=1)):
         For classification only. Label for positive class.
+    
     train_file (bool, optional (default=None)):
         Relative path to csv file with train data (with targets) to cross-validate with reserved validation subset.
     test_file (bool, optional (default=None)):
         Relative path to csv file with new data (without targets) to predict.
     rows_limit (int or None, optional (default=None)):
-        Number of lines get from input file.
+        Number of lines get from input file, passes in GetData class (if argument is implemented).
     random_skip' (bool, optional (default=False)):
-        If True and rows_limit=True get raws random from input file.
+        If True and rows_limit=True get rows random from input, passed in GetData class (if argument is implemented).
  
 """
 

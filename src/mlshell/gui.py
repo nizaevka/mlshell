@@ -1,6 +1,8 @@
 """The module with GUI class description
 
 TODO:
+    emulate when no gs
+TODO:
     run button, set slider and push run to calculate
 TODO:
     set original index as x_ticks
@@ -16,7 +18,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 import seaborn as sns
 from copy import deepcopy
-import numpy as np
+from mlshell.libs import np, logging, pd
 
 # import sys
 # sys.path.insert(0, 'C:/ProgramData/Anaconda2/Lib/fast/build/lib.win-amd64-2.7')
@@ -159,10 +161,21 @@ class Draw(object):
 
 
 class GUI(Draw):
-    def __init__(self, logger, base_plot, params):
+    def __init__(self, base_plot, params, logger):
         super().__init__()
-        self.logger = logger
-        self.base_plot = base_plot
+        if logger is None:
+            self.logger = logging.Logger('GUI')
+        else:
+            self.logger = logger
+        if isinstance(base_plot, pd.DataFrame):
+            if base_plot.shape[1] > 1:
+                raise ValueError("Base plot should be pd.DataFrame with one column or pd.Series")
+            self.base_plot = base_plot.iloc[:, 0]
+        elif isinstance(base_plot, pd.Series):
+            self.base_plot = base_plot
+        else:
+            raise ValueError("Base plot should be pd.DataFrame with one column or pd.Series, not {}".format(type(base_plot)))
+
         # Исходные данные - задаётся пользователем
         self.user_params(params)
         # Делаем равными если где-то свечки были пропущены
@@ -206,7 +219,7 @@ class GUI(Draw):
         #  base_plot, TP_,FN_,FP_scatters, score_plot
 
         # Default value:
-        # radio - 'test'
+        # radio - 'validation'
         # sliders - best_hp from GS
         # text_box - 'maxsize grid for sliders'
 
@@ -243,8 +256,8 @@ class GUI(Draw):
         else:
             if self.estimator_type == 'classifier':
                 self.logger.info('score: {} TP: {} FP: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                                  np.count_nonzero(self.y['TP_scatter'] != 0),
-                                                                  np.count_nonzero(self.y['FP_scatter'] != 0)))
+                                                                  np.count_nonzero(self.meta['TP'] != 0),
+                                                                  np.count_nonzero(self.meta['FP'] != 0)))
                 # np.around(self.y[3], 2) не обрубает нули
             else:
                 self.logger.info('score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),
@@ -256,7 +269,7 @@ class GUI(Draw):
 
     def current_data(self):
         self.data_current = self.data.loc[self.index_current]
-        self.base_plot_current = self.base_plot.loc[self.index_current] # .values
+        self.base_plot_current = self.base_plot.loc[self.index_current].values
         # [deprecated] no original index
         # self.base_plot_current = self.base_plot[self.index_current]
 
@@ -365,7 +378,8 @@ class GUI(Draw):
         y_true = self.y_current.values
         # y_true_score = self.y_score.values[self.index_current] deprecated
         score, meta = self.metric(y_true, y_pred, meta=True)
-
+        self.meta = meta
+        
         self.y['score_plot_right'] = meta['score']
         if self.estimator_type == 'classifier':
             self.y['TP_scatter'] = meta['TP'] * self.y['base_plot']
@@ -380,14 +394,14 @@ class GUI(Draw):
         # заголовок
         if self.estimator_type == 'classifier':
             title_text = 'score: {} TP: {} FP: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                          np.count_nonzero(self.y['TP_scatter'] != 0),
-                                                          np.count_nonzero(self.y['FP_scatter'] != 0))
-                                                            # np.around(self.y[3], 2) не обрубает нули
+                                                          np.count_nonzero(self.meta['TP'] != 0),
+                                                          np.count_nonzero(self.meta['FP'] != 0))
+                                                          # np.around(self.y[3], 2) не обрубает нули
         else:
             title_text = 'score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),
                                                             round(self.y['MAE_plot'][-1], 2),
                                                             round(self.y['MSE_plot'][-1], 2))
-                                                    # np.around(self.y[3], 2) не обрубает нули
+                                                           # np.around(self.y[3], 2) не обрубает нули
         # текстовые сообщения
         text0 = (0.1, 0.95, '')
         text1 = (0.9, 0.95, '{}'.format('\n'.join(
@@ -413,7 +427,7 @@ class GUI(Draw):
 
         # radio buttons
         list0 = ['Name1'] + ['Name2']  # берется нулевой из списка
-        list1 = ['test', 'train']
+        list1 = ['validation', 'train']
         # hide radio0
         radio0 = ([0, 0, 0, 0], list0)  # x,y,dx,dy
         # radio0 = ([0.025, 0., 0.15, 0.27], list0)  # x,y,dx,dy
@@ -484,7 +498,7 @@ class GUI(Draw):
     def radio2_handler(self, force_flag=False):
         print(f'radio2_handler: current={self.current_rad2} temp={self.current_rad2_temp}')
         if self.current_rad2 != self.current_rad2_temp or force_flag:
-            if self.current_rad2 == 'test':
+            if self.current_rad2 == 'validation':
                 self.index_current = self.test_index
             else:
                 self.index_current = self.train_index
@@ -553,8 +567,8 @@ class GUI(Draw):
 
         if self.estimator_type == 'classifier':
             self.title.set_text('score: {} TP: {} FP: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                                 np.count_nonzero(self.y['TP_scatter'] != 0),
-                                                                 np.count_nonzero(self.y['FP_scatter'] != 0)))
+                                                                 np.count_nonzero(self.meta['TP'] != 0),
+                                                                 np.count_nonzero(self.meta['FP'] != 0)))
                                                                 # np.around(self.y[3], 2) не обрубает нули
         else:
             self.title.set_text('score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),

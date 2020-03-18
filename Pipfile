@@ -10,6 +10,8 @@ sphinxcontrib-napoleon = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-rtd-theme = "*"
 twine = "*"
+ipykernel = "*"
+mpld3 = "*"
 
 [packages]
 e1839a8 = {editable = true,path = "."}

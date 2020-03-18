@@ -1,8 +1,14 @@
 ﻿"""ML workflow class
+
 TODO:
-    make test run auto how to prevent?
+    Ordinalencoder (for categor features) use np.sort, maybe try preserve np.float
+
 TODO:
-    encoder step in pipeline, add choose possibility
+    logger initialize in __init__ and use as default for GUI, Workflow. More beutify run.py
+    EDA reorganize to share (logger, results)
+
+TODO:
+    encoder step in pipeline, add choosevariants
     # ('encode_features',    mlshell.custom.encoder(encoder=sklearn.ensemble.RandomTreesEmbedding(n_estimators=300, max_depth=9), skip=True)),
 TODO:
     gui сырой, пока лучше не выкладывать, или с большими оговорками
@@ -40,11 +46,14 @@ TODO: gs надо запускать воркерами, чтобы при па�
     воркер для каждого фита должен создавать файл, чтобы не потерять в случае чего
     который мастер мержит для анализа
 TODO: добавь сообщение чтобы выводил если папка cache слишком большая
+TODO:
+    runs.csv to sql base transformer
 
 Note:
-    для kaggle train не надо делить на train-test, валидация на паблике
+    is there any junior libs?
 
 """
+
 
 import mlshell.custom
 import mlshell.default
@@ -65,7 +74,7 @@ def check_hash(function_to_decorate):
 class Workflow(object):
     """Class for ml workflow."""
 
-    def __init__(self, project_path, logger,  data, params=None):
+    def __init__(self, project_path, data, logger=None, params=None):
         """Initialize workflow object
 
         Args:
@@ -96,12 +105,16 @@ class Workflow(object):
                 numerated, order is important
             * 'targets': any dtype
 
-                for classification should be binary, ordinalencoded
-                pos label should be > others in sorting np.unique(y)
+                for classification `targets` should be binary, ordinalencoded.
+                | positive label should be > others when sorting with np.unique(y).
 
         """
+        self.check_results_size(project_path)
         self.project_path = project_path
-        self.logger = logger
+        if logger is None:
+            self.logger = logging.Logger('Workflow')
+        else:
+            self.logger = logger
         # use default if skipped in params
         temp = mlshell.default.DEFAULT_PARAMS
         if params is not None:
@@ -141,6 +154,15 @@ class Workflow(object):
         # fulfill in self.gen_gui_params()
         self.gui_params = {}
 
+    def check_results_size(self, project_path):
+        root_directory = pathlib.Path(f"{project_path}/results")
+        size = sum(f.stat().st_size for f in root_directory.glob('**/*') if f.is_file())
+        # check if > n Mb
+        n = 5000
+        if size//(2**20) > n:
+            self.logger.warning(f"Warning: results/ directory more than {n} Mb")
+            # raise MyException(f"Error: results/ directory more than {n} Mb")
+
     def check_data_format(self, data, params):
         """check data format"""
         if not isinstance(data, pd.DataFrame):
@@ -179,14 +201,16 @@ class Workflow(object):
         """ unify input dataframe
 
         Note:
-            * delete duplicates, (not reset index, otherwise problem with base_plot)
-            * log info about gaps
-            * unify gaps
+            * delete duplicates, (not reset index, otherwise problem with base_plot).
+            * log info about gaps.
+            * unify gaps.
+
                 * if gap in targets => raise MyException
-                * if gap in categor => 'unknown'(auto change dtype) => ordinalencoder
+                * if gap in categor => 'unknown'(downcast dtype to str) => ordinalencoder
                 * if gap in non-categor => np.nan
-            * transform to np.float64 (python float = np.float = np.float64 = C double = np.double(if 64 bit processor))
-            * define dics for
+            * transform to np.float64 (python float = np.float = np.float64 = C double = np.double(64 bit processor)).
+            * define dics for:
+
                 * self.categoric_ind_name => {1:('feat_n', ['cat1', 'cat2'])}
                 * self.numeric_ind_name   => {2:('feat_n',)}
                 * self.value_counts       => {'feat_n':uniq_values}
@@ -224,26 +248,29 @@ class Workflow(object):
         if gaps_number > 0:
             gaps_number_dic = {column_name: data[column_name].size - data[column_name].count()
                                for column_name in data}
-            self.logger.warning('MyWarning: gaps:{} {}%\n'.format(gaps_number, gaps_number / data.size))
-            self.logger.warning(gaps_number_dic)
-
+            self.logger.warning('MyWarning: gaps:{} {}%\n{}'.format(gaps_number,
+                                                                    gaps_number / data.size,
+                                                                    gaps_number_dic))
         categoric_ind_name = {}
         numeric_ind_name = {}
         for ind, column_name in enumerate(data):
             if 'targets' in column_name:
-                if column_name in gaps_number_dic:
+                if 'targets' in gaps_number_dic and gaps_number_dic['targets'] > 0:
                     raise MyException("MyError: gaps in targets")
                     # delete rows with gaps in targets
                     # data.dropna(self, axis=0, how='any', thresh=None, subset=[column_name],inplace=True)
                 continue
             if '_categor_' in column_name:
                 # fill gaps with 'unknown'
-                data[column_name].fillna(value='unknown', method=None, axis=None,
-                                         inplace=True, limit=None, downcast=None)
+                # inplace unreliable (could not work without any error)
+                # copy!
+                data[column_name] = data[column_name].fillna(value='unknown', method=None, axis=None,
+                                                             inplace=False, limit=None, downcast=None)
+                # copy!
+                data[column_name] = data[column_name].astype(str)
                 # encode
                 encoder = sklearn.preprocessing.OrdinalEncoder(categories='auto')
-                data[column_name] = encoder.fit_transform(data[column_name].
-                                                          values.reshape(-1, 1))
+                data[column_name] = encoder.fit_transform(data[column_name].values.reshape(-1, 1))
                 categoric_ind_name[ind-1] = (column_name,
                                              encoder.categories_[0])  # ('feature_categor__name',['B','A','C'])
             else:
@@ -277,7 +304,7 @@ class Workflow(object):
 
         """
         if self.p['isneed_cache']:
-            cachedir = f"{self.project_path}/temp"
+            cachedir = f"{self.project_path}/results/temp"
             # delete cache if nessesery
             if self.p['cache_update'] and os.path.exists(cachedir):
                 shutil.rmtree(cachedir, ignore_errors=True)
@@ -407,7 +434,7 @@ class Workflow(object):
     def debug_pipeline_(self):
         """Fit estimator on whole data for debug"""
         x, y = self.tonumpy(self.data_df)
-        fitted = self.estimator.fit(x, y)
+        fitted = self.estimator.fit(x, y, **self.p['estimator_fit_params'])
         self.recursive_logger(fitted.steps)
 
     def recursive_logger(self, steps, level=0):
@@ -963,7 +990,7 @@ class Workflow(object):
         if gs_flag and self.p['hp_grid']:
             self.optimize()
         else:
-            self.estimator.fit(self.x_train, self.y_train)
+            self.estimator.fit(self.x_train, self.y_train, **self.p['estimator_fit_params'])
 
         # dump self.estimator on disk
         if self.p['isneeddump']:
@@ -981,7 +1008,7 @@ class Workflow(object):
             self.estimator, self.p['hp_grid'], scoring=scoring, n_iter=n_iter,
             n_jobs=self.p['n_jobs'], pre_dispatch=pre_dispatch, iid=False,
             refit='score', cv=self.cv(), verbose=self.p['gs_verbose'], error_score=np.nan,
-            return_train_score=True).fit(self.x_train, self.y_train)
+            return_train_score=True).fit(self.x_train, self.y_train, **self.p['estimator_fit_params'])
         self.estimator = optimizer.best_estimator_
         self.best_params_ = optimizer.best_params_
         # nice print
@@ -999,14 +1026,14 @@ class Workflow(object):
                 {'threshold': th_range}, n_iter=th_range.shape[0],
                 scoring=scoring,
                 n_jobs=1, pre_dispatch=2, iid=False, refit='score', cv=self.cv(),
-                verbose=1, error_score=np.nan, return_train_score=True).fit(predict_proba, y_true)
+                verbose=1, error_score=np.nan, return_train_score=True).fit(predict_proba, y_true, **self.p['estimator_fit_params'])
             best_th_ = optimizer_th_.best_params_['threshold']
             self.best_params_['estimate__apply_threshold__threshold'] = best_th_
             self.modifiers.append('estimate__apply_threshold__threshold')
             self.p['hp_grid']['estimate__apply_threshold__threshold'] = th_range
             # refit with treshold
             self.estimator.set_params(**self.best_params_)
-            self.estimator.fit(self.x_train, self.y_train)
+            self.estimator.fit(self.x_train, self.y_train, y_true, **self.p['estimator_fit_params'])
             self.logger.info('CV best threshold:\n    {}'.format(best_th_))
             # TODO: combine with gs_print
             # TODO: add dump result
@@ -1124,10 +1151,10 @@ class Workflow(object):
         df[object_labels] = df[object_labels].astype(str)
 
         # dump to disk in run dir
-        dirpath = '{}/runs'.format(self.project_path)
+        dirpath = '{}/results/runs'.format(self.project_path)
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
-        filepath = '{}/runs/{}_runs.csv'.format(self.project_path, int(time.time()))
+        filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
         with open(filepath, 'a', newline='') as f:
             df.to_csv(f, mode='a', header=f.tell() == 0, index=False, line_terminator='\n')
         # alternative: to hdf(longer,bigger) hdfstore(can use as dict)
@@ -1303,12 +1330,12 @@ class Workflow(object):
             for fold_train_index, fold_test_index in cv.split(x):
                 if hasattr(x, 'loc'):
                     # stackingestimator__sample_weight=train_weights[fold_train_subindex]
-                    estimator.fit(x.loc[fold_train_index], y.loc[fold_train_index])
+                    estimator.fit(x.loc[fold_train_index], y.loc[fold_train_index], **self.p['estimator_fit_params'])
                     fold_predict_proba = estimator.predict_proba(
                         x.loc[fold_test_index])  # in order of self.estimator.classes_
                 else:
                     estimator.fit(x[fold_train_index], y[
-                        fold_train_index])  # stackingestimator__sample_weight=train_weights[fold_train_subindex]
+                        fold_train_index], **self.p['estimator_fit_params'])  # stackingestimator__sample_weight=train_weights[fold_train_subindex]
                     fold_predict_proba = estimator.predict_proba(
                         x[fold_test_index])  # in order of self.estimator.classes_
                 # merge th_ for class
@@ -1390,7 +1417,7 @@ class Workflow(object):
 
         """
         # dump to disk in models dir
-        dirpath = '{}/models'.format(self.project_path)
+        dirpath = '{}/results/models'.format(self.project_path)
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
         file = f"{dirpath}/{self.p_hash}_{self.data_hash}_dump.model"
@@ -1436,7 +1463,7 @@ class Workflow(object):
         # hash of data
         data_hash = pd.util.hash_pandas_object(data_df).sum()
         # dump to disk in predictions dir
-        dirpath = '{}/models'.format(self.project_path)
+        dirpath = '{}/results/models'.format(self.project_path)
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
         filepath = f"{dirpath}/{self.p_hash}_{data_hash}_predictions.csv"

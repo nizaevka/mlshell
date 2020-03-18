@@ -84,7 +84,7 @@ _dict_log_config = {
 class CreateLogger(object):
     """Create logger object."""
 
-    def __init__(self, fullpath, **kwargs):
+    def __init__(self, project_path, script_name, **kwargs):
         """Create logger and files.
 
         use _dict_log_config for logger config
@@ -101,15 +101,14 @@ class CreateLogger(object):
                 (default: last fullpath dir)
         """
         self.logger = None
-        self.__call__(fullpath, **kwargs)
+        self.__call__(project_path, script_name, **kwargs)
 
-    def __call__(self, fullpath, logger_name=None, url=None, host=None):
+    def __call__(self, project_path, script_name, url=None, host=None):
+        fullpath = f"{project_path}/results/logs_{script_name}"
+        logger_name = script_name
         # create dir
         if not os.path.exists(fullpath):
             os.makedirs(fullpath)
-        # get logger name from fullpath
-        if logger_name:
-            logger_name = fullpath[:-1].split('/')[-1]
         # update path in config
         _dict_log_config["loggers"][logger_name] = copy.deepcopy(_dict_log_config["loggers"]["mylogger"])
         _dict_log_config["handlers"]["debug_handler"]["filename"] = '{}/{}_debug.log'.format(fullpath, logger_name)

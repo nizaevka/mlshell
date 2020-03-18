@@ -61,6 +61,6 @@ examples/classification/data
 CVS/
 __pycache__/
 _svn/
-.temp/
+results/
 vssver.scc
 vssver2.scc
