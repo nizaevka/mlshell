@@ -1,0 +1,204 @@
+<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+====================================================================================================
+● LOAD DATA
+====================================================================================================
+Data loaded from:
+    /mlshell/Projects/Project_allstate_claims_severity/data/train.csv
+====================================================================================================
+● PREPROCESS DATA
+====================================================================================================
+● INITITALIZE WORKFLOW
+====================================================================================================
+Used params:
+    {
+    'estimator_type': 'regressor',
+    'main_estimator': LGBMRegressor(boosting_type = 'gbdt', class_weight = None, colsample_bytree = 1.0,
+        importance_type = 'split', learning_rate = 0.1, max_depth = -1,
+        min_child_samples = 20, min_child_weight = 0.001, min_data_in_leaf = 1,
+        min_split_gain = 0.0, n_estimators = 250, n_jobs = -1, num_leaves = 2,
+        objective = 'fair', random_state = None, reg_alpha = 0.0,
+        reg_lambda = 0.0, silent = False, subsample = 1.0,
+        subsample_for_bin = 200000, subsample_freq = 0),
+    'cv_splitter': KFold(n_splits = 3, random_state = None, shuffle = True),
+    'metrics': {
+        'score': ( < function mean_absolute_error at 0x7f86ac872560 > , {
+            'greater_is_better': False
+        }),
+        'r2': ( < function r2_score at 0x7f86ac872830 > , {
+            'greater_is_better': True
+        })
+    },
+    'split_train_size': 0.7,
+    'hp_grid': {
+        'process_parallel__pipeline_numeric__transform_normal__skip': [True, False],
+        'process_parallel__pipeline_numeric__add_polynomial__degree': [1, 2],
+        'estimate__transformer': [FunctionTransformer(accept_sparse = False, check_inverse = True,
+            func = < function target_func at 0x7f86ba6dfc20 > ,
+            inv_kw_args = None,
+            inverse_func = < function target_inverse_func at 0x7f86ba6bab90 > ,
+            kw_args = None, validate = False)]
+    },
+    'gs_flag': True,
+    'estimator_fit_params': {},
+    'del_duplicates': False,
+    'pipeline': None,
+    'debug_pipeline': False,
+    'use_unifier_cache': False,
+    'update_unifier_cache': False,
+    'use_pipeline_cache': False,
+    'update_pipeline_cache': False,
+    'gs_verbose': 1000,
+    'n_jobs': 1,
+    'model_dump': False,
+    'runs': None,
+    'pos_label': 1,
+    'th_strategy': 0,
+    'th_points_number': 10,
+    'th_plot_flag': False,
+    'get_data': {
+        'train': {
+            'args': ['data/train.csv'],
+            'kw_args': {
+                'rows_limit': 10000,
+                'random_skip': False,
+                'index_col': 'id'
+            }
+        },
+        'test': {
+            'args': ['data/test.csv'],
+            'kw_args': {
+                'rows_limit': 10000,
+                'random_skip': False,
+                'index_col': 'id'
+            }
+        }
+    },
+    'rows_limit': None,
+    'random_skip': False
+}
+====================================================================================================
+● UNIFY DATA
+====================================================================================================
+● CREATE PIPELINE
+====================================================================================================
+Estimator step:
+    TransformedTargetRegressor(check_inverse=True, func=None, inverse_func=None,
+                           regressor=LGBMRegressor(boosting_type='gbdt',
+                                                   class_weight=None,
+                                                   colsample_bytree=1.0,
+                                                   importance_type='split',
+                                                   learning_rate=0.1,
+                                                   max_depth=-1,
+                                                   min_child_samples=20,
+                                                   min_child_weight=0.001,
+                                                   min_data_in_leaf=1,
+                                                   min_split_gain=0.0,
+                                                   n_estimators=250, n_jobs=-1,
+                                                   num_leaves=2,
+                                                   objective='fair',
+                                                   random_state=None,
+                                                   reg_alpha=0.0,
+                                                   reg_lambda=0.0, silent=False,
+                                                   subsample=1.0,
+                                                   subsample_for_bin=200000,
+                                                   subsample_freq=0),
+                           transformer=None)
+====================================================================================================
+● SPLIT DATA
+====================================================================================================
+● OPTIMIZE PIPELINE
+====================================================================================================
+● ▶ GRID SEARCH HYPERPARAMETERS
+====================================================================================================
+hp grid:
+    {
+    'process_parallel__pipeline_numeric__transform_normal__skip': [True, False],
+    'process_parallel__pipeline_numeric__add_polynomial__degree': [1, 2],
+    'estimate__transformer': [FunctionTransformer(accept_sparse = False, check_inverse = True,
+        func = < function target_func at 0x7f86ba6dfc20 > ,
+        inv_kw_args = None,
+        inverse_func = < function target_inverse_func at 0x7f86ba6bab90 > ,
+        kw_args = None, validate = False)]
+}
+====================================================================================================
++----+--------------------------------------------------------------------+--------------------------------------------------------------------+-------------------+--------------------+----------------+-----------------+
+|    | param_process_parallel__pipeline_numeric__transform_normal__skip   |   param_process_parallel__pipeline_numeric__add_polynomial__degree |   mean_test_score |   mean_train_score |   mean_test_r2 |   mean_train_r2 |
+|----+--------------------------------------------------------------------+--------------------------------------------------------------------+-------------------+--------------------+----------------+-----------------|
+|  0 | True                                                               |                                                                  1 |          -1299.05 |           -1264.67 |       0.428179 |        0.472006 |
+|  1 | False                                                              |                                                                  1 |          -1299.05 |           -1264.67 |       0.428179 |        0.472006 |
+|  2 | True                                                               |                                                                  2 |          -1297.52 |           -1258.18 |       0.429793 |        0.476949 |
+|  3 | False                                                              |                                                                  2 |          -1296.42 |           -1259.73 |       0.43017  |        0.475549 |
++----+--------------------------------------------------------------------+--------------------------------------------------------------------+-------------------+--------------------+----------------+-----------------+
+====================================================================================================
+GridSearch best index:
+    3
+====================================================================================================
+GridSearch time:
+    {'mean_fit_time': 0.48938574393590284, 'mean_score_time': 0.07631629705429077}
+====================================================================================================
+CV best modifiers:
+    {'process_parallel__pipeline_numeric__transform_normal__skip': False, 'process_parallel__pipeline_numeric__add_polynomial__degree': 2}
+====================================================================================================
+CV best mean test score:
+    -1296.4223840557404
+====================================================================================================
+Errors:
+    {}
+====================================================================================================
+● ▶ DUMP RUNS
+====================================================================================================
+Save run(s) results to file:
+    /mlshell/Projects/Project_allstate_claims_severity//results/runs/1585581864_runs.csv
+====================================================================================================
+Best run id:
+    24f36577-e6b3-47e3-9c75-80feaa3eb8d7
+====================================================================================================
+● VALIDATE ON HOLDOUT
+====================================================================================================
+score:
+====================================================================================================
+Train:
+    1267.1124783581029
+Test:
+    1297.283029724967
+====================================================================================================
+r2:
+====================================================================================================
+Train:
+    0.46766301335555327
+Test:
+    0.42294440108379006
+====================================================================================================
+● DUMP MODEL
+====================================================================================================
+Save fitted model to file:
+  /mlshell/Projects/Project_allstate_claims_severity//results/models/5cc4b9d08fe01d794090aa6443cbacaf_9084142333155626824_dump.model
+====================================================================================================
+● LOAD MODEL
+====================================================================================================
+Load fitted model from file:
+  /mlshell/Projects/Project_allstate_claims_severity//results/models/5cc4b9d08fe01d794090aa6443cbacaf_9084142333155626824_dump.model
+====================================================================================================
+● LOAD DATA
+====================================================================================================
+Data loaded from:
+    /mlshell/Projects/Project_allstate_claims_severity/data/test.csv
+====================================================================================================
+● PREPROCESS DATA
+====================================================================================================
+Warning: no target column 'loss' in df, use 0 values.
+====================================================================================================
+● PREDICT ON TEST
+====================================================================================================
+Save predictions for new data to file:    
+    /mlshell/Projects/Project_allstate_claims_severity//results/models/5cc4b9d08fe01d794090aa6443cbacaf_-2516278285246321168_predictions.csv
+====================================================================================================
+● PREPARE GUI PARAMS
+====================================================================================================
+Gui dynamic visualisation implements:
+    r2/mae/mse plots, residuals scatter on base_plot
+====================================================================================================
+param_process_parallel__pipeline_numeric__transform_normal__skip values number=2
+====================================================================================================
+param_process_parallel__pipeline_numeric__add_polynomial__degree values number=2
+====================================================================================================

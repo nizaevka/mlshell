@@ -197,6 +197,7 @@ class CustomSelectorEstimator(sklearn.base.BaseEstimator):
         self.skip = skip
         self.verbose = verbose
         self.feature_importances_ = None
+        self.estimator_type = estimator_type
         super().__init__()
         if not self.skip:
             raise NotImplementedError
@@ -292,8 +293,8 @@ class PredictionTransformer(sklearn.base.BaseEstimator, sklearn.base.Transformer
         """Replaces all features with `clf.predict_proba(x)`"""
         self.clf = clf
 
-    def fit(self, x, y):
-        self.clf.fit(x, y)
+    def fit(self, x, y, **fit_params):
+        self.clf.fit(x, y, **fit_params)
         return self
 
     def transform(self, x):
@@ -315,7 +316,7 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
         self.threshold = threshold
         self.neg_label = neg_label
 
-    def fit(self, x, y):
+    def fit(self, x, y, **fit_params):
         return self
 
     def predict(self, x):

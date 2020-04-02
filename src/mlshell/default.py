@@ -1,4 +1,10 @@
-"""Module contains default configuration for user params and class to create default pipeline steps."""
+"""Module contains default configuration for user params and class to create default pipeline steps.
+
+TODO:
+    better specify categories from whole data (don`t available when use_unifier_cache) or 'auto'
+    [list(range(len(i[1]))) for i in categoric_ind_name.values()]
+
+"""
 
 
 from mlshell.libs import *
@@ -6,31 +12,109 @@ import mlshell.custom
 
 
 DEFAULT_PARAMS = {
+    'pipeline': {
+        'estimator': sklearn.linear_model.LinearRegression(),
+        'type': 'regressor',
+        'fit_params': {},
+        'steps': None,
+        'debug': False,
+    },
+    'metrics': {
+        'score': (sklearn.metrics.r2_score, {'greater_is_better': True}),
+    },
+    'gs': {
+        'flag': False,
+        'splitter': sklearn.model_selection.KFold(shuffle=False),
+        'hp_grid': {},
+        'verbose': 1,
+        'n_jobs': 1,
+        'runs': None,
+        'metrics': ['score'],
+    },
+    'th': {
+        'strategy': 0,
+        'pos_label': 1,
+        'samples': 10,
+        'plot_flag': False,
+    },
+    'cache': {
+        'pipeline': False,
+        'unifier': False,
+    },
+    'data': {
+        'train': {
+            'args': [],
+            'kw_args': {},
+        },
+        'test': {
+            'args': [],
+            'kw_args': {},
+        },
+        'split_train_size': 0.7,
+        'del_duplicates': False,
+    }
+}
+# 'main_estimator' => 'pipeline_estimator'
+# 'estimator_type' => 'pipeline_type'
+# 'estimator_fit_params' => 'pipeline_fit_params'
+# 'pipeline' => 'pipeline_steps'
+# 'cv_splitter' => 'gs_splitter'
+# 'hp_grid' => 'gs_hp_grid'
+# 'debug_pipeline' => 'pipeline_debug'
+# 'n_jobs' => 'gs_n_jobs'
+# 'runs' => 'gs_runs'
+# 'th_points_number' => 'th_samples'
+# 'pos_label' => 'th_pos_label'
+# 'get_data' => 'data'
+# 'model_dump' => 'deprecated'
+# 'del_duplicates' => 'data_del_duplicates'
+# 'update_pipeline_cache','update_pipeline_cache' => 'cache_pipeline' False,None -True,'update'
+# 'use_unifier_cache', 'update_unifier_cache' => 'cache_unifier'  False,None -True,'update'
+# 'split_train_size' => 'data_split_train_size'
+
+
+DEFAULT_PARAMS = {
     'estimator_type': 'regressor',
     'main_estimator': sklearn.linear_model.LinearRegression(),
+    'estimator_fit_params': {},
+    'pipeline': None,
+    'debug_pipeline': False,
+    'use_pipeline_cache': False,
+    'update_pipeline_cache': False,
+    'model_dump': False,
+
     'cv_splitter': sklearn.model_selection.KFold(shuffle=False),
     'metrics': {
-        'score': sklearn.metrics.r2_score,
+        'score': (sklearn.metrics.r2_score, {'greater_is_better': True}, True),
     },
     'split_train_size': 0.7,
+
     'hp_grid': {},
     'gs_flag': False,
-    'estimator_fit_params': {},
-    'del_duplicates': False,
-    'debug_pipeline': False,
-    'isneed_cache': False,
-    'cache_update': True,
     'gs_verbose': 1,
     'n_jobs': 1,
-    'isneeddump': False,
     'runs': None,
-    'plot_analysis': False,
-    'th_strategy': 0,
+
     'pos_label': 1,
-    'train_file': None,
-    'test_file': None,
-    'rows_limit': None,
-    'random_skip': False,
+    'th_strategy': 0,
+    'th_points_number': 10,
+    'th_plot_flag': False,
+
+
+    'use_unifier_cache': False,
+    'update_unifier_cache': False,
+    'del_duplicates': False,
+    'get_data': {
+        'train': {
+            'args': [],
+            'kw_args': {},
+        },
+        'test': {
+            'args': [],
+            'kw_args': {},
+        },
+    },
+
 }
 """(dict): if user skip declaration for any parameter the default one will be used.
 
@@ -45,15 +129,22 @@ DEFAULT_PARAMS = {
     split_train_size (train_size for sklearn.model_selection.train_test_split, default=0.7):
         Split data on train and validation. It is possible to set 1.0 and CV on whole data.
     estimator_fit_params (dict, optional (default={})):
-        Parametes will be passed to estimator.fit(**estimator_fit_params) method.
+        | Parametes will be passed to estimator.fit(**estimator_fit_params) method.
+        | For example: {'estimate__classifier__early_stopping_rounds': 200, 'estimate__classifier__eval_metric': 'auc'}
     del_duplicates (bool, optional (default=False)):
         If True remove duplicates rows from input data.
+    pipeline (custom class to create pipeline steps, optional (default=None))
+        Will replace default_pipeline if necessary, should create ``self.steps`` in ``__init__``.
     debug_pipeline (bool, optional (default=False):
         If True fit pipeline and log exhaustive information.             
-    isneed_cache (bool, optional (default=False):
-        if True use ``memory`` argument in ``sklearn.pipeline.Pipeline`` to create steps` cache in ``temp/``.             
-    cache_update (bool, optional (default=True):
-        if True clean ``temp/`` before run.
+    use_unifier_cache (bool, optional (default=False):
+        if True, cache input after workflow.unify_data ``result/cache/unifier/``, use that cache next time if available.             
+    update_unifier_cache (bool, optional (default=True):
+        if True update ``result/cache/unifier/<cache_file>`` in workflow.unify_data.
+    use_pipeline_cache (bool, optional (default=False):
+        if True, use ``memory`` argument in ``sklearn.pipeline.Pipeline``, cache steps` in ``result/cache/pipeline``.             
+    update_pipeline_cache (bool, optional (default=True):
+        if True update ``result/cache/pipeline``.
     gs_flag (bool, optional (default=False)):
         if True tune hp in optimizer else just fit default pipeline.
     hp_grid (dict of params for sklearn hyper-parameter optimizers, optional (default={})):
@@ -62,29 +153,29 @@ DEFAULT_PARAMS = {
         `verbose` argument in optimizer if exist.
     n_job (int (default=1)):,
         `n_jobs` argument in optimizer if exist.
-    isneeddump (bool, optional (default=False)):
+    model_dump (bool, optional (default=False)):
         if True dump current estimator on disc. 
         Fitted if after fit method, with best params if gs_flag=True and hp_grid is not empty.
     runs (bool or None, optional (default=None)):
         Number of runs in optimizer.
         If None will be used hp_grid shapes multiplication.
-    plot_analysis (bool, optional (default=False)):
-        Use ``mlshell.GUI`` class for result visualisation.
-    th_strategy ( 0,1,2,3, optional (default=0)):
-        For classification only. For details see `Features <./Concepts.html#classification-threshold>`__.
     pos_label (int or str, optional (default=1)):
         For classification only. Label for positive class.
-    
-    train_file (bool, optional (default=None)):
-        Relative path to csv file with train data (with targets) to cross-validate with reserved validation subset.
-    test_file (bool, optional (default=None)):
-        Relative path to csv file with new data (without targets) to predict.
-    rows_limit (int or None, optional (default=None)):
-        Number of lines get from input file, passes in GetData class (if argument is implemented).
-    random_skip' (bool, optional (default=False)):
-        If True and rows_limit=True get rows random from input, passed in GetData class (if argument is implemented).
- 
+    th_strategy ( 0,1,2,3, optional (default=0)):
+        | For classification only. 
+        | Mlshell support multiple strategy for ``th_`` tuning.
+        | For details see `Concepts <./Concepts.html#classification-threshold>`__.                    
+    th_points_number (int, optional (default=100)):
+        | For classification only. 
+        | Number of th_ values to brutforce for roc_curve based th_strategy (1/2/3.2).
+    th_plot_flag (bool, optional (default=False):
+        For ``th_strategy`` (1/2/3.2) plot ROC curve and trp/(tpr+fpr) vs ``th_`` with ``th_`` search range marks.
+    get_data (dict, (default={'train': {'args': [], 'kw_args': {}}, 'test': {'args': [], 'kw_args': {}}})):
+        Specify args and kw_args to pass in user-defined classes.GetData class constructor.
+        Usually there are contain path to files, index_column name, rows read limit. 
+        For example see `Examples <./Examples.html>`__.                     
 """
+
 
 @nb.njit
 def _isbinary_columns(arr: np.ndarray) -> np.ndarray:
@@ -122,19 +213,19 @@ class CreateDefaultPipeline(object):
             Target transformer for regression should be the last or absent.
 
         """
-        self.default_steps = [
+        self.steps = [
             # pass custom params to self-object for tune in brutforce external loop in GS
             ('pass_custom',      sklearn.preprocessing.FunctionTransformer(func=set_custom_param, validate=False)),
             ('select_rows',      sklearn.preprocessing.FunctionTransformer(func=self.subrows, validate=False)),   # delete outlier/anomalies
             ('process_parallel', sklearn.pipeline.FeatureUnion(transformer_list=[
                 ('pipeline_categoric', sklearn.pipeline.Pipeline(steps=[
                    ('select_columns',      sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices': categoric_ind_name})),
-                   ('encode_onehot',       mlshell.custom.preprocessing_OneHotEncoder(handle_unknown='ignore', categories=[list(range(len(i[1]))) for i in categoric_ind_name.values()], sparse=False, drop=None)),  # TODO: better specify categories from whole data? or 'auto', try drop
+                   ('encode_onehot',       mlshell.custom.preprocessing_OneHotEncoder(handle_unknown='ignore', categories='auto', sparse=False, drop=None)),
                 ])),
                 ('pipeline_numeric',   sklearn.pipeline.Pipeline(steps=[
                     ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices': numeric_ind_name})),
                     ('impute',             sklearn.pipeline.FeatureUnion([
-                        ('indicators',         sklearn.impute.MissingIndicator(missing_values=np.nan)),
+                        ('indicators',         sklearn.impute.MissingIndicator(missing_values=np.nan, error_on_new=False)),
                         ('gaps',               sklearn.impute.SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0, copy=True)),  # there are add_indicator (False by default) option in fresh release
                         ])),
                     ('transform_normal',   mlshell.custom.preprocessing_SkippablePowerTransformer(method='yeo-johnson', standardize=False, copy=False, skip=True)),

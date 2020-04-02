@@ -1,39 +1,38 @@
-﻿"""Start script example  for ml workflow"""
+﻿"""Start script example for ml workflow."""
 
 import mlshell
 import classes
 
-# find path
+# find project path/script name
 project_path, script_name = mlshell.find_path()
 # create logger
-logger = mlshell.logger.CreateLogger(f"{project_path}/logs_{script_name}").logger
+logger = mlshell.logger.CreateLogger(project_path, script_name).logger
 
 # get params from conf.py
 gp = mlshell.GetParams(project_path)
 
-# get data from db (project specific)
+# get data from db (user-defined)
 gd = classes.GetData(logger=logger)
-gd.get_data(filename=gp.params['train_file'], rows_limit=gp.params['rows_limit'], random_skip=gp.params['random_skip'])
+gd.get_data(*gp.params['get_data']['train']['args'], **gp.params['get_data']['train']['kw_args'])
 
-# prepare data for analyse (project specific)
+# prepare data for analyse (user-defined)
 pp = classes.DataPreprocessor(gd.raw, logger=logger)
 
-# initialize object of Workflow class (encode/unify data included)
-wf = mlshell.Workflow(project_path, pp.data, logger=logger, params=gp.params)
-
-# analyse on whole data
-# wf.before_split_analyze()
+# initialize Workflow class object
+wf = mlshell.Workflow(project_path, logger=logger, params=gp.params)
+# unify data
+wf.unify_data(data=pp.data)  # self.data_df
 
 # create pipeline
 wf.create_pipeline()  # self.estimator
 
 # split data
-wf.split()  # => self.train, self.test
+wf.split()  # self.x_train, self.y_train, self.x_test, self.y_test
 
-# fit pipeline on train (tune hp if GS_flag=True)
+# fit pipeline on train/tune hp if gs_flag=True
 wf.fit(gs_flag=gp.params['gs_flag'])
 
-# validate prediction
+# validate predictions
 wf.validate()
 
 # dump on disk
@@ -43,18 +42,18 @@ file = wf.dump()
 wf.load(file)
 
 # read and preprocess new data
-gd2 = classes.GetData(logger=logger)
-gd2.get_data(filename=gp.params['test_file'], rows_limit=gp.params['rows_limit'])
-pp2 = classes.DataPreprocessor(gd2.raw, logger=logger)
+gd2 = classes.GetData(logger)
+gd2.get_data(*gp.params['get_data']['test']['args'], **gp.params['get_data']['test']['kw_args'])
+pp2 = classes.DataPreprocessor(gd2.raw, logger)
 
-# make prediction to new data
+# make predictions on new data
 wf.predict(pp2.data, pp2.raw_targets_names, pp2.raw_index_names)
 
-# generate param for gui
+# generate param for gui module
 wf.gen_gui_params()
 
 # init gui object
 gui = mlshell.GUI(pp.base_plot, wf.gui_params, logger=logger)
 
 # plot results
-gui.plot(isplot=True)
+gui.plot(base_sort=True)

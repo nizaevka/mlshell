@@ -10,7 +10,7 @@ After each commit on ``master``, documentation is updated and published to `Read
 Build
 -----
 
-You can build the documentation locally.
+You can build the documentation locally, in docs/ run terminal commands:
 
 .. code:: sh
 

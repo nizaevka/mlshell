@@ -17,7 +17,7 @@ import glob
 from . classes import GetData, DataPreprocessor
 import filecmp
 import platform
-import logging
+
 
 def same_folders(dcmp):
     """Check that two folders are copy"""
@@ -49,8 +49,8 @@ def test_func():
             os_type = 'unix'
 
         # check GS
-        assert filecmp.cmp(f'{dir_path}/original/None_critical_1k_{os_type}.log',
-                           glob.glob(f'{dir_path}/results/logs_run/*_critical.log')[0])
+        assert filecmp.cmp(glob.glob(f'{dir_path}/original/*_test_1k_{os_type}.log')[0],
+                           glob.glob(f'{dir_path}/results/logs_run/*_test.log')[0])
         # check prediction
         for filepath in glob.glob(f'{dir_path}/results/models/*predictions.csv'):
             for filepath_ in glob.glob(f'{dir_path}/original/models/*predictions_{os_type}.csv'):

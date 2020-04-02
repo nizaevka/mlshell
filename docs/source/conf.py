@@ -26,9 +26,26 @@ copyright = '2020, nizaevka'
 author = 'nizaevka'
 
 # The short X.Y version
-version = ''
+if 'READTHEDOCS' in os.environ:
+    # https: // docs.readthedocs.io / en / stable / builds.html  # the-build-environment
+    version = os.environ.get('READTHEDOCS_VERSION', 'undef')
+else:
+    try:
+        res = {}
+        with open("../../src/{}/__version__.py".format(project)) as fp:
+            exec(fp.read(), res)
+        version = res['__version__']
+    except:
+        print("Can`t open __version__.py, use 'master'")
+        version = 'master'
 # The full version, including alpha/beta/rc tags
-release = 'alpha'
+release = ''
+
+# make variable available in .rst
+# rst_epilog = f"""
+# .. |version| replace::{version}
+# .. _version: some.com
+# """
 
 # -- General configuration ---------------------------------------------------
 
@@ -52,6 +69,7 @@ extensions = [
     'sphinx.ext.githubpages',
     'sphinxcontrib.napoleon',
     'sphinx_autodoc_typehints',
+    'sphinx.ext.extlinks',
 ]
 
 # Looks for objects in external projects. Api dependent, not work in general, need checks
@@ -70,7 +88,7 @@ autodoc_default_options = {
     "show-inheritance": True,
 }
 # Combine class and constructor doctrings
-autoclass_content = 'both'
+# autoclass_content = 'both'
 
 # Generate autosummary pages. Output should be set with: `:toctree: pythonapi/`
 autosummary_generate = ['Python-API.rst']
@@ -121,6 +139,10 @@ exclude_patterns = []
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = None
+
+# variable dependent links
+extlinks = {'github': (f'https://github.com/nizaevka/mlshell/tree/{version}%s', '')}
+# :github:`ref text <123>`=
 
 # -- Options for HTML output -------------------------------------------------
 

@@ -23,6 +23,7 @@ deploy:
     provider: pypi
     on:
         branch: master
+        tags: true  # only on tagged commit git push --tags
     user: "$PYPI_USERNAME"
     password:
       secure: "$PYPI_PASSWORD"

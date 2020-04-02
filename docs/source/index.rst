@@ -28,9 +28,9 @@ For more details, please refer to
    Installation <Installation>
    Get started <Get-started>
    Concepts <Concepts>
+   Examples <Examples>
    Default configuration <Default-configuration>
    Python API <Python-API>
-   Examples <Examples>
    Documentation <README>
 
 .. toctree::

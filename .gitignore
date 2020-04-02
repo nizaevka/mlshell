@@ -9,6 +9,7 @@ Project*/
 # except dirs
 !src/mlshell/**
 src/mlshell/temp
+src/mlshell/eda.py
 
 !pictures/**
 
@@ -18,7 +19,6 @@ src/mlshell/temp
 docs/source/_pythonapi/
 
 !tests/**
-
 
 !docker/**
 
@@ -64,3 +64,4 @@ _svn/
 results/
 vssver.scc
 vssver2.scc
+deprecated.py

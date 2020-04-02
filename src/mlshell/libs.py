@@ -20,7 +20,8 @@ import time
 import atexit
 import logging
 import pathlib
-
+import io
+from typing import List, Optional
 
 # third-party module or package
 import joblib
@@ -57,9 +58,10 @@ try:
     import winsound
 except ImportError:
     def playsound(frequency, duration):
-        # apt-get install beep
-        # os.system('beep -f %s -l %s' % (frequency, duration))
-        pass
+        try:
+            os.system(f'aplay {__file__[:-7]}beep.wav')
+        except:
+            pass
 else:
     def playsound(frequency, duration):
         winsound.Beep(frequency, duration)
@@ -87,13 +89,17 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # turn on: inf as NaN
 pd.options.mode.use_inf_as_na = True
 np.seterr(all='call')
+# need both, without np CV no reproducible
+# but would be problem with scipy rvs (numpy one)
 rd.seed(42)
+np.random.seed(42)
 
 
 class MyException(Exception):
-    def __init__(self, msg, type='break'):
+    """Custom lib`s Exception."""
+    def __init__(self, msg, type_='break'):
         self.msg = msg
-        self.type = type
+        self.type = type_
 
 
 def np_divide(a, b):
@@ -102,6 +108,17 @@ def np_divide(a, b):
         c = np.true_divide(a, b)
         c[~np.isfinite(c)] = 0  # -inf inf NaN
     return c
+
+
+def check_hash(function_to_decorate):
+    """Decorator to check alteration in hash(self.data_df) after call method"""
+    def wrapper(*args, **kwargs):
+        self = args[0]
+        before = pd.util.hash_pandas_object(self.data_df).sum()
+        function_to_decorate(*args, **kwargs)
+        after = pd.util.hash_pandas_object(self.data_df).sum()
+        assert(before == after)
+    return wrapper
 
 
 if __name__ == 'main':

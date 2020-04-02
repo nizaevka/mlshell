@@ -1,16 +1,17 @@
 """The module with GUI class description
 
+mpl3d
 TODO:
-    emulate when no gs
+    self.metric user-defined dynamic for unknown cases. (4 parameter in metrics)
 TODO:
     run button, set slider and push run to calculate
 TODO:
     set original index as x_ticks
-    mayby some temporary bug
-
+TODO:
+    fast up https://stackoverflow.com/questions/40126176/fast-live-plotting-in-matplotlib-pyplotpip
 Note:
-    radio 1 template is hidden in fig_element_prepare
-
+    radio 1 template is hidden in fig_element_prepare.
+    text_box template is hidden in initdraw.
 """
 
 
@@ -18,11 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 import seaborn as sns
 from copy import deepcopy
-from mlshell.libs import np, logging, pd
-
-# import sys
-# sys.path.insert(0, 'C:/ProgramData/Anaconda2/Lib/fast/build/lib.win-amd64-2.7')
-# import fast_arbi
+from mlshell.libs import np, logging, pd, tabulate
 
 
 # класс GUI универсальный, состав функций надо прописывать в дочернем классе
@@ -53,8 +50,9 @@ class Draw(object):
             self.text_dic = {}
             iter = 0
             for i in fig_elements['text']:
-                self.text_dic[iter] = plt.text(*i, horizontalalignment='center', verticalalignment='center',
-                                               transform=ax1.transAxes)
+                args = i[0]
+                kwargs = i[1]
+                self.text_dic[iter] = plt.text(*args, transform=ax1.transAxes, **kwargs)
                 iter += 1
             # Графики
         if 'plot' in fig_elements:
@@ -63,14 +61,14 @@ class Draw(object):
                 ax = ax1  # left
                 if 'right' in key:
                     ax = ax2
-                self.plot_dic[key] = ax.plot(*val)[0]
+                self.plot_dic[key] = ax.plot(*val[0], **val[1])[0]
         if 'scatter' in fig_elements:
             self.scatter_dic = {}
             for key, val in fig_elements['scatter'].items():
                 ax = ax1  # left
                 if 'right' in key:
                     ax = ax2
-                self.scatter_dic[key] = ax.scatter(*val)
+                self.scatter_dic[key] = ax.scatter(*val[0], **val[1])
             # Кликабельный список пунктов
         if 'radio' in fig_elements:
             self.radio_dic = {}
@@ -91,14 +89,20 @@ class Draw(object):
                 iter += 1
             # Бокс ввода текста
         if 'box' in fig_elements:
-            self.box_val = fig_elements['box']
-            ax_text_box = plt.axes([0.6, 0.025, 0.1, 0.04])
+            # hide box
+            self.box_val = ''
+            ax_text_box = plt.axes([0, 0, 0, 0])
+            # self.box_val = fig_elements['box']
+            # ax_text_box = plt.axes([0.6, 0.025, 0.1, 0.04])
             self.text_box = TextBox(ax_text_box, 'SZ', initial=self.box_val)
             self.text_box.on_submit(self.tbox_val)  # при нажатии enter или если ушёл из окна
 
         if 'button' in fig_elements:
             # Кнопки
             resetax = plt.axes([0.80, 0.03, 0.10, 0.03])
+            # hide plus/minus
+            # minusax = plt.axes([0, 0, 0, 0])
+            # plusax = plt.axes([0, 0, 0, 0])
             minusax = plt.axes([0.50, 0.03, 0.02, 0.03])
             plusax = plt.axes([0.55, 0.03, 0.02, 0.03])
             button = Button(resetax, 'Reset', color=self.axcolor, hovercolor='0.975')
@@ -108,6 +112,14 @@ class Draw(object):
             b_plus.on_clicked(self.plus)
             b_minus.on_clicked(self.minus)
 
+        # color description (alternativaly can specify by axes)
+        self.fig.legend(tuple(self.plot_dic.values()),
+                        tuple(i._label for i in self.plot_dic.values()), 'lower left')
+        self.fig.legend(tuple(self.scatter_dic.values()),
+                        tuple(i._label for i in self.scatter_dic.values()), 'lower right')
+
+        # Parameter setted only once
+        self.init_param()
         # Параметры для отслеживания изменений
         self.temp_param()
         plt.show()
@@ -138,6 +150,9 @@ class Draw(object):
         # обновляем temp к текущему состоянию как заключительный этап
         self.temp_param()
 
+    def init_param(self):
+        pass
+
     def temp_param(self):
         pass
 
@@ -167,19 +182,22 @@ class GUI(Draw):
             self.logger = logging.Logger('GUI')
         else:
             self.logger = logger
-        if isinstance(base_plot, pd.DataFrame):
-            if base_plot.shape[1] > 1:
-                raise ValueError("Base plot should be pd.DataFrame with one column or pd.Series")
-            self.base_plot = base_plot.iloc[:, 0]
-        elif isinstance(base_plot, pd.Series):
-            self.base_plot = base_plot
-        else:
-            raise ValueError("Base plot should be pd.DataFrame with one column or pd.Series, not {}".format(type(base_plot)))
+        self.base_plot = self.check_base_plot(base_plot)
 
         # Исходные данные - задаётся пользователем
         self.user_params(params)
         # Делаем равными если где-то свечки были пропущены
         self.gap_recover()
+
+    def check_base_plot(self, base_plot):
+        if isinstance(base_plot, pd.DataFrame):
+            if base_plot.shape[1] > 1:
+                raise ValueError("Base plot should be pd.DataFrame with one column or pd.Series")
+            return base_plot.iloc[:, 0]
+        elif isinstance(base_plot, pd.Series):
+            return base_plot
+        else:
+            raise ValueError("Base plot should be pd.DataFrame with one column or pd.Series, not {}".format(type(base_plot)))
 
     def user_params(self, params):
         self.estimator_type = params['estimator_type']
@@ -194,7 +212,6 @@ class GUI(Draw):
         self.metric = params['metric']
         self.box_val = ' '.join([str(val.shape[0]) for val in
                                  self.hp_grid_flat.values()])  # число шагов по разности курсов - продолжительность по времени (число точек, чтоб как-то учесть кратковременность всплесков)
-
         columns = self.data.columns
         self.train = self.data.loc[self.train_index]
         self.test = self.data.loc[self.test_index]
@@ -203,11 +220,20 @@ class GUI(Draw):
         self.X_test = self.test[[name for name in columns if 'feature' in name]]
         self.y_test = self.test['targets']
 
+        if self.estimator_type == 'classifier':
+            self.logger.info("Gui dynamic visualisation implements:\n"
+                             "    precision plot, TP/FP/FN scatters on base_plot")
+        elif self.estimator_type == 'regressor':
+            self.logger.info("Gui dynamic visualisation implements:\n"
+                             "    r2/mae/mse plots, residuals scatter on base_plot")
+        else:
+            raise ValueError("Unknown estimator type")
+
     def gap_recover(self):
         # fill the gap
         pass
 
-    def plot(self, isplot=False):
+    def plot(self, plot_flag=True, base_sort=False):
         # Рассчитываем данные для первого запуска графика
         ###################################################################################
         # Количество sliders: количество варьируемых параметров в GS
@@ -223,14 +249,23 @@ class GUI(Draw):
         # sliders - best_hp from GS
         # text_box - 'maxsize grid for sliders'
 
+        # isneed to sort base_plot
+
         # init data:  test
-        self.index_current = self.test_index
+        if base_sort:
+            self.train_index_base_sort = self.base_plot[self.train_index].sort_values(inplace=False).index
+            self.test_index_base_sort = self.base_plot[self.test_index].sort_values(inplace=False).index
+        else:
+            self.train_index_base_sort = self.train_index
+            self.test_index_base_sort = self.test_index
+
+        self.index_current = self.test_index_base_sort
 
         # on change of: self.index_current
         self.current_data()  # => self.X_current, self.y_current,  self.x, self.y['base_plot']
 
         # on change of: self.hp_grid_flat
-        self.sliders_data()  # => self.sliders_params['index', 'values', 'sort_values', 'orig_name', 'length']
+        self.sliders_data()  # => self.sliders_params['index', 'values', 'sort_values', 'orig_name', 'short_name', 'length']
 
         # prepare hp subgrid for sliders
         # on change of: self.box_val, self.hp_grid_flat
@@ -244,7 +279,7 @@ class GUI(Draw):
         # on change of: self.index_current, self.sliders_params['current_index']
         self.axis_y_dynamic()  # => m
 
-        if isplot:
+        if plot_flag:
             # Формируем элементы графика
             ###################################################################################
             Draw.__init__(self)  # чтобы прошла инициализация родительского класса
@@ -261,15 +296,15 @@ class GUI(Draw):
                 # np.around(self.y[3], 2) не обрубает нули
             else:
                 self.logger.info('score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                                    round(self.y['MAE_plot'][-1], 2),
-                                                                    round(self.y['MSE_plot'][-1], 2)))
+                                                                    round(self.meta['MAE'][-1], 2),
+                                                                    round(self.meta['MSE'][-1], 2)))
             # текстовые сообщения
-            self.logger.info('{}'.format('\n'.join(
-                map(str, [(val['orig_name'], val['values'][val['current_index']]) for val in self.sliders_params]))))
+            self.logger.info('{}'.format(self.text1_prepare(self.sliders_params)))
 
     def current_data(self):
         self.data_current = self.data.loc[self.index_current]
         self.base_plot_current = self.base_plot.loc[self.index_current].values
+
         # [deprecated] no original index
         # self.base_plot_current = self.base_plot[self.index_current]
 
@@ -292,9 +327,10 @@ class GUI(Draw):
     def sliders_data(self):
         """ Prepare hp_grid to use in slider"""
         self.sliders_params = []
+        self.logger.info('Sliders map index-value:')
         for i, key in enumerate(self.hp_grid_flat.keys()):
             values = self.hp_grid_flat[key]
-            l = values.shape[0]
+            l_ = values.shape[0]
             if not isinstance(values[0], np.object):
                 # FunctionTransformer for example
                 values_sorted = np.ascontiguousarray(np.sort(values))
@@ -303,10 +339,13 @@ class GUI(Draw):
             self.sliders_params.append({'values': values,
                                         'sort_values': values_sorted,  # self.parami
                                         'orig_name': key,
-                                        'index': np.arange(l),  # self.pi_index
-                                        'length': l,
+                                        'short_name': self.short_name(key),
+                                        'index': np.arange(l_),  # self.pi_index
+                                        'length': l_,
                                         })
-            self.logger.info('param_{} : {}'.format(i, l))
+            self.logger.info('{}'.format(tabulate.tabulate(pd.DataFrame(columns=[key], data=values_sorted),
+                                                           headers='keys', tablefmt='psql')))
+            # self.logger.info('param_{} amount of values={}'.format(key, l_))
 
     def sliders_subgrid(self):
         ################################################################################################################
@@ -334,7 +373,7 @@ class GUI(Draw):
             best_val = best_params_subgrid_flat[val['orig_name']]
             best_index = np.where(val['values'] == best_val)[0][0]
             val['best_val'] = best_val
-            val['best_index'] = best_index  # self.pi_btur[self.ii]  self.parami_def_index
+            val['best_index'] = best_index  # self.pi_brut[self.ii]  self.parami_def_index
             val['current_index'] = val['best_index']  # self.currnti_index
 
     def brutforce(self):
@@ -373,8 +412,8 @@ class GUI(Draw):
         current_hp_params.update(sliders_hp_params)
         # Make prediction on current_data
         self.estimator.set_params(**current_hp_params)
-        y_pred = self.estimator.fit(self.X_train, self.y_train).predict(self.X_current)
         print('Train and predict.')
+        y_pred = self.estimator.fit(self.X_train, self.y_train).predict(self.X_current)
         y_true = self.y_current.values
         # y_true_score = self.y_score.values[self.index_current] deprecated
         score, meta = self.metric(y_true, y_pred, meta=True)
@@ -386,9 +425,11 @@ class GUI(Draw):
             self.y['FP_scatter'] = meta['FP'] * self.y['base_plot']
             self.y['FN_scatter'] = meta['FN'] * self.y['base_plot']
         else:
-            self.y['MAE_plot'] = meta['MAE']
-            self.y['MSE_plot'] = meta['MSE']
+            bp_max = np.max(self.y['base_plot'])
+            self.y['MAE_plot'] = (meta['MAE']/np.max(meta['MAE'])) * bp_max
+            self.y['MSE_plot'] = (meta['MSE'] / np.max(meta['MSE'])) * bp_max
             self.y['RES_scatter'] = meta['RES'] + self.y['base_plot']
+        pass
 
     def fig_element_prepare(self):
         # заголовок
@@ -399,13 +440,14 @@ class GUI(Draw):
                                                           # np.around(self.y[3], 2) не обрубает нули
         else:
             title_text = 'score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                            round(self.y['MAE_plot'][-1], 2),
-                                                            round(self.y['MSE_plot'][-1], 2))
+                                                            round(self.meta['MAE'][-1], 2),
+                                                            round(self.meta['MSE'][-1], 2))
                                                            # np.around(self.y[3], 2) не обрубает нули
         # текстовые сообщения
-        text0 = (0.1, 0.95, '')
-        text1 = (0.9, 0.95, '{}'.format('\n'.join(
-            map(str, [(val['orig_name'], val['values'][val['current_index']]) for val in self.sliders_params]))))
+        # https://matplotlib.org/3.1.1/tutorials/text/text_props.html
+        kwargs = {'va': 'top', 'family': 'monospace'}  # 'va': 'center'
+        text0 = [(0.75, 0.95, ''), kwargs]
+        text1 = [(0.05, 0.95, '{}'.format(self.text1_prepare(self.sliders_params))), kwargs]
 
         plots = {}
         scatters = {}
@@ -419,25 +461,27 @@ class GUI(Draw):
             if key not in colors:
                 colors[key] = None
             if 'plot' in key:
-                plot = (self.x, val, colors[key])
-                plots[key] = plot
+                args = (self.x, val, colors[key])
+                kwargs = {'label': key}
+                plots[key] = (args, kwargs)
             elif 'scatter' in key:
-                scatter = (self.x[val > 0], val[val > 0], 35, colors[key])
-                scatters[key] = scatter
+                args = (self.x[val > 0], val[val > 0], 35, colors[key])
+                kwargs = {'label': key}
+                scatters[key] = (args, kwargs)
 
         # radio buttons
-        list0 = ['Name1'] + ['Name2']  # берется нулевой из списка
+        list0 = [' '] + [' ']  # берется нулевой из списка
         list1 = ['validation', 'train']
         # hide radio0
         radio0 = ([0, 0, 0, 0], list0)  # x,y,dx,dy
         # radio0 = ([0.025, 0., 0.15, 0.27], list0)  # x,y,dx,dy
-        radio1 = ([0.175, 0., 0.1, 0.1], list1)
+        radio1 = ([0.175, 0., 0.1, 0.075], list1)
         # slider
         sliders = []
         y1 = iter(range(10, 30, 20 // len(self.sliders_params))) if len(self.sliders_params) != 0 else None
         for val in self.sliders_params:
             slider = (
-                [0.45, y1.__next__() / 100., 0.5, 0.01], self.axcolor, val['orig_name'], val['index'][0],
+                [0.45, y1.__next__() / 100., 0.5, 0.01], self.axcolor, val['short_name'], val['index'][0],
                 val['index'][-1],
                 val['current_index'], 'blue')
             sliders.append(slider)
@@ -463,8 +507,8 @@ class GUI(Draw):
             val.reset()  # => set_val(valinit) => update
 
     def plus(self, event):
-        # только для нулевого пока
-        ind = 0
+        # last clicked slider only
+        ind = self.slider_index_last  # 0
         val = self.sliders_params[ind]
         val['current_index'] = min(val['index'][-1], val['current_index'] + 1)
         while val['current_index'] != val['index'][-1]:
@@ -472,13 +516,16 @@ class GUI(Draw):
         self.slider_lis[ind].set_val(val['current_index'])
 
     def minus(self, event):
-        # только для нулевого пока
-        ind = 0
+        # last clicked slider only
+        ind = self.slider_index_last  # 0
         val = self.sliders_params[ind]
         val['current_index'] = max(0, val['current_index'] - 1)
         while val['current_index'] != 0:
             val['current_index'] = max(0, val['current_index'] - 1)
         self.slider_lis[ind].set_val(val['current_index'])
+
+    def init_param(self):
+        self.slider_index_last = 0
 
     def temp_param(self):
         self.current_rad1_temp = self.fig_elements['radio'][0][1][0]
@@ -496,12 +543,12 @@ class GUI(Draw):
 
     # Заготовка
     def radio2_handler(self, force_flag=False):
-        print(f'radio2_handler: current={self.current_rad2} temp={self.current_rad2_temp}')
+        # print(f'radio2_handler: current={self.current_rad2} temp={self.current_rad2_temp}')
         if self.current_rad2 != self.current_rad2_temp or force_flag:
             if self.current_rad2 == 'validation':
-                self.index_current = self.test_index
+                self.index_current = self.test_index_base_sort
             else:
-                self.index_current = self.train_index
+                self.index_current = self.train_index_base_sort
             self.current_data()
             self.axis_x_static()
             self.axis_y_static()
@@ -518,9 +565,9 @@ class GUI(Draw):
 
     def textbox_handler(self, force_flag=False):
         # [deprecated] all results come from GS, otherwise be carefull with threshold strategy
-        print(f'textbox_handler: current={self.box_val} temp={self.box_val_temp}')
+        # print(f'textbox_handler: current={self.box_val} temp={self.box_val_temp}')
         if self.box_val != self.box_val_temp or force_flag:
-            self.logger.info(self.box_val)
+            # self.logger.info(self.box_val)
             self.sliders_subgrid()
             self.best_params_subgrid()
             self.axis_y_dynamic()
@@ -534,9 +581,9 @@ class GUI(Draw):
 
     def radio1_handler(self, force_flag=False):
         # [Заготовка]
-        print(f'radio1_handler: current={self.current_rad1_temp} temp={self.current_rad1_temp}')
+        # print(f'radio1_handler: current={self.current_rad1_temp} temp={self.current_rad1_temp}')
         if self.current_rad1 != self.current_rad1_temp or force_flag:
-            self.logger.info('recalc_rad1')
+            # self.logger.info('recalc_rad1')
             self.text_dic[0].set_text('Ready')
             # do in temp_param
             # self.current_rad1_temp = self.current_rad1
@@ -547,7 +594,8 @@ class GUI(Draw):
         for i, val in enumerate(self.sliders_params):
             if val['current_index'] != val['current_index_temp']:
                 needrecalc = True
-        print(f'slider_handler needrecalc: {needrecalc}')
+                self.slider_index_last = i
+        # print(f'slider_handler needrecalc: {needrecalc}')
         if needrecalc:
             self.axis_y_dynamic()
 
@@ -572,12 +620,11 @@ class GUI(Draw):
                                                                 # np.around(self.y[3], 2) не обрубает нули
         else:
             self.title.set_text('score: {} MAE: {} MSE: {}'.format(round(self.y['score_plot_right'][-1], 4),
-                                                                   round(self.y['MAE_plot'][-1], 2),
-                                                                   round(self.y['MSE_plot'][-1], 2)))
+                                                                   round(self.meta['MAE'][-1], 2),
+                                                                   round(self.meta['MSE'][-1], 2)))
                                                                 # np.around(self.y[3], 2) не обрубает нули
 
-        self.text_dic[1].set_text('{}'.format('\n'.join(
-            map(str, [(val['orig_name'], val['values'][val['current_index']]) for val in self.sliders_params]))))
+        self.text_dic[1].set_text('{}'.format(self.text1_prepare(self.sliders_params)))
 
         # update axes
         for ax in self.fig.axes:
@@ -589,6 +636,31 @@ class GUI(Draw):
 
         # перерисовыаем
         self.fig.canvas.draw_idle()
+
+    def short_name(self, long):
+        lis = long.split('__')
+        if len(lis) > 2:
+            short = '__'.join(lis[-2:])
+        else:
+            short = long
+        return short
+
+    def text1_prepare(self, sliders_params):
+        lis = []
+        for val in sliders_params:
+            # only two last hp path
+            name = val['short_name']
+            value = val['values'][val['current_index']]
+            if np.issubdtype(type(value), np.inexact):
+                value_ = f'{value:.3f}'
+            elif np.issubdtype(type(value), np.object_):
+                value_ = f"too long, see table index={val['current_index']}"
+            else:
+                value_ = value
+            #  if np.issubdtype(value, np.number) else value
+            lis.append((name, value_))
+        text = '{}'.format('\n'.join(map(str, lis)))
+        return text
 
 
 if __name__ == 'main':

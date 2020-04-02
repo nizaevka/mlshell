@@ -1,14 +1,15 @@
 """The module to set user configuration parammeters.
 
 Attributes:
-    params: user parameters
-        see mlshell.default module for detailed description of parameters
+    params: user parameters.
+        see mlshell.default module for detailed description of parameters.
 """
 
 import numpy as np
 import sklearn
 import lightgbm
 import xgboost
+import scipy
 
 
 # choose estimator
@@ -56,8 +57,10 @@ def target_inverse_func(y):
 
 
 # create target transformers (don`t use lambda function)
-target_transformer = sklearn.preprocessing.FunctionTransformer(func=target_func, inverse_func=target_inverse_func, validate=False, check_inverse=True)
-target_transformer_2 = sklearn.preprocessing.FunctionTransformer(func=np.log, inverse_func=np.exp, validate=False, check_inverse=True)
+target_transformer = sklearn.preprocessing.FunctionTransformer(func=target_func, inverse_func=target_inverse_func,
+                                                               validate=False, check_inverse=True)
+target_transformer_2 = sklearn.preprocessing.FunctionTransformer(func=np.log, inverse_func=np.exp,
+                                                                 validate=False, check_inverse=True)
 
 
 # set ranges for hp
@@ -65,13 +68,14 @@ hp_grid = {
     # 'process_parallel__pipeline_numeric__impute__gaps__strategy': ['median', 'constant'],
     'process_parallel__pipeline_numeric__transform_normal__skip': [True, False],
     # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(0, 100), (1, 99)],
-    'process_parallel__pipeline_numeric__add_polynomial__degree': [2, 3],
+    'process_parallel__pipeline_numeric__add_polynomial__degree': [1, 2],
     'estimate__transformer': [target_transformer],
 
     # # lgbm
     # 'estimate__regressor__n_estimators': np.linspace(50, 1000, 10, dtype=int),
     # 'estimate__regressor__num_leaves': [2**i for i in range(1, 6 + 1)],
     # 'estimate__regressor__min_data_in_leaf': np.linspace(10, 100, 10, dtype=int),
+    # 'estimate__regressor__min_data_in_leaf': scipy.stats.randint(1, 100),
     # 'estimate__regressor__max_depth': np.linspace(1, 30, 10, dtype=int),
 }
 
@@ -82,24 +86,34 @@ params = {
     'main_estimator': main_estimator,
     'cv_splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
     'metrics': {
-        'score': (sklearn.metrics.mean_absolute_error, False),
-        'r2': (sklearn.metrics.r2_score, True),
+        'score': (sklearn.metrics.mean_absolute_error, {'greater_is_better': False}),
+        'r2': (sklearn.metrics.r2_score, {'greater_is_better': True}),
     },
     'split_train_size': 0.7,
     'hp_grid': hp_grid,
     'gs_flag': True,
+    'estimator_fit_params': {},
     'del_duplicates': False,
     'debug_pipeline': False,
-    'isneed_cache': False,
-    'cache_update': False,
+    'use_pipeline_cache': False,
+    'update_pipeline_cache': False,
     'gs_verbose': 1000,
     'n_jobs': 1,
-    'isneeddump': False,
+    'model_dump': False,
     'runs': None,
-    'plot_analysis': False,
 
-    'train_file': 'data/train.csv',
-    'test_file': 'data/test.csv',
-    'rows_limit': 10000,
-    'random_skip': False,
+    'get_data': {
+        'train': {
+            'args': ['data/train.csv'],
+            'kw_args': {'rows_limit': 10000,
+                        'random_skip': False,
+                        'index_col': 'id'},
+        },
+        'test': {
+            'args': ['data/test.csv'],
+            'kw_args': {'rows_limit': 10000,
+                        'random_skip': False,
+                        'index_col': 'id'},
+        },
+    },
 }

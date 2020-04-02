@@ -4,35 +4,9 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
-pytest = "*"
-sphinx = "*"
-sphinxcontrib-napoleon = "*"
-sphinx-autodoc-typehints = "*"
-sphinx-rtd-theme = "*"
-twine = "*"
-ipykernel = "*"
-mpld3 = "*"
 
 [packages]
-e1839a8 = {editable = true,path = "."}
-mlshell = {editable = true,path = "."}
-joblib = "*"
-sklearn = "*"
-jsbeautifier = "*"
-numpy = "*"
-pandas = "*"
-numba = "*"
-seaborn = "*"
-tabulate = "*"
-ipython = "*"
-matplotlib = "*"
-statsmodels = "*"
-lightgbm = "*"
-line-profiler = "*"
-memory-profiler = "*"
-setuptools = "*"
-wheel = "*"
-xgboost = "*"
+mlshell = {editable = true,extras = ["dev"],path = "."}
 
 [requires]
 python_version = "3.7"

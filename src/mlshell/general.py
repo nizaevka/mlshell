@@ -1,23 +1,21 @@
 ﻿"""ML workflow class
 
 TODO:
-    Ordinalencoder (for categor features) use np.sort, maybe try preserve np.float
+    gui metric should be user-defined
 
 TODO:
-    logger initialize in __init__ and use as default for GUI, Workflow. More beutify run.py
+    ram consumption section in concepts, main cases
+
+TODO:
+    logger initialize in __init__ and use as default for GUI, Workflow. More beautify run.py
     EDA reorganize to share (logger, results)
 
 TODO:
-    encoder step in pipeline, add choosevariants
+    encoder step in pipeline, add choose variants
     # ('encode_features',    mlshell.custom.encoder(encoder=sklearn.ensemble.RandomTreesEmbedding(n_estimators=300, max_depth=9), skip=True)),
-TODO:
-    gui сырой, пока лучше не выкладывать, или с большими оговорками
 TODO:
     for custon "score" we don`t know how to calculate score_vector, it is possible to specify in conf function
     currently replace with r2 for regression
-TODO
-    gs_flag = False gen gui params
-    check gui (i remain original index, don`t remeber where i use it, maybe x)
 TODO:
     model dump, add file to append description of models (will autoerase if delete models) to fast identify and sorting
     how many data was used, score, hp
@@ -49,9 +47,6 @@ TODO: добавь сообщение чтобы выводил если пап�
 TODO:
     runs.csv to sql base transformer
 
-Note:
-    is there any junior libs?
-
 """
 
 
@@ -60,27 +55,15 @@ import mlshell.default
 from mlshell.libs import *
 
 
-def check_hash(function_to_decorate):
-    """Decorator to check alteration in hash(self.data_df) after call method"""
-    def wrapper(*args, **kwargs):
-        self = args[0]
-        before = pd.util.hash_pandas_object(self.data_df).sum()
-        function_to_decorate(*args, **kwargs)
-        after = pd.util.hash_pandas_object(self.data_df).sum()
-        assert(before == after)
-    return wrapper
-
-
 class Workflow(object):
     """Class for ml workflow."""
 
-    def __init__(self, project_path, data, logger=None, params=None):
+    def __init__(self, project_path, logger=None, params=None):
         """Initialize workflow object
 
         Args:
             project_path (str): path to project dir.
             logger (logging.Logger): logger object.
-            data (:py:class:`pandas.DataFrame`): object (save original row index after deletes row, need reindex).
             params (dict): user workflow configuration params.
 
         Attributes:
@@ -97,48 +80,55 @@ class Workflow(object):
         Note:
             dataframe should have columns={'targets', 'feature_<name>', 'feature_categor_<name>'}
 
-            * 'feature_categor_<name>': any dtype, include binary
+                * 'feature_categor_<name>': any dtype (include binary).
 
-                enumerated, order is not important
-            * 'feature_<name>': any dtype, exclude binary
+                    order is not important.
 
-                numerated, order is important
-            * 'targets': any dtype
+                * 'feature_<name>': any numeric dtype (should support float(val), np.issubdtype(type(val), np.number))
 
-                for classification `targets` should be binary, ordinalencoded.
-                | positive label should be > others when sorting with np.unique(y).
+                    order is important.
+
+                * 'targets': any dtype
+
+                    for classification `targets` should be binary, ordinalencoded.
+                    | positive label should be > others in np.unique(y) sort.
 
         """
-        self.check_results_size(project_path)
         self.project_path = project_path
         if logger is None:
             self.logger = logging.Logger('Workflow')
         else:
             self.logger = logger
+        self.logger.info("\u25CF INITITALIZE WORKFLOW")
+        self.check_results_size(project_path)
         # use default if skipped in params
-        temp = mlshell.default.DEFAULT_PARAMS
+        temp = copy.deepcopy(mlshell.default.DEFAULT_PARAMS)
         if params is not None:
+            self.check_params(temp, params)
             temp.update(params)
         self.p = temp
+        self.logger.info('Used params:\n    {}'.format(jsbeautifier.beautify(str(self.p))))
+
         # hash of hp_params
         self.p_hash = md5(str(self.p).encode('utf-8')).hexdigest()
-
-        if self.p['estimator_type'] == 'classifier':
-            self.classes_ = np.unique(data['targets'])
-            self.n_classes = self.classes_.shape[0]
-            self.neg_label = self.classes_[0]
-            self.pos_label_ind = np.where(self.classes_ == params['pos_label'])[0][0]
-
-        self.check_data_format(data, self.p)
         self.np_error_stat = {}
         np.seterrcall(self.np_error_callback)
 
-        self.data_df, self.categoric_ind_name, self.numeric_ind_name = self.unifier(data)
-        # hash of data before split
-        self.data_hash = pd.util.hash_pandas_object(self.data_df).sum()
-        # calc unique values (np.nan not included as value)
-        self.value_counts = {column_name: self.data_df[column_name].value_counts()
-                             for i, column_name in enumerate(self.data_df.columns)}
+        # fullfill in self.unify_data()
+        self.classes_ = None
+        self.n_classes = None
+        self.neg_label = None
+        self.pos_label_ind = None
+        self.data_df = None
+        self.categoric_ind_name = None
+        self.numeric_ind_name = None
+        self.data_hash = None
+        self.value_counts = None
+        # [deprected] make separate function call
+        # self.unify_data(data)
+
+        # self.scorers = self.metrics_to_scorers(self.p['metrics'], self.p['gs_metrics'])
+        self.scorers = self.metrics_to_scorers(self.p['metrics'])
         # fullfill in self.create_pipeline()
         self.estimator = None
         # fullfill in self.split()
@@ -149,7 +139,7 @@ class Workflow(object):
         self.x_test = None
         self.y_test = None
         # fulfill in self.fit()
-        self.best_params_ = None
+        self.best_params_ = {}
         self.modifiers = []
         # fulfill in self.gen_gui_params()
         self.gui_params = {}
@@ -157,18 +147,38 @@ class Workflow(object):
     def check_results_size(self, project_path):
         root_directory = pathlib.Path(f"{project_path}/results")
         size = sum(f.stat().st_size for f in root_directory.glob('**/*') if f.is_file())
+        size_mb = size/(2**30)
         # check if > n Mb
-        n = 5000
-        if size//(2**20) > n:
-            self.logger.warning(f"Warning: results/ directory more than {n} Mb")
-            # raise MyException(f"Error: results/ directory more than {n} Mb")
+        n = 5
+        if size_mb > n:
+            self.logger.warning(f"Warning: results/ directory size {size_mb:.2f}Gb more than {n}Gb")
+
+    def check_params(self, default_params, params):
+        self.check_params_keys(default_params, params)
+        self.check_params_vals(params)
+
+    def check_params_keys(self, default_params, params):
+        miss_keys = set()
+        for key in params:
+            if key not in default_params:
+                miss_keys.add(key)
+        if miss_keys:
+            raise ValueError(f"Don`t understand key(s) in conf.py params, check\n    {miss_keys}")
+
+    def check_params_vals(self, params):
+        # hp_grid, remove non unique
+        if 'hp_grid' in params:
+            for key, val in params['hp_grid'].items():
+                if hasattr(val, '__iter__'):
+                    # not use numpy, cause not all values can be sorted
+                    params['hp_grid'][key] = pd.unique(val)
 
     def check_data_format(self, data, params):
         """check data format"""
         if not isinstance(data, pd.DataFrame):
             raise TypeError("input data should be pandas.DataFrame object")
         if 'targets' not in data.columns:
-            raise KeyError("input dataframe should contain 'targets' column")
+            raise KeyError("input dataframe should contain 'targets' column, set zero values columns if absent")
         if not all(['feature_' in column for column in data.columns if 'targets' not in column]):
             raise KeyError("all name of dataframe features columns should start with 'feature_'")
         if params['estimator_type'] == 'classifier':
@@ -177,17 +187,8 @@ class Workflow(object):
             if params['pos_label'] != self.classes_[-1]:
                 raise ValueError("pos_label={} should be last in np.unique(targets), current={}"
                                  .format(params['pos_label'], self.classes_))
-
-    def set_params(self, params):
-        """[Deprecated] Set user param attributes
-
-        Args:
-            params (dic): {'attribute_name':value}.
-
-        """
-        for k, v in params.items():
-            setattr(self, k, v)
-        self.logger.info('User params:\n    {}\n'.format(jsbeautifier.beautify(str(params))))
+        # check that all non-categoric features are numeric type
+        # [deprecated] move to self.unifier (some object-type column could be casted float())
 
     def np_error_callback(self, *args):
         """Numpy errors handler, count errors by type"""
@@ -197,6 +198,95 @@ class Workflow(object):
             self.np_error_stat[args[0]] = 1
 
     # =============================================== unify ============================================================
+    def unify_data(self, data=None, cache_prefix='train'):
+        """ Unify dataframe in compliance to workflow class.
+
+        Arg:
+            data (:py:class:``pandas.DataFrame``, optional (default=None)):
+                object (save original row index after deletes row, need reindex).
+            cache_name (str, optional (default='train')):
+                prefix to cache file if `'use_unifier_cache'` flag is True
+
+        Note:.
+            If ``use_unifier_cache`` is True:
+
+                * If ``update_unifier_cache`` if False, try to load cache if available (``data`` arg can be skipped).
+                * If cache is None or `update_unifier_cache`` is True, run unifier on ``data`` and dump cache after.
+
+            Else: run unifer without cahing results.
+
+        """
+        self.logger.info("\u25CF UNIFY DATA")
+        if self.p['use_unifier_cache'] and not self.p['update_unifier_cache']:
+            cache = self.load_instead_unifier(prefix=cache_prefix)
+            if cache is not None:
+                data = cache
+                categoric_ind_name = {}
+                numeric_ind_name = {}
+                for ind, column_name in enumerate(data):
+                    if 'targets' in column_name:
+                        continue
+                    if '_categor_' in column_name:
+                        # loose categories names
+                        categoric_ind_name[ind - 1] = (column_name,)
+                    else:
+                        numeric_ind_name[ind - 1] = (column_name,)
+                self.data_df = data
+                self.categoric_ind_name = categoric_ind_name
+                self.numeric_ind_name = numeric_ind_name
+        else:
+            cache = None
+
+        if data is None:
+            raise ValueError("Set `data` arg in unify_data or turn on 'use_unifier_cache' in conf.py")
+
+        if self.p['estimator_type'] == 'classifier':
+            self.classes_ = np.unique(data['targets'])
+            self.n_classes = self.classes_.shape[0]
+            self.neg_label = self.classes_[0]
+            assert self.classes_[1] == self.p['pos_label']
+            self.pos_label_ind = np.where(self.classes_ == self.p['pos_label'])[0][0]
+
+        self.check_data_format(data, self.p)
+
+        if cache is None:
+            self.data_df, self.categoric_ind_name, self.numeric_ind_name = self.unifier(data)
+            if self.p['use_unifier_cache']:
+                self.dump_after_unifier(self.data_df, prefix=cache_prefix)
+
+        # hash of data before split
+        self.data_hash = pd.util.hash_pandas_object(self.data_df).sum()
+        # calc unique values (np.nan not included as value)
+        self.value_counts = {column_name: self.data_df[column_name].value_counts()
+                             for i, column_name in enumerate(self.data_df.columns)}
+
+    def dump_after_unifier(self, data, prefix=''):
+        """Dump imtermediate dataframe to disk."""
+        cachedir = f"{self.project_path}/results/cache/unifier"
+        filepath = f'{cachedir}/{prefix}_after_unifier.csv'
+        if self.p['use_unifier_cache']:
+            if self.p['update_unifier_cache'] and os.path.exists(filepath):
+                os.remove(filepath)
+                # shutil.rmtree(cachedir, ignore_errors=True)
+            if not os.path.exists(cachedir):
+                # create temp dir for cache if not exist
+                os.makedirs(cachedir)
+            # only if cache is None
+            self.logger.warning('Warning: update unifier cache file:\n    {}'.format(filepath))
+            with open(filepath, 'w', newline='') as f:
+                data.to_csv(f, mode='w', header=True, index=True, line_terminator='\n')
+
+    def load_instead_unifier(self, prefix=''):
+        """Load imtermediate dataframe from disk"""
+        cachedir = f"{self.project_path}/results/cache/unifier"
+        filepath = f'{cachedir}/{prefix}_after_unifier.csv'
+        if self.p['use_unifier_cache'] and os.path.exists(filepath) and not self.p['update_unifier_cache']:
+            with open(filepath, 'r') as f:
+                data = pd.read_csv(f, sep=",", index_col=0)
+            self.logger.warning(f"Warning: use cache file instead unifier:\n    {cachedir}")
+            return data
+        return None
+
     def unifier(self, data):
         """ unify input dataframe
 
@@ -223,14 +313,16 @@ class Workflow(object):
         """
         # find duplicates rows
         mask = data.duplicated(subset=None, keep='first')  # duplicate rows index
-        self.logger.warning('MyWarning: {} duplicates rows found'.format(np.sum(mask)))
-        # count unique duplicated rows
-        rows_count = data[mask].groupby(data.columns.tolist())\
-            .size().reset_index().rename(columns={0: 'count'})
-        rows_count.sort_values(by=['count'], axis=0, ascending=False, inplace=True)
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-            self.logger.debug('Duplicates found\n{}\n'
-                              .format(tabulate.tabulate(rows_count, headers='keys', tablefmt='psql')))
+        dupl_n = np.sum(mask)
+        if dupl_n:
+            self.logger.warning('Warning: {} duplicates rows found,\n    see debug.log for details.'.format(dupl_n))
+            # count unique duplicated rows
+            rows_count = data[mask].groupby(data.columns.tolist())\
+                .size().reset_index().rename(columns={0: 'count'})
+            rows_count.sort_values(by=['count'], axis=0, ascending=False, inplace=True)
+            with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+                self.logger.debug('Duplicates found\n{}\n'
+                                  .format(tabulate.tabulate(rows_count, headers='keys', tablefmt='psql')))
 
         if self.p['del_duplicates']:
             # delete duplicates, (not reset index, otherwise problem with base_plot)
@@ -239,23 +331,26 @@ class Workflow(object):
             # data.reset_index(drop=True, inplace=True) problem with base_plot
             size_after = data.size
             if size_before - size_after != 0:
-                self.logger.warning('MyWarning: delete duplicates rows ({} values)\n'.format(size_before - size_after))
+                self.logger.warning('Warning: delete duplicates rows ({} values)\n'.format(size_before - size_after))
 
         # calculate amount of gaps
         gaps_number = data.size - data.count().sum()
         # log
-        gaps_number_dic = {}
+        columns_with_gaps_dic = {}
         if gaps_number > 0:
-            gaps_number_dic = {column_name: data[column_name].size - data[column_name].count()
-                               for column_name in data}
-            self.logger.warning('MyWarning: gaps:{} {}%\n{}'.format(gaps_number,
-                                                                    gaps_number / data.size,
-                                                                    gaps_number_dic))
+            for column_name in data:
+                column_gaps_namber = data[column_name].size - data[column_name].count()
+                if column_gaps_namber > 0:
+                    columns_with_gaps_dic[column_name] = column_gaps_namber
+            self.logger.warning('Warning: gaps found: {} {:.3f}%,\n'
+                                '    see debug.log for details.'.format(gaps_number, gaps_number / data.size))
+            self.logger.debug('Gaps per column:\n{}'.format(jsbeautifier.beautify(str(columns_with_gaps_dic))))
+
         categoric_ind_name = {}
         numeric_ind_name = {}
         for ind, column_name in enumerate(data):
             if 'targets' in column_name:
-                if 'targets' in gaps_number_dic and gaps_number_dic['targets'] > 0:
+                if 'targets' in columns_with_gaps_dic:
                     raise MyException("MyError: gaps in targets")
                     # delete rows with gaps in targets
                     # data.dropna(self, axis=0, how='any', thresh=None, subset=[column_name],inplace=True)
@@ -280,7 +375,18 @@ class Workflow(object):
                 numeric_ind_name[ind-1] = (column_name,)
 
         # cast to np.float64 without copy
-        data = data.astype(np.float64, copy=False)
+        # alternative: try .to_numeric
+        data = data.astype(np.float64, copy=False, errors='ignore')
+        # check that all non-categoric features are numeric type
+        dtypes = data.dtypes
+        misstype = []
+        for ind, column_name in enumerate(data):
+            if '_categor_' not in column_name:
+                if not np.issubdtype(dtypes[column_name], np.number):
+                    misstype.append(column_name)
+        if misstype:
+            raise ValueError("Input data non-categoric columns"
+                             " should be subtype of np.number, check:\n    {}".format(misstype))
 
         return data, categoric_ind_name, numeric_ind_name
 
@@ -303,28 +409,32 @@ class Workflow(object):
                 time consuming create hash from GB of dat
 
         """
-        if self.p['isneed_cache']:
-            cachedir = f"{self.project_path}/results/temp"
-            # delete cache if nessesery
-            if self.p['cache_update'] and os.path.exists(cachedir):
+        self.logger.info("\u25CF CREATE PIPELINE")
+        if self.p['use_pipeline_cache']:
+            cachedir = f"{self.project_path}/results/cache/pipeline"
+            # delete cache if necessary
+            if self.p['update_pipeline_cache'] and os.path.exists(cachedir):
                 shutil.rmtree(cachedir, ignore_errors=True)
-            self.logger.debug('Cachedir:\n    {}\n'.format(cachedir))
+                self.logger.warning(f'Warning: update pipeline cache:\n    {cachedir}')
+            else:
+                self.logger.warning(f'Warning: pipeline use cache:\n    {cachedir}')
             if not os.path.exists(cachedir):
                 # create temp dir for cache if not exist
                 os.makedirs(cachedir)
-            else:
-                self.logger.debug('Warning: use caching results \n')
         else:
             cachedir = None
 
         # assemble several steps that can be cross-validated together
         pipeline_ = self.pipeline_steps()
         last_step = self.create_last(self.p['main_estimator'], pipeline_)
+        self.logger.info(f"Estimator step:\n    {last_step}")
         pipeline_.append(('estimate', last_step))
         self.estimator = sklearn.pipeline.Pipeline(pipeline_, memory=cachedir)
         # set zero position params from hp_grid
         for name, vals in self.p['hp_grid'].items():
-            self.estimator.set_params(**{name: vals[0]})
+            # check if distribution in hp_grid
+            if hasattr(type(vals), '__iter__'):
+                self.estimator.set_params(**{name: vals[0]})
 
         #     path = param.split('__')
         #     for step in steps:
@@ -382,6 +492,13 @@ class Workflow(object):
                                                                                 self.p['pos_label'],
                                                                                 self.neg_label, threshold=0.5)),
                         ])
+                # add __clf__ to estimator hps names to pass in PredictTransformer
+                for name, vals in list(self.p['hp_grid'].items()):
+                    if 'estimate__classifier' in name:
+                        lis = name.split('__')
+                        lis.insert(-1, 'clf')
+                        new_name = '__'.join(lis)
+                        self.p['hp_grid'][new_name] = self.p['hp_grid'].pop(name)
         else:
             raise MyException("MyError: unknown estimator type = {}".format(self.p['estimator_type']))
 
@@ -412,8 +529,11 @@ class Workflow(object):
             use dill instead.
 
         """
-        steps = mlshell.default.CreateDefaultPipeline(self.categoric_ind_name,
-                                     self.numeric_ind_name, self.set_custom_param, self.p).default_steps
+        if self.p['pipeline'] is None:
+            clss = mlshell.default.CreateDefaultPipeline
+        else:
+            clss = self.p['pipeline']
+        steps = clss(self.categoric_ind_name, self.numeric_ind_name, self.set_custom_param, self.p).steps
         return steps
         # sklearn.pipeline.Pipeline(steps)
         # # update with zero postion hp_grid:
@@ -449,11 +569,11 @@ class Workflow(object):
         for step in steps:
             ob_name = step[0]
             ob = step[1]
-            self.logger.warning('{0}{1}\n{0}{2}'.format('   ' * level, ob_name, ob))
+            self.logger.info('{0}{1}\n{0}{2}'.format('   ' * level, ob_name, ob))
             if hasattr(ob, '__dict__'):
                 for attr_name in ob.__dict__:
                     attr = getattr(ob, attr_name)
-                    self.logger.warning('{0}{1}\n{0}   {2}'.format('   ' * (level + indent), attr_name, attr))
+                    self.logger.info('{0}{1}\n{0}   {2}'.format('   ' * (level + indent), attr_name, attr))
                     if isinstance(attr, list) and (attr_name == 'steps' or attr_name == 'transformers'):
                         self.recursive_logger(attr, level + 1)
                         # [deprecated] specific print
@@ -470,250 +590,7 @@ class Workflow(object):
                         #                                                   self.categoric_ind_name[glob_ind][1][vals]))
                         #      elif last_step =='impute':
 
-    # =============================================== before split analyze =============================================
-    @check_hash
-    # @memory_profiler
-    def before_split_analyze(self):
-        """EDA on full dataframe
-
-        * check and log imbalance
-        * check and log variance
-        * if debug: fit estimator and log detail information
-
-        """
-        x, y = self.tonumpy(self.data_df)
-
-        self.df_info()
-        self.check_imbalance()
-        self.check_collinearity(x, y)
-        self.check_variance(x, y)
-        self.statmodel_check(x, y)
-        if self.p['plot_analysis']:
-            self.plottings()
-
-    def tonumpy(self, data_df):
-        """Convert dataframe to features and target numpy arrays"""
-        # almost always copy
-        x = data_df[data_df.columns[1:]]  # .values
-        y = data_df['targets']  # .values
-        x = np.ascontiguousarray(x)
-        y = np.ascontiguousarray(y)
-        return x, y
-
-    def statmodel_check(self, x, y):
-        """Trasform with pipeline and fit on ols/logit
-
-        Args:
-            x (np.array): fetures array
-            y (np.array): target array
-
-        Note:
-            it possible to make custom sklearn estimator through statmodels API for CV
-        """
-
-        # add intercept (statmodels don`t auto add)
-        x = np.c_[x, np.ones(x.shape[0])]
-
-        pipeline_ = self.pipeline_steps()
-        if pipeline_[-1][0] == 'estimate':
-            del pipeline_[-1]
-
-        # will use default pipline (without `estimate`  step)
-        transformer = sklearn.pipeline.Pipeline(pipeline_, memory=None)
-        # alternative: set zero position params from hp_grid
-        # for name, vals in self.p['hp_grid'].items():
-        #     if name.startswith('estimate'):
-        #         continue
-        #     transformer.set_params(**{name: vals[0]})
-        transformer.fit_transform(x, y)
-
-        fitted_estimator = self.fit_sm(x, y)
-        if self.p['estimator_type'] == 'regressor':
-            fitted_estimator, y = self.target_normalization(fitted_estimator, x, y)
-
-        fitted_estimator, cov_type = self.handle_homo(fitted_estimator, x, y)
-        self.check_leverage(fitted_estimator)
-
-        # [deprecated] add/drop intercept
-        # self.data_df=self.data_df.assign(**{'feature_intercept':np.full(self.data.shape[0],
-        #     fill_value=1, dtype=np.float64, order='C')})
-        # self.data['feature_intercept'] = 1
-        # delete intercept from data not to influence forward analyse
-        # self.data_df.drop(['feature_intercept'], axis=1, inplace=True)
-
-    def fit_sm(self, x, y, cov_type='nonrobust'):
-        """Fit statmodel"""
-        if self.p['estimator_type'] == 'regressor':
-            estimator = sm.OLS(y, x)
-        else:
-            estimator = sm.Logit(y, x)
-        estimator = estimator.fit(cov_type=cov_type)
-        self.logger.info('{}'.format(estimator.summary()))
-        return estimator
-
-    def target_normalization(self, estimator, x, y, cov_type='nonrobust'):
-        """ Check normality for residuals, y yeojohnson transform if necessary"""
-        _, p = scipy.stats.shapiro(estimator.resid)
-        self.logger.info('Shapiro criteria p-value={}'.format(p))
-        if p < 0.05:
-            self.logger.warning('MyWarning: use Yeo-Johnson normalization for target')
-            # skew = self.estimator.diagn['skew']
-            # kurtosis = self.estimator.diagn['kurtosis']
-
-            # yeojohnson transform,box-cox only for positive
-            y, lmbda = scipy.stats.yeojohnson(y)  # with copy
-            # refit model
-            estimator = self.fit_sm(x, y)
-            _, p_new = scipy.stats.shapiro(estimator.resid)
-            self.logger.info('Shapiro criteria after target normalization p_value = {}'.format(p_new))
-        if self.p['plot_analysis']:
-            # visual check Q-Q for residuals
-            plt.figure(figsize=(16, 7))
-            plt.subplot(121)
-            scipy.stats.probplot(estimator.resid, dist="norm", plot=plt)
-            plt.subplot(122)
-            plt.hist(np.log(estimator.resid))
-            plt.xlabel('Residuals', fontsize=14)
-            plt.show()
-        return estimator, y
-
-    def handle_homo(self, estimator, x, y, cov_type='nonrobust'):
-        """Check homo"""
-        p = sms.het_breuschpagan(estimator.resid, estimator.model.exog)[1]
-        self.logger.info('Breusch-Pagan criteria p-value={}'.format(p))
-        if p < 0.05:
-            self.logger.warning('MyWarning:  apply HC1'.format(p))
-            cov_type = 'HC1'
-            estimator = self.fit_sm(x, y, cov_type=cov_type)
-        return estimator, cov_type
-
-    def check_leverage(self, estimator):
-        """Check leverage"""
-        if self.p['plot_analysis']:
-            plt.figure(figsize=(8, 7))
-            smg.plot_leverage_resid2(estimator)
-        self.logger.debug('UNRECONSTRUCTED leverage')
-
-    def df_info(self):
-        """Log info() and describe() for data_df"""
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-            self.logger.info('{}\n'.format(tabulate.tabulate(self.data_df.describe(), headers='keys', tablefmt='psql')))
-            self.logger.info('{}\n'.format(self.data_df.info()))
-            # self.logger.info('Memory usage{}\n'.format(self.data_df.memory_usage())) by column
-
-    def check_imbalance(self):
-        """Check and log high imbalanced features, targets"""
-        # if categorical or count_values < 10
-        categoric_names = [i[0] for i in self.categoric_ind_name.values()]
-        numeric_names = [i[0] for i in self.numeric_ind_name.values()]
-        if self.p['estimator_type'] == 'classifier':
-            categoric_names += ['targets']
-        else:
-            numeric_names += ['targets']
-        for column_name in categoric_names + numeric_names:
-            column = self.value_counts[column_name]
-            if column_name in numeric_names and column.size > 10:
-                continue
-            amounts = column.values  # amount
-            uniq_values = column.index   # value
-            for i, val in enumerate(amounts):
-                if float(val) / column.size < 0.05:
-                    self.logger.warning('MyWarning: class imbalanced: {} {:.2f}<5% {}'
-                                        .format(int(uniq_values[i]), 100 * float(val) / column.sum(), column_name))
-                    # [deprecated] class balance for all data
-                    # self.logger.debug('{}\n'.join(map(lambda x:'{}\n{}'
-                    # .format(x[0],x[1]),[(column_name, self.value_counts[column_name])
-                    # for column_name in self.binary_names])))
-
-    def check_variance(self, x, y):
-        """Check and log variance for features, targets
-
-        variance=squared deviation=np.std**2
-
-        Args:
-            x (2d numpy.array, dataframe): features
-            y (numpy.array, dataframe): targets
-
-        """
-        # TODO: check differ from dataframe describe()
-        if isinstance(x, pd.DataFrame):
-            x = x.values
-            y = y.values
-        var_feat = sklearn.feature_selection.VarianceThreshold(threshold=0).fit(x)
-        var_targ = sklearn.feature_selection.VarianceThreshold(threshold=0).fit(y.reshape(-1, 1))
-        self.logger.info('target|features variance:\n{}|{}\n'.format(var_targ.variances_[0], var_feat.variances_))
-
-    def check_collinearity(self, x, y):
-        """"check and log collinearity analyze  for features matrix
-
-         Args:
-            x (2d numpy.array, dataframe): features
-            y (numpy.array, dataframe): targets
-        """
-        # TODO: underconstucted
-        if isinstance(x, pd.DataFrame):
-            x = x.values
-            y = y.values
-
-        if True:
-            self.logger.warning('UNRECONSTRUCTED collinearity')
-            return
-        # # VIF method
-        # self.calculate_vif(self.data[self.features_names])
-        # # Condition number method
-        # self.calculate_condnumber(self.data[self.features_names])
-        # # вроде бы само содержатся в параметре exog
-
-    def calculate_vif(self, x, thresh=5.0):
-        """Checks VIF values and then drops variables whose VIF is more than threshold.
-
-        Args
-            thres (float): threshold
-
-        Note:
-            runtime could be big
-
-        """
-        # TODO: underconstucted
-        variables = list(range(x.shape[1]))
-        dropped = True
-        while dropped:
-            dropped = False
-            vif = [statsmodels.stats.outliers_influence.variance_inflation_factor(x.loc[:, variables].values, ix)
-                   for ix in range(x.loc[:, variables].shape[1])]
-            maxloc = vif.index(max(vif))
-            if max(vif) > thresh:
-                self.logger.debug('Dropping {} at index: {}'.format(x.loc[:, variables].columns[maxloc], str(maxloc)))
-                del variables[maxloc]
-                dropped = True
-        self.logger.debug('Remaining variables:\n{}'.format(x.columns[variables]))
-        return x.loc[:, variables]
-
-    def calculate_condnumber(self, x):
-        """Calculate condnumber"""
-        # TODO: underconstuct
-        corr = np.corrcoef(x, rowvar=False)       # correlation matrix
-        eig_numbers, eig_vectors = np.linalg.eig(corr)  # eigen values & eigen vectors
-
-    def plottings(self, indices=None):
-        """Plot scatter-matrix for numeric columns in dataframe
-
-        Args:
-            indices (list): column names
-
-        """
-        # scatter-plot for continuous data
-        if indices is None:
-            indices = self.numeric_ind_name
-
-        if len(indices) < 15:
-            pd.plotting.scatter_matrix(self.subcolumns(self.data_df, indices=indices),
-                                       alpha=0.2, figsize=(15, 15), diagonal='hist')
-            plt.show()
-        else:
-            self.logger.warning('Too much columns for plot scatter matrix:{}'.format(len(indices)))
-
-    # =============================================== split ==========================================================
+    # =============================================== split ============================================================
     # @memory_profiler
     def split(self):
         """Split data on train, test
@@ -722,6 +599,7 @@ class Workflow(object):
             if `split_train_size` set to 1.0, use full dataset to CV (test=train)
 
         """
+        self.logger.info("\u25CF SPLIT DATA")
         if self.p['split_train_size'] == 1.0:
             train = test = self.data_df
             self.train_index = self.test_index = self.data_df.index
@@ -753,51 +631,8 @@ class Workflow(object):
 
         return self.p['cv_splitter']
 
-    # =============================================== score ============================================================
-    def custom_scorer(self, estimator, x, y_true):
-        """Custom scorer.
-
-        Args:
-            estimator: fitted estimator.
-            x (dataframe, np.ndarray): features test.
-            y_true (dataframe, np.ndarray): true targets test.
-
-        Returns:
-            score value
-
-        Note:
-            Score will be maximize.
-            Have to set negative if _loss or _error metric.
-            In case of built-in metric:
-
-                scorer = metrics.make_scorer(metrics.accuracy_score, greater_is_better=True)
-                score = scorer(estimator, x, y)
-
-        """
-        if isinstance(x, pd.DataFrame):
-            index = y_true.index
-            x = x.values
-            y_true = y_true.values
-        # [deprecated] need dynamic change of self.th_strategy
-        # if self.estimator_type == 'classifier':
-        #     if self.th_strategy == 1 and hasattr(estimator, 'predict_proba'):
-        #         y_pred_proba = estimator.predict_proba(x)
-        #         score = metrics.roc_auc_score(y_true, y_pred_proba[:, self.pos_label_ind])
-        #     elif self.th_strategy == 2 and hasattr(estimator, 'predict_proba'):
-        #         y_pred_proba = estimator.predict_proba(x)
-        #         y_pred = self.brut_th_(y_true, y_pred_proba)
-        #         score = self.metric(y_true, y_pred)
-        #     else:
-        #         y_pred = estimator.predict(x)
-        #         score = self.metric(y_true, y_pred)
-        # else:
-        #     y_pred = estimator.predict(x)
-        #     score = self.metric(y_true, y_pred)
-        y_pred = estimator.predict(x)
-        score = self.metric(y_true, y_pred)
-        return score
-
-    def score_strategy_1(self, estimator, x, y_true):
+    # =============================================== scorers ==========================================================
+    def scorer_strategy_1(self, estimator, x, y_true):
         """Calculate score strategy (1) for classification
 
         Note:
@@ -809,151 +644,33 @@ class Workflow(object):
         score = sklearn.metrics.roc_auc_score(y_true, y_pred_proba[:, self.pos_label_ind])
         return score
 
-    def score_strategy_2(self, estimator, x, y_true):
+    def scorer_strategy_3(self, estimator, x, y_true):
         """Calculate score strategy (2) for classification
 
         Note:
-            Predict probabilities.
-            Brutforce th from roc_curve range.
-            Score main metric after fix best th.
+            if ``score`` scorer work with y_predictions:
+                Predict probabilities.
+                Brutforce th from roc_curve range.
+                Score main metric after fix best th.
 
         """
-        y_pred_proba = estimator.predict_proba(x)
-        best_th_, _ = self.brut_th_(y_true, y_pred_proba)
-        y_pred = self.prob_to_pred(y_pred_proba, best_th_)
-        score = self.metric(y_true, y_pred)
-        return score
-
-    def metric(self, y_true, y_pred, meta=False):
-        """Calculate metric.
-
-        Args:
-            y_true (np.ndarray): true targets.
-            y_pred (np.ndarray): predicted targets.
-            meta (bool): if True calculate metadata for visualization.
-
-        Returns:
-            score (float): metric score
-            meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
-
-        """
-        if self.p['estimator_type'] == 'classifier':
-            return self.metric_classifier(y_true, y_pred, meta)
+        scorer = self.scorers['score']
+        metric = scorer._score_func
+        if isinstance(scorer, sklearn.metrics._scorer._PredictScorer):
+            y_pred_proba = estimator.predict_proba(x)
+            best_th_ = self.brut_th_(y_true, y_pred_proba)[0]
+            y_pred = self.prob_to_pred(y_pred_proba, best_th_)
+            score = metric(y_true, y_pred)
+        elif isinstance(scorer, sklearn.metrics._scorer._ProbaScorer):
+            y_pred_proba = estimator.predict_proba(x)
+            score = metric(y_true, y_pred_proba[:, self.pos_label_ind])
+        elif isinstance(scorer, sklearn.metrics._scorer._ThresholdScorer):
+            y_pred_decision = estimator.decision_funcrion(x)
+            score = metric(y_true, y_pred_decision)
         else:
-            return self.metric_regressor(y_true, y_pred, meta)
+            raise MyException("Can`t understand scorer type")
 
-    def metric_classifier(self, y_true, y_pred, meta=False):
-        """Сalculate classification metric for maximization.
-
-        Detailed meta for external use cases.
-
-        Args:
-            y_true (np.ndarray): true targets.
-            y_pred (np.ndarray): predicted targets.
-            meta (bool): if True calculate metadata for visualization
-
-        Returns:
-            score (float): metric score
-            meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
-
-        """
-        # score
-        score = self.p['metrics']['score'][0](y_true, y_pred)
-        if not meta:
-            return score
-
-        precision_score = sklearn.metrics.precision_score(y_true, y_pred)
-        # metrics in dynamic
-        length = y_true.shape[0]
-        tp = 0
-        fp = 0
-        fn = 0
-        tp_fn = 0
-        precision_vector = np.zeros(length, dtype=np.float64)
-        tp_vector = np.zeros(length, dtype=np.bool)
-        fp_vector = np.zeros(length, dtype=np.bool)
-        fn_vector = np.zeros(length, dtype=np.bool)
-        for i in range(length):
-            if y_true[i] == 1 and y_pred[i] == 1:
-                tp += 1
-                tp_vector[i] = True
-            elif y_true[i] == 0 and y_pred[i] == 1:
-                fp += 1
-                fp_vector[i] = True
-            elif y_true[i] == 1 and y_pred[i] == 0:
-                fn += 1
-                fn_vector[i] = True
-            if y_true[i] == 1:
-                tp_fn += 1
-            precision_vector[i] = tp / (fp + tp) if tp + fp != 0 else 0
-
-        if precision_score != precision_vector[-1]:
-            assert False, 'MyError: score_check False'
-
-        meta = {'score': precision_vector, 'TP': tp_vector, 'FP': fp_vector, 'FN': fn_vector}
-
-        return score, meta
-
-    def metric_regressor(self, y_true, y_pred, meta=False):
-        """Сalculate regression metric for minimization.
-
-        Detailed meta for external use cases.
-
-        Args:
-            y_true (np.ndarray): true targets.
-            y_pred (np.ndarray): predicted targets. need for strategy=1 (auc-score)
-            meta (bool): if True calculate metadata for visualization
-
-        Returns:
-            score (float): metric score
-            meta (dict): cumulative score, mae,mse in dynamic; resid in points.
-
-        """
-        # check for Inf prediction (in case of overfitting), limit it
-        if np.isinf(y_pred).sum():
-            np.nan_to_num(y_pred, copy=False)
-
-        # score
-        score = self.p['metrics']['score'][0](y_true, y_pred)
-        if not meta:
-            return score
-
-        # end value
-        r2_score = sklearn.metrics.r2_score(y_true, y_pred)
-        mae_loss = sklearn.metrics.mean_absolute_error(y_true, y_pred)
-        mse_loss = sklearn.metrics.mean_squared_error(y_true, y_pred)
-
-        # metrics in dynamic
-        length = y_true.shape[0]
-        mae_vector = np.zeros(length, dtype=np.float64)
-        mse_vector = np.zeros(length, dtype=np.float64)
-        resid_vector = np.zeros(length, dtype=np.float64)
-        r2_vector = np.zeros(length, dtype=np.float64)
-        mae = 0
-        mse = 0
-        mean = 0
-        # tss, rss, r2 (don`t need initialization)
-        for n in range(length):
-            # cumul
-            mae = (mae*n + abs(y_true[n]-y_pred[n]))/(n+1)
-            mse = (mse*n + (y_true[n]-y_pred[n])**2)/(n+1)
-            mean = (mean*n + y_true[n])/(n+1)
-            rss = mse*(n+1)
-            tss = np.sum((y_true[:n+1]-mean)**2)   # tss + (y_true[n]-mean)**2
-            r2 = 1 - rss/tss if tss != 0 else 0
-            r2_vector[n] = r2
-            mae_vector[n] = mae
-            mse_vector[n] = mse
-            # in points
-            resid_vector[n] = y_pred[n]-y_true[n]
-
-        for score_, score_vector_ in [(r2_score, r2_vector), (mae_loss, mae_vector), (mse_loss, mse_vector)]:
-            if not cmath.isclose(score_, score_vector_[-1], rel_tol=1e-8, abs_tol=0):  # slight difference
-                assert False, 'MyError: score_check False'
-
-        meta = {'score': r2_vector, 'MAE': mae_vector, 'MSE': mse_vector, 'RES': resid_vector}
-
-        return score, meta
+        return score
 
     # =============================================== gridsearch =======================================================
     @check_hash
@@ -987,17 +704,21 @@ class Workflow(object):
             th2:
 
         """
-        if gs_flag and self.p['hp_grid']:
-            self.optimize()
+        if gs_flag:
+            self.logger.info("\u25CF OPTIMIZE PIPELINE")
+            runs, best_run_index = self.optimize()
+            # dump results in csv
+            self.dump_runs(runs, best_run_index)
         else:
+            self.logger.info("FIT PIPELINE")
             self.estimator.fit(self.x_train, self.y_train, **self.p['estimator_fit_params'])
-
-        # dump self.estimator on disk
-        if self.p['isneeddump']:
-            file = self.dump()
+            # dump not needed, no score evaluation
+            # best_run_index = 0
+            # runs = {'params': [self.estimator.get_params(),]}
 
     def optimize(self):
-        # tune hp on train by cv
+        """Tune hp on train by cv."""
+        self.logger.info("\u25CF \u25B6 GRID SEARCH HYPERPARAMETERS")
         # param, fold -> fit(fold_train) -> predict(fold_test) -> score for params
         scoring = self.get_scoring()
         n_iter = self.get_n_iter()
@@ -1006,42 +727,57 @@ class Workflow(object):
         # optimize score
         optimizer = sklearn.model_selection.RandomizedSearchCV(
             self.estimator, self.p['hp_grid'], scoring=scoring, n_iter=n_iter,
-            n_jobs=self.p['n_jobs'], pre_dispatch=pre_dispatch, iid=False,
+            n_jobs=self.p['n_jobs'], pre_dispatch=pre_dispatch,
             refit='score', cv=self.cv(), verbose=self.p['gs_verbose'], error_score=np.nan,
             return_train_score=True).fit(self.x_train, self.y_train, **self.p['estimator_fit_params'])
         self.estimator = optimizer.best_estimator_
         self.best_params_ = optimizer.best_params_
+        best_run_index = optimizer.best_index_
+        self.distribution_compliance(optimizer.cv_results_, self.p['hp_grid'])
+        self.modifiers = self.find_modifiers(self.p['hp_grid'])
+        runs = copy.deepcopy(optimizer.cv_results_)
         # nice print
-        self.gs_print(optimizer)
-        # dump CV results on disk
-        self.dump_runs(optimizer)
+        self.gs_print(optimizer, self.modifiers)
 
-        # [experimentary] optimize threshold if necessary
-        if self.p['estimator_type'] == 'classifier' and (self.p['th_strategy'] == 1 or self.p['th_strategy'] == 2):
-            scoring = self.metrics_to_scorers(self.p['metrics'])
+        # optimize threshold if necessary
+        if self.p['estimator_type'] == 'classifier' and (self.p['th_strategy'] == 1 or self.p['th_strategy'] == 3):
+            self.logger.info("\u25CF \u25B6 GRID SEARCH CLASSIFIER THRESHOLD")
+            scoring = self.scorers
             th_range, predict_proba, y_true = self.calc_th_range()
             optimizer_th_ = sklearn.model_selection.RandomizedSearchCV(
                 mlshell.custom.ThresholdClassifier(self.classes_, self.pos_label_ind,
                                                    self.p['pos_label'], self.neg_label),
                 {'threshold': th_range}, n_iter=th_range.shape[0],
                 scoring=scoring,
-                n_jobs=1, pre_dispatch=2, iid=False, refit='score', cv=self.cv(),
-                verbose=1, error_score=np.nan, return_train_score=True).fit(predict_proba, y_true, **self.p['estimator_fit_params'])
+                n_jobs=1, pre_dispatch=2, refit='score', cv=self.cv(),
+                verbose=1, error_score=np.nan, return_train_score=True).fit(predict_proba, y_true,
+                                                                            **self.p['estimator_fit_params'])
             best_th_ = optimizer_th_.best_params_['threshold']
+            runs_th_ = copy.deepcopy(optimizer_th_.cv_results_)
+            best_run_index = len(runs['params']) + optimizer_th_.best_index_
+            self.distribution_compliance(optimizer.cv_results_, self.p['hp_grid'])
+
+            runs = self.runs_compliance(runs, runs_th_, optimizer.best_index_)
             self.best_params_['estimate__apply_threshold__threshold'] = best_th_
             self.modifiers.append('estimate__apply_threshold__threshold')
             self.p['hp_grid']['estimate__apply_threshold__threshold'] = th_range
-            # refit with treshold
-            self.estimator.set_params(**self.best_params_)
-            self.estimator.fit(self.x_train, self.y_train, y_true, **self.p['estimator_fit_params'])
-            self.logger.info('CV best threshold:\n    {}'.format(best_th_))
-            # TODO: combine with gs_print
-            # TODO: add dump result
+            self.gs_print(optimizer_th_, ['threshold'])
 
-    def metrics_to_scorers(self, metrics):
+            #  need refit, otherwise not reproduce results
+            self.estimator.set_params(**{'estimate__apply_threshold__threshold': best_th_})
+
+            # refit with threshold (only after update best_params)
+            # self.estimator.set_params(**self.best_params_)  # the same as just threshold
+            # # assert np.array_equal(self.y_train.values, y_true)
+            self.estimator.fit(self.x_train, self.y_train, **self.p['estimator_fit_params'])
+
+        return runs, best_run_index
+
+    def metrics_to_scorers(self, metrics, gs_metrics=None):
         """Make from scorers from metrics
 
         Args:
+            gs_metrics (sequence of str): metrics names to use in gs.
             metrics (dict): {'name': (sklearn metric object, bool greater_is_better), }
 
         Returns
@@ -1049,33 +785,64 @@ class Workflow(object):
 
         """
         scorers = {}
+        # for name in gs_metrics:
+        #     metric = metrics[name]
+        #     if len(metric) == 1:
+        #         kw_args = {}
+        #     else:
+        #         kw_args = metric[1]
+        #     scorers[name] = sklearn.metrics.make_scorer(metric[0], **kw_args)
+
+        # [deprecated]
         for name, metric in metrics.items():
-            scorers[name] = sklearn.metrics.make_scorer(metric[0], greater_is_better=metric[1])
+            if len(metric) == 1:
+                kw_args = {}
+                gs_flag = True
+            elif len(metric) == 2:
+                kw_args = metric[1]
+                gs_flag = True
+            else:
+                kw_args = metric[1]
+                gs_flag = metric[2]
+            if gs_flag:
+                scorers[name] = sklearn.metrics.make_scorer(metric[0], **kw_args)
         return scorers
 
     def get_scoring(self):
         """Set gs target score for different approaches"""
-        scoring = self.metrics_to_scorers(self.p['metrics'])
         if self.p['estimator_type'] == 'classifier':
-            if self.p['th_strategy'] == 1:
-                scoring = {'score': self.score_strategy_1}
+            if self.p['th_strategy'] == 0:
+                scoring = self.scorers
+            elif self.p['th_strategy'] == 1:
+                scoring = {**self.scorers, 'score': self.scorer_strategy_1, }
             elif self.p['th_strategy'] == 2:
-                scoring = {'score': self.score_strategy_2}
-            elif self.p['th_strategy'] == 3:
-                scoring = self.metrics_to_scorers(self.p['metrics'])
+                scoring = self.scorers
                 if 'estimate__apply_threshold__threshold' in self.p['hp_grid']:
-                    self.logger.warning('MyWarning: brutforce th_ 3.1')
+                    self.logger.warning('Warning: brutforce threshold experimental strategy 2.1')
                 else:
                     th_range, _, _ = self.calc_th_range()
                     self.p['hp_grid'].update({'estimate__apply_threshold__threshold': th_range})
-                    self.logger.warning('MyWarning: brutforce threshold strategy 3.2')
+                    self.logger.warning('Warning: brutforce threshold experimental strategy 2.2')
+            elif self.p['th_strategy'] == 3:
+                scoring = {**self.scorers, 'score': self.scorer_strategy_3}
+                self.logger.warning('Warning: brutforce threshold experimental strategy 3')
+            else:
+                raise MyException("th_strategy should be 0-3")
+        else:
+            # regression
+            scoring = self.scorers
+
         return scoring
 
     def get_n_iter(self):
         """Set gs number of runs"""
         # calculate from hps ranges if user 'runs' is not given
         if self.p['runs'] is None:
-            n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0] for i in self.p['hp_grid'].values()])
+            try:
+                n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0] for i in self.p['hp_grid'].values()])
+            except AttributeError as e:
+                self.logger.critical("Error: distribution for hyperparameter grid is used, specify 'runs' in params.")
+                raise ValueError("distribution for hyperparameter grid is used, specify 'runs' in params.")
         else:
             n_iter = self.p['runs']
         return n_iter
@@ -1092,12 +859,49 @@ class Workflow(object):
         pre_dispatch = max(2, self.p['n_jobs']) if self.p['n_jobs'] else 1
         return pre_dispatch
 
+    def runs_compliance(self, runs, runs_th_, best_index):
+        """"Combine GS results to csv dump."""
+        # runs.csv compliance
+        # add param
+        default_th = self.estimator.get_params()['estimate__apply_threshold__threshold']
+        runs['param_estimate__apply_threshold__threshold'] = np.full(len(runs['params']), fill_value=default_th)
+        runs_th_['param_estimate__apply_threshold__threshold'] =\
+            runs_th_.pop('param_threshold', np.full(len(runs_th_['params']),
+                                                    fill_value=default_th))
+        # update runs.params with param
+        for run in runs['params']:
+            run['estimate__apply_threshold__threshold'] = default_th
+        for run in runs_th_['params']:
+            run.update(runs['params'][best_index])
+            run['estimate__apply_threshold__threshold'] = run.pop('threshold', default_th)
+        # add all cv_th_ runs as separate rows with optimizer.best_params_ default values
+        runs_df = pd.DataFrame(runs)
+        runs_th_df = pd.DataFrame(runs_th_)
+        sync_columns = [column for column in runs_th_df.columns if not column.endswith('time')]
+
+        runs_df = runs_df.append(runs_th_df.loc[:, sync_columns], ignore_index=True)
+        # replace Nan with optimizer.best_params_
+        runs_df.fillna(value=runs_df.iloc[best_index], inplace=True)
+        return runs_df
+
+    def gui_compliance(self, best_th_, th_range):
+        """"[deprecated] Combine GS results to use gui."""
+        pass
+
+    def distribution_compliance(self, res, hp_grid):
+        for name, vals in hp_grid.items():
+            # check if distribution in hp_grid
+            if not hasattr(type(vals), '__iter__'):
+                # there are masked array in res
+                hp_grid[name] = pd.unique(np.ma.getdata(res[f'param_{name}']))
+
     # @time_profiler
-    def dump_runs(self, res):
+    def dump_runs(self, runs, best_run_index):
         """Dumps grid search results in <timestamp>_runs.csv
 
         Args:
-            res (sklearn optimizer): contain GS reults.
+            runs (dict or pd.Dataframe): contain GS results.
+            best_run_index (int): best score run index.
 
         Note:
             _runs.csv contain columns:
@@ -1109,31 +913,34 @@ class Workflow(object):
                 * 'estimator_type' regressor or classifier.
                 * 'cv_splitter'.
                 * 'split_train_size'.
-                * 'rows_limit'.
+                * 'data' from params.
         """
+        self.logger.info("\u25CF \u25B6 DUMP RUNS")
         # get full params for each run
-        runs = len(res.cv_results_['params'])
-        lis = list(range(runs))
+        nums = len(runs['params'])
+        lis = list(range(nums))
         est_clone = sklearn.clone(self.estimator)  # not clone attached data, only params
-        for i, param in enumerate(res.cv_results_['params']):
+        for i, param in enumerate(runs['params']):
             est_clone.set_params(**param)
             lis[i] = est_clone.get_params()
-        df = pd.DataFrame(lis)  # too big ro print
-        # merge df with res.cv_results_ with replace (exchange args if don`t need replace)
+        df = pd.DataFrame(lis)  # too big to print
+        # merge df with runs with replace (exchange args if don`t need replace)
         # cv_results consist suffix param_
-        param_labels = set(i for i in res.cv_results_.keys() if 'param_' in i)
-        other_labels = set(res.cv_results_.keys())-param_labels
-        update_labels = set(df.columns).intersection(other_labels)
-        df = pd.merge(df, pd.DataFrame(res.cv_results_).drop(list(param_labels), axis=1),
-                      how='outer', on=list(update_labels), left_index=True, right_index=True,
-                      suffixes=('_left', '_right'))
+        param_labels = set(i for i in runs.keys() if 'param_' in i)
+        if param_labels:
+            other_labels = set(runs.keys())-param_labels
+            update_labels = set(df.columns).intersection(other_labels)
+            runs = pd.DataFrame(runs).drop(list(param_labels), axis=1, errors='ignore')
+            df = pd.merge(df, runs,
+                          how='outer', on=list(update_labels), left_index=True, right_index=True,
+                          suffixes=('_left', '_right'))
         # pipeline
         # df = pd.DataFrame(res.cv_results_)
         # rows = df.shape[0]
         # df2 = pd.DataFrame([self.estimator.get_params()])
 
         # unique id for param combination
-        run_id_list = [str(uuid.uuid4()) for _ in range(runs)]
+        run_id_list = [str(uuid.uuid4()) for _ in range(nums)]
 
         df['id'] = run_id_list
         df['data_hash'] = self.data_hash
@@ -1141,7 +948,7 @@ class Workflow(object):
         df['estimator_name'] = self.p['main_estimator'].__class__.__name__
         df['cv_splitter'] = self.p['cv_splitter']
         df['split_train_size'] = self.p['split_train_size']
-        df['rows_limit'] = str((self.p['rows_limit'], self.p['random_skip']))
+        df['data'] = str(self.p['get_data'])
         df['params_hash'] = self.p_hash
         # df=df.assign(**{'id':run_id_list, 'data_hash':data_hash_list, 'estimator_type':es })
 
@@ -1157,6 +964,8 @@ class Workflow(object):
         filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
         with open(filepath, 'a', newline='') as f:
             df.to_csv(f, mode='a', header=f.tell() == 0, index=False, line_terminator='\n')
+        self.logger.log(25, f"Save run(s) results to file:\n    {filepath}")
+        self.logger.log(25, f"Best run id:\n    {run_id_list[best_run_index]}")
         # alternative: to hdf(longer,bigger) hdfstore(can use as dict)
         # df.to_hdf(filepath, key='key', append=True, mode='a', format='table')
 
@@ -1173,22 +982,23 @@ class Workflow(object):
         # df2 = pd.DataFrame(self.p)
         # df2.to_csv('{}/params.csv'.format(self.project_path), index=False)
 
-    def gs_print(self, res):
-        """nice print"""
-
-        # inputs
-        self.logger.info('hp grid:\n    {}'.format(jsbeautifier.beautify(str(self.p['hp_grid']))))
+    def find_modifiers(self, hp_grid):
+        """Get names of hp_grid params setted with range."""
+        self.logger.info('hp grid:\n    {}'.format(jsbeautifier.beautify(str(hp_grid))))
         # find varied hp
-        self.modifiers = []
-        for key, val in self.p['hp_grid'].items():
+        modifiers = []
+        for key, val in hp_grid.items():
             if isinstance(val, list):
                 size = len(val)
             else:
                 size = val.shape[0]
             if size > 1:
-                self.modifiers.append(key)
-        param_modifiers = set('param_'+i for i in self.modifiers)
+                modifiers.append(key)
+        return modifiers
 
+    def gs_print(self, res, modifiers):
+        """nice print"""
+        param_modifiers = set('param_'+i for i in modifiers)
         # outputs
         runs_avg = {'mean_fit_time': res.cv_results_['mean_fit_time'].mean(),
                     'mean_score_time': res.cv_results_['mean_score_time'].mean()}
@@ -1199,9 +1009,11 @@ class Workflow(object):
             self.logger.info('{}'.format(tabulate.tabulate(df, headers='keys', tablefmt='psql')))
         # Alternative: df.to_string()
 
-        self.logger.info('GridSearch result:\n    {}'.format(runs_avg))
-        self.logger.info('CV best modifiers:\n    {}'.format({key: res.best_params_[key] for key in self.modifiers}))
-        self.logger.info('CV best hp:\n    {}'.format(res.best_params_))
+        self.logger.info('GridSearch best index:\n    {}'.format(res.best_index_))
+        self.logger.info('GridSearch time:\n    {}'.format(runs_avg))
+        self.logger.log(25, 'CV best modifiers:\n    {}'.format({key: res.best_params_[key] for key in modifiers
+                                                                 if key in res.best_params_}))
+        # self.logger.info('CV best configuration:\n    {}'.format(res.best_params_))
         self.logger.info('CV best mean test score:\n    {}'.format(res.best_score_))
         self.logger.info('Errors:\n    {}'.format(self.np_error_stat))
         # Alternative: nested dic to MultiIndex df
@@ -1216,95 +1028,102 @@ class Workflow(object):
         # pd.DataFrame(dic_flat)
 
     # =============================================== threshold calcs ==================================================
-    def calc_th_range(self, plot_flag=True):
-        """ Сalculate th range for GS strategy (1), (2), (3)
+    def calc_th_range(self):
+        """ Сalculate th range from OOF roc_curve.
 
-        [current implementation (1)]
-            * binary target
-            * fit estimator with default hp => find best_th
-            * in GS th range: np.linspace(best_th/100, best_th, 10)
-
-        Args:
-            plot_flag (bool): True if need plot
+        Used in th_strategy (1)(2)(3.2).
 
         Returns:
-            object which have split method yielding train/test splits indices
+            th_range
+            predict_proba
+            y_true (np.ndarray): true labels for self.y_train.
 
         Note:
-            th зависит от hp
-            th на каждом фолде свой
-            th имеет неравномерные границы изменения, которые можно оценить из ROC curve по predict_proba
+            For classification task it is possible to tune classification threshold ``th_`` on CV.
+            For details see `Concepts <./Concepts.html#classification-threshold>`__.
+            Mlshell support multiple strategy for ``th_`` tuning.
 
-            (0) don`t use th (большинство похоже делают так)
+                (0) Don't use ``th_`` (common case).
 
-                * не все классификаторы выдают веростности (SVM)
-                * f1, logloss оптимизируют порог
+                    * Not all classificator provide predict_proba (SVM).
+                    * We can use f1, logloss.
+                    * | If necessary you can dynamically pass params in custom scorer function to tune them in CV,
+                      | use 'pass_custom__kw_args' step in hp_grid.
 
-            (1) (не замораиваясь обычно делают так)
-                auc-roc в качестве score
-                не кросс-валидировать пороги одновременно с gp
-                если выбрать score например auc-roc генерализирующая способность hp будет учитываться для всех порогов
-                тоже справедливо для других метрик.
-                потом уже порог подбирать для лучших относительно конечного score
-            (2) на каждом фолде для данной комбинации hp максимизировать score по порогу,
-                при этом на фолдах будут разные порог, но генерализирующую способность эстиматора данных hp мы оценим.
-                потом для лучших hp после GS, отдельным циклом выбрать на CV единый порог
-            (3) с помощью метажэстиматора перебирать в заранее фиксированном диапазоне
+                (1) First GS best hps with CV, then GS best ``th_`` (common case).
 
-                * заранее неизвестен дипазон th.
+                    * For GS hps by default used auc-roc as score.
+                    * For GS ``th_`` main score.
 
-                    (3.1) можно взять проивольные
+                (2) Use additional step in pipeline (metaestimator) to GS ``th_`` in predefined range (experimental).
 
-                        точный подбор th сильно сэкономит время только если много данных,
-                        а так хоть примерный диапазон значений
+                    * Tune ``th_`` on a par with other hps.
+                    * ``th_`` range should be unknown in advance:
 
-                    (3.2) можно взять характерные значения th из сцепки по фолдам, что не учтет влияние гиперпараметров
+                        (2.1) set in arbitrary in hp_grid
 
-                * проводится переобучение вместо того чтобы рабоать с конечным результатом.
+                        (2.2) take typical values from ROC curve OOF
 
-                    кэш отчасти поможет
-                    лучше бы внутренний цикл отдельный при фиксированных гиперпараметрах и трансформированных данных
-                * фактически когда пойдет много FP можно останавливаться, что нельзя сделать для в брутфорсе
-                * можно определить лучшие hp не заморачиваясь о пороге, для лучших hp, более детально оценить порог
+                (3) While GS best hps with CV, select best ``th_`` for each fold in separately (experimental).
 
-            (4) [нарушает workflow] full наиболее логичный, сливать вместе roc crve диапазоны th разных фолдов
+                    * For current hp combination maximize tpr/(tpr+fpr) on each fold by ``th_``.
+                    * | Although there will different best ``th_`` on folds,
+                      | the generalizing ability of classifier might be better.
+                    * Then select single overall best ``th_`` on GS with main score.
 
-                *  GS запускать на CV=1, внутри функции score поместить CV
-                * выбор оптимальных для всех фолдов порогов с учетом ROC curve на предсказании
 
         TODO:
-            проверить кагглом
+            | add support TimeSeriesSplit
+            | add plot
+            |    https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html#sphx-glr-auto-examples-model-selection-plot-roc-crossval-py
+            | strategy 4: GS set here
 
         """
-        predict_proba, indices, y_true = self.cross_val_predict(
+        y_pred_proba, _, y_true = self.cross_val_predict(
             self.estimator, self.x_train, y=self.y_train, groups=None,
             cv=self.cv(), fit_params=None, method='predict_proba')
-        fpr, tpr, th_ = sklearn.metrics.roc_curve(
-            y_true, predict_proba[:, self.pos_label_ind],
-            pos_label=self.p['pos_label'])
-        best_th_, q = self.brut_th_(y_true, predict_proba)
-        th_range = self.coarse_th_range(best_th_, th_)
-        if plot_flag:
-            plt.plot(th_, q, 'green')
-            plt.vlines(best_th_, np.min(q), np.max(q))
-            plt.vlines(th_range, np.min(q), np.max(q), colors='b', linestyles=':')
+        best_th_, best_ind, q, fpr, tpr, th_ = self.brut_th_(y_true, y_pred_proba)
+        coarse_th_, coarse_index = self.coarse_th_range(best_th_, th_)
+        if self.p['th_plot_flag']:
+            fig, axs = plt.subplots(nrows=2, ncols=1)
+            fig.set_size_inches(10, 10)
+            # roc_curve
+            roc_auc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba[:, self.pos_label_ind])
+            axs[0].plot(fpr, tpr, 'darkorange', label=f"ROC curve (area = {roc_auc:.3f})")
+            axs[0].scatter(fpr[coarse_index], tpr[coarse_index], c='b', marker="o")
+            axs[0].plot([0, 1], [0, 1], color='navy', linestyle='--')
+            axs[0].set_xlabel('False Positive Rate')
+            axs[0].set_ylabel('True Positive Rate')
+            axs[0].set_title(f"Receiver operating characteristic (label '{self.p['pos_label']}')")
+            axs[0].legend(loc="lower right")
+            # tpr/(tpr+fpr)
+            axs[1].plot(th_, q, 'green')
+            axs[1].vlines(best_th_, np.min(q), np.max(q))
+            axs[1].vlines(coarse_th_, np.min(q), np.max(q), colors='b', linestyles=':')
+            axs[1].set_xlim([0.0, 1.0])
+            axs[1].set_xlabel('Threshold')
+            axs[1].set_ylabel('TPR/(TPR+FPR)')
+            axs[1].set_title('Selected th values near maximum')
             # plt.plot(th_, fpr, 'red')
             plt.show()
-        # TODO: добавить график
-        #     https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html#sphx-glr-auto-examples-model-selection-plot-roc-crossval-py
-        # TODO: GS тоже можно переместить сюда
-        return th_range, predict_proba, y_true
+        return coarse_th_, y_pred_proba, y_true
 
     def cross_val_predict(self, *args, **kwargs):
-        """Function to make bind predict/predict_proba from folds.
+        """Function to make bind OOF prediction/predict_proba.
 
-        Args
+        Args:
+            args
+            kwargs
 
         Returns:
-            folds_predict_proba (2d array): probability predictions [n_test_samples x n_classes]
-            folds_test_index: test samples indices
+            folds_predict_proba (2d np.ndarray): OOF probability predictions [n_test_samples x n_classes].
+            folds_test_index (1d np.ndarray): test indices for OOF subset (reseted, not raw).
+            y_true (1d np.ndarray): test for OOF subset (for Kfold whole dataset).
 
+        TODO:
+            in some fold could be not all classes, need to check.
         """
+        # dev check for custom OOF
         debug = False
         estimator = args[0]
         x = args[1]
@@ -1312,7 +1131,6 @@ class Workflow(object):
         cv = kwargs['cv']
         temp_pp = None
         temp_ind = None
-        # TODO: в каком-то фолде может не хватать классов.
         try:
             folds_predict_proba = sklearn.model_selection.cross_val_predict(*args, **kwargs)
             folds_test_index = np.arange(0, folds_predict_proba.shape[0])
@@ -1321,23 +1139,25 @@ class Workflow(object):
                 temp_ind = folds_test_index
                 raise ValueError('debug')
         except ValueError as e:
-            print('MyWarning: {}'.format(e))
+            # custom OOF
             # for TimeSplitter no prediction at first fold
+            # self.logger.warning('Warning: {}'.format(e))
             folds_predict_proba = []  # list(range(self.cv_n_splits))
             folds_test_index = []  # list(range(self.cv_n_splits))
             # th_ = [[2, 1. / self.n_classes] for i in self.classes_]  # init list for th_ for every class
             ind = 0
             for fold_train_index, fold_test_index in cv.split(x):
+                # stackingestimator__sample_weight=train_weights[fold_train_subindex]
                 if hasattr(x, 'loc'):
-                    # stackingestimator__sample_weight=train_weights[fold_train_subindex]
-                    estimator.fit(x.loc[fold_train_index], y.loc[fold_train_index], **self.p['estimator_fit_params'])
-                    fold_predict_proba = estimator.predict_proba(
-                        x.loc[fold_test_index])  # in order of self.estimator.classes_
+                    estimator.fit(x.loc[x.index[fold_train_index]],
+                                  y.loc[y.index[fold_train_index]],
+                                  **self.p['estimator_fit_params'])
+                    # in order of self.estimator.classes_
+                    fold_predict_proba = estimator.predict_proba(x.loc[x.index[fold_test_index]])
                 else:
-                    estimator.fit(x[fold_train_index], y[
-                        fold_train_index], **self.p['estimator_fit_params'])  # stackingestimator__sample_weight=train_weights[fold_train_subindex]
-                    fold_predict_proba = estimator.predict_proba(
-                        x[fold_test_index])  # in order of self.estimator.classes_
+                    estimator.fit(x[fold_train_index], y[fold_train_index], **self.p['estimator_fit_params'])
+                    # in order of self.estimator.classes_
+                    fold_predict_proba = estimator.predict_proba(x[fold_test_index])
                 # merge th_ for class
                 # metrics.roc_curve(y[fold_test_index], y_test_prob, pos_label=self.pos_label)
                 # th_[self.pos_label].extend(fold_th_)
@@ -1349,7 +1169,6 @@ class Workflow(object):
             # delete duplicates
             # for i in range(self.n_classes):
             #    th_[i] = sorted(list(set(th_[i])), reverse=True)
-
         if debug:
             assert np.array_equal(temp_pp, folds_predict_proba)
             assert np.array_equal(temp_ind, folds_test_index)
@@ -1358,18 +1177,45 @@ class Workflow(object):
         return folds_predict_proba, folds_test_index, y_true
 
     def coarse_th_range(self, best_th_, th_):
-        """Get most possible th range"""
-        th_range = np.linspace(max(best_th_ / 100, np.min(th_)), min(best_th_ * 2, np.max(th_)), 100)
-        return th_range
+        """Get most possible th range.
+
+        Note:
+            linear sample from [best/100; 2*best] with limits [np.min(th), 1]
+            th descending
+            th_range ascending
+        """
+        th_range_desire = np.linspace(max(best_th_ / 100, np.min(th_)), min(best_th_ * 2, 1), self.p['th_points_number'])
+        # find index of nearest from th_reverse
+        index_rev = np.searchsorted(th_[::-1], th_range_desire, side='left')  # a[i-1] < v <= a[i]
+        index = len(th_) - index_rev - 1
+        th_range = np.clip(th_[index], a_min=None, a_max=1)
+        return th_range, index
 
     def brut_th_(self, y_true, y_pred_proba):
-        # TODO: можно на основе self.metric перебирать, стопорить если пошло падение, для ускорения
+        """ Measure th value that maximize tpr/(fpr+tpr).
+
+        Note:
+            for th gs will be used values near best th.
+
+        TODO:
+            it is possible to bruforce based on self.metric
+            early-stopping if q decrease
+
+        """
         fpr, tpr, th_ = sklearn.metrics.roc_curve(
             y_true, y_pred_proba[:, self.pos_label_ind],
             pos_label=self.p['pos_label'], drop_intermediate=True)
+        # th_ sorted descending
+        # fpr sorted ascending
+        # tpr sorted ascending
+        # q go through max
         q = np_divide(tpr, fpr+tpr)  # tpr/(fpr+tpr)
-        best_th_ = th_[np.argmax(q)]
-        return best_th_, q
+        best_ind = np.argmax(q)
+        best_th_ = th_[best_ind]
+        # [deprecated] faster go from left
+        # use reverse view, need last occurrence
+        # best_th_ = th_[::-1][np.argmax(q[::-1])]
+        return best_th_, best_ind, q, fpr, tpr, th_
 
     def prob_to_pred(self, y_pred_proba, th_):
         """Fix threshold on predict_proba"""
@@ -1380,28 +1226,105 @@ class Workflow(object):
     # @memory_profiler
     def validate(self):
         """Predict and score on validation set."""
-        # fix best param from cv on train (automated in GridSearch if refit=True)
-        y_pred_train = self.estimator.predict(self.x_train)
-        y_pred_test = self.estimator.predict(self.x_test)
-        for name, metric in self.p['metrics'].items():
-            # if name is 'score': continue
+        self.logger.info("\u25CF VALIDATE ON HOLDOUT")
+        # use best param from cv on train (automated in GridSearch if refit=True)
+        # self.via_scorers(self.scorers)
+        self.via_metrics(self.p['metrics'])
+
+    def via_scorers(self, scorers):
+        # via scorers
+        # upside: sklearn consistent
+        # downside:
+        #   requires multiple inference
+        #   non-score metric not possible (confusion_matrix)
+
+        for name, scorer in scorers.items():
+            self.logger.log(25, f"{name}:")
+            self.logger.log(5, f"{name}:")
             # result score on Train
-            score = metric[0](self.y_train, y_pred_train)
-            self.logger.critical('Train {}:\n    {}'.format(name, score))
-
+            score_train = scorer(self.estimator, self.x_train, self.y_train)
             # result score on test
-            score = metric[0](self.y_test, y_pred_test)
-            self.logger.critical('Test {}:\n    {}'.format(name, score))
-        self.logger.critical('+'*100)
+            score_test = scorer(self.estimator, self.x_test, self.y_test)
+            self.logger.log(25, f"Train:\n    {score_train}\n"
+                                f"Test:\n    {score_test}")
+            self.logger.log(5, f"Train:\n    {score_train}\n"
+                               f"Test:\n    {score_test}")
+        # non-score metrics
+        add_metrics = {name: self.p['metrics'][name] for name in self.p['metrics'] if name not in scorers}
+        self.via_metrics(add_metrics)
 
-        # [deprecated] via scorer
-        # # result score on Train
-        # score = self.score(self.estimator, self.x_train, self.y_train)
-        # self.logger.info('Train {}:\n    {}'.format('score', score))
+    def via_metrics(self, metrics):
+        # via metrics
+        #   upside: only one inference
+        #   donwside: errpr-prone
+        #   strange: xgboost lib contain auto detection y_type logic.
+        if hasattr(self.estimator, 'predict_proba'):
+            th_ = self.estimator.get_params().get('estimate__apply_threshold__threshold', 0.5)
+            y_pred_proba_train = self.estimator.predict_proba(self.x_train)
+            y_pred_train = self.prob_to_pred(y_pred_proba_train, th_)
+            y_pred_proba_test = self.estimator.predict_proba(self.x_test)
+            y_pred_test = self.prob_to_pred(y_pred_proba_test, th_)
+        else:
+            y_pred_proba_train = None
+            y_pred_proba_test = None
+            y_pred_train = self.estimator.predict(self.x_train)
+            y_pred_test = self.estimator.predict(self.x_test)
 
-        # # result score on test
-        # score = self.score(self.estimator, self.x_test, self.y_test)
-        # self.logger.info('Test {}:\n    {}'.format('score', score))
+        for name, metric in metrics.items():
+            if metric[1].get('needs_proba', False):
+                if not hasattr(self.estimator, 'predict_proba'):
+                    raise TypeError("Estimator object has no attribute 'predict_proba'")
+                y_pred_train_curr = y_pred_proba_train[:, self.pos_label_ind]
+                y_pred_test_curr = y_pred_proba_test[:, self.pos_label_ind]
+            elif metric[1].get('needs_threshold', False):
+                y_pred_train_curr = self.estimator.decision_function(self.x_train)
+                y_pred_test_curr = self.estimator.decision_function(self.x_test)
+            else:
+                y_pred_train_curr = y_pred_train
+                y_pred_test_curr = y_pred_test
+
+            self.logger.log(25, f"{name}:")
+            self.logger.log(5, f"{name}:")
+            # skip make_scorer params
+            kw_args = {key: metric[1][key] for key in metric[1]
+                       if key not in ['greater_is_better', 'needs_proba', 'needs_threshold']}
+            # result score on Train
+            score_train = metric[0](self.y_train, y_pred_train_curr, **kw_args)
+            # result score on test
+            score_test = metric[0](self.y_test, y_pred_test_curr, **kw_args)
+
+            # [deprecated] not so pretty
+            # if metric[0].__name__ == 'confusion_matrix':
+            #     labels = metric[1].get('labels', self.classes_)
+            #     score_train = pretty_confusion_matrix(score_train, labels=labels, prefix='    ')
+            #     score_test = pretty_confusion_matrix(score_test, labels=labels, prefix='    ')
+            if metric[0].__name__ == 'confusion_matrix':
+                labels = metric[1].get('labels', self.classes_)
+                score_train = tabulate.tabulate(pd.DataFrame(data=score_train,
+                                                             columns=labels,
+                                                             index=labels),
+                                                headers='keys', tablefmt='psql').replace('\n', '\n    ')
+                score_test = tabulate.tabulate(pd.DataFrame(data=score_test,
+                                                            columns=labels,
+                                                            index=labels),
+                                               headers='keys', tablefmt='psql').replace('\n', '\n    ')
+            elif metric[0].__name__ == 'classification_report':
+                if isinstance(score_train, dict):
+                    score_train = tabulate.tabulate(pd.DataFrame(score_train),
+                                                    headers='keys', tablefmt='psql').replace('\n', '\n    ')
+                    score_test = tabulate.tabulate(pd.DataFrame(score_test),
+                                                   headers='keys', tablefmt='psql').replace('\n', '\n    ')
+                else:
+                    score_train = score_train.replace('\n', '\n    ')
+                    score_test = score_test.replace('\n', '\n    ')
+            elif isinstance(score_train, np.ndarray):
+                # pretty printing numpy arrays
+                score_train = np.array2string(score_train, prefix='    ')
+                score_test = np.array2string(score_test, prefix='    ')
+            self.logger.log(25, f"Train:\n    {score_train}\n"
+                                f"Test:\n    {score_test}")
+            self.logger.log(5, f"Train:\n    {score_train}\n"
+                               f"Test:\n    {score_test}")
 
     # =============================================== dump ==========================================================
     def dump(self):
@@ -1416,6 +1339,7 @@ class Workflow(object):
                 est = load('filename.joblib')
 
         """
+        self.logger.info("\u25CF DUMP MODEL")
         # dump to disk in models dir
         dirpath = '{}/results/models'.format(self.project_path)
         if not os.path.exists(dirpath):
@@ -1424,9 +1348,9 @@ class Workflow(object):
         if not os.path.exists(file):
             # prevent double dumping
             joblib.dump(self.estimator, file)
-            self.logger.info('Save fitted model to file\n  {}\n'.format(file))
+            self.logger.log(25, 'Save fitted model to file:\n  {}'.format(file))
         else:
-            self.logger.warning('Model file already exists\n  {}\n'.format(file))
+            self.logger.warning('Warnning: skip dump: model file already exists\n    {}\n'.format(file))
 
         # alternative:
         # with open(file, 'wb') as f:
@@ -1441,8 +1365,9 @@ class Workflow(object):
             Better use only the same version of sklearn.
 
         """
+        self.logger.info("\u25CF LOAD MODEL")
         self.estimator = joblib.load(file)
-        self.logger.info('Load fitted model from file\n  {}\n'.format(file))
+        self.logger.info('Load fitted model from file:\n    {}'.format(file))
 
         # alternative
         # with open(f"{self.project_path}/sump.model", 'rb') as f:
@@ -1450,8 +1375,20 @@ class Workflow(object):
 
     # =============================================== predict ==========================================================
     # @memory_profiler
-    def predict(self, data, raw_targets_names, raw_index_names, estimator=None):
-        """Predict on new data."""
+    def predict(self, data, raw_names, estimator=None):
+        """Predict on new data.
+
+        Args:
+            data (pd.DataFrame): data ready for workflow unification.
+            raw_names (dict): {'index': 'index_names', 'targets': 'target_names', 'feature_names'}.
+            estimator (sklearn-like estimator, optional (default=None)): fitted estimator,
+                if None use from workflow object.
+
+        """
+        self.logger.info("\u25CF PREDICT ON TEST")
+
+        raw_index_names = raw_names['index']
+        raw_targets_names = raw_names['targets']
         if estimator is None:
             estimator = self.estimator
         data_df, _, _ = self.unifier(data)
@@ -1471,11 +1408,12 @@ class Workflow(object):
         with open(filepath, 'w', newline='') as f:
             y_pred_df.to_csv(f, mode='w', header=True, index=True, sep=',', line_terminator='\n')  # only LF
 
-        self.logger.info("Made prediction for new data:    \n{}".format(filepath))
+        self.logger.log(25, "Save predictions for new data to file:\n    {}".format(filepath))
 
-    # =============================================== GUI param ========================================================
+    # =============================================== gui param ========================================================
     def gen_gui_params(self):
         """Prepare params for visualization."""
+        self.logger.info("\u25CF PREPARE GUI PARAMS")
         # rearange nested hp params
         hp_grid_flat = {}
         for key, val in self.p['hp_grid'].items():
@@ -1565,6 +1503,201 @@ class Workflow(object):
             # else:
             #     val = np.array(val, order='C', dtype=np.double)
         return val
+
+    def custom_scorer(self, estimator, x, y_true, greater_is_better=True, needs_proba=False, needs_threshold=False):
+        """Custom scorer.
+
+        Args:
+            estimator: fitted estimator.
+            x (dataframe, np.ndarray): features test.
+            y_true (dataframe, np.ndarray): true targets test.
+
+        Returns:
+            score value
+
+        Note:
+            Alternative use built-in make_scorer
+                scorer = metrics.make_scorer(metrics.accuracy_score, greater_is_better=True)
+                score = scorer(estimator, x, y)
+
+        """
+        if isinstance(x, pd.DataFrame):
+            index = y_true.index
+            x = x.values
+            y_true = y_true.values
+
+        if needs_proba and needs_threshold:
+            raise ValueError("Set either needs_proba or needs_threshold to True,"
+                             " but not both.")
+
+        if needs_proba:
+            y_pred_proba = estimator.predict_proba(x)
+            score = self.metric(y_true, y_pred_proba[:, self.pos_label_ind], y_pred_type='proba')
+        elif needs_threshold:
+            y_pred_decision = estimator.decision_funcrion(x)
+            score = self.metric(y_true, y_pred_decision, y_pred_type='decision')
+        else:
+            y_pred = estimator.predict(x)
+            score = self.metric(y_true, y_pred, y_pred_type='targets')
+
+        if greater_is_better:
+            return score
+        else:
+            return -score
+
+    def metric(self, y_true, y_pred, y_pred_type='targets', meta=False):
+        """Evaluate custom metric.
+
+        Args:
+            y_true (np.ndarray): true targets.
+            y_pred (np.ndarray): predicted targets/pos_label probabilities/decision function.
+            meta (bool): if True calculate metadata for visualization.
+            y_pred_type: 'targets'/'proba'/'decision'
+
+        Returns:
+            score (float): metric score
+            meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
+
+        """
+        if self.p['estimator_type'] == 'classifier':
+            return self.metric_classifier(y_true, y_pred, y_pred_type, meta)
+        else:
+            return self.metric_regressor(y_true, y_pred, meta)
+
+    def metric_classifier(self, y_true, y_pred, y_pred_type, meta=False):
+        """Evaluate classification metric.
+
+        Detailed meta for external use cases.
+
+        Args:
+            y_true (np.ndarray): true targets.
+            y_pred (np.ndarray): predicted targets/pos_label probabilities/decision function.
+            meta (bool): if True calculate metadata for visualization, support only `targets` in y_pred.
+            y_pred_type: 'targets'/'proba'/'decision'
+
+        Returns:
+            score (float): metric score
+            meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
+
+        Note:
+            Be carefull with y_pred type, there is no check in sklearn.
+            meta support only `targets` in y_pred.
+
+        TODO:
+            add y_pred_type argument (sklearn not support)
+            need to pass threshold from estimator
+            add roc_curve on plot
+
+        """
+        # score
+        scorer_kwargs = self.p['metrics']['score'][1] if len(self.p['metrics']['score']) > 1 else {}
+        if scorer_kwargs.get('needs_proba') or scorer_kwargs.get('needs_threshold'):
+            # [deprecated] confusing
+            # self.logger.warning("Warning:  gui classification metric don`t suport predict_proba "
+            #                     "or decision_function based metrics\n    "
+            #                     "score set to None")
+            score = None  # sklearn.metrics.f1_score(y_true, y_pred, pos_label=self.p['pos_label'])
+        else:
+            score = self.p['metrics']['score'][0](y_true, y_pred)
+
+        if not meta:
+            return score
+
+        if y_pred_type is not 'targets':
+            raise ValueError("metric_classification meta don`t support non-target input for predictions")
+
+        precision_score = sklearn.metrics.precision_score(y_true, y_pred)
+        # metrics in dynamic
+        length = y_true.shape[0]
+        tp = 0
+        fp = 0
+        fn = 0
+        tp_fn = 0
+        precision_vector = np.zeros(length, dtype=np.float64)
+        tp_vector = np.zeros(length, dtype=np.bool)
+        fp_vector = np.zeros(length, dtype=np.bool)
+        fn_vector = np.zeros(length, dtype=np.bool)
+        for i in range(length):
+            if y_true[i] == 1 and y_pred[i] == 1:
+                tp += 1
+                tp_vector[i] = True
+            elif y_true[i] == 0 and y_pred[i] == 1:
+                fp += 1
+                fp_vector[i] = True
+            elif y_true[i] == 1 and y_pred[i] == 0:
+                fn += 1
+                fn_vector[i] = True
+            if y_true[i] == 1:
+                tp_fn += 1
+            precision_vector[i] = tp / (fp + tp) if tp + fp != 0 else 0
+
+        if precision_score != precision_vector[-1]:
+            assert False, 'MyError: score_check False'
+
+        meta = {'score': precision_vector, 'TP': tp_vector, 'FP': fp_vector, 'FN': fn_vector}
+
+        return score, meta
+
+    def metric_regressor(self, y_true, y_pred, meta=False):
+        """Evaluate regression metric.
+
+        Detailed meta for external use cases.
+
+        Args:
+            y_true (np.ndarray): true targets.
+            y_pred (np.ndarray): predicted targets. need for strategy=1 (auc-score)
+            meta (bool): if True calculate metadata for visualization
+
+        Returns:
+            score (float): metric score
+            meta (dict): cumulative score, mae,mse in dynamic; resid in points.
+
+        """
+        # check for Inf prediction (in case of overfitting), limit it
+        if np.isinf(y_pred).sum():
+            np.nan_to_num(y_pred, copy=False)
+
+        # score
+        score = self.p['metrics']['score'][0](y_true, y_pred)
+        if not meta:
+            return score
+
+        # end value
+        r2_score = sklearn.metrics.r2_score(y_true, y_pred)
+        mae_loss = sklearn.metrics.mean_absolute_error(y_true, y_pred)
+        mse_loss = sklearn.metrics.mean_squared_error(y_true, y_pred)
+
+        # metrics in dynamic
+        length = y_true.shape[0]
+        mae_vector = np.zeros(length, dtype=np.float64)
+        mse_vector = np.zeros(length, dtype=np.float64)
+        resid_vector = np.zeros(length, dtype=np.float64)
+        r2_vector = np.zeros(length, dtype=np.float64)
+        mae = 0
+        mse = 0
+        mean = 0
+        # tss, rss, r2 (don`t need initialization)
+        for n in range(length):
+            # cumul
+            mae = (mae*n + abs(y_true[n]-y_pred[n]))/(n+1)
+            mse = (mse*n + (y_true[n]-y_pred[n])**2)/(n+1)
+            mean = (mean*n + y_true[n])/(n+1)
+            rss = mse*(n+1)
+            tss = np.sum((y_true[:n+1]-mean)**2)   # tss + (y_true[n]-mean)**2
+            r2 = 1 - rss/tss if tss != 0 else 0
+            r2_vector[n] = r2
+            mae_vector[n] = mae
+            mse_vector[n] = mse
+            # in points
+            resid_vector[n] = y_pred[n]-y_true[n]
+
+        for score_, score_vector_ in [(r2_score, r2_vector), (mae_loss, mae_vector), (mse_loss, mse_vector)]:
+            if not cmath.isclose(score_, score_vector_[-1], rel_tol=1e-8, abs_tol=0):  # slight difference
+                assert False, 'MyError: score_check False'
+
+        meta = {'score': r2_vector, 'MAE': mae_vector, 'MSE': mse_vector, 'RES': resid_vector}
+
+        return score, meta
 
 
 if __name__ == 'main':

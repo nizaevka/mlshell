@@ -10,10 +10,11 @@ Regression
 ~~~~~~~~~~
 `"Allstate claims severity" dataset <https://www.kaggle.com/c/allstate-claims-severity>`_
 
-`example code regression <https://github.com/nizaevka/mlshell/tree/master/examples/regression>`_
+:github:`code example </examples/regression>`
 
-**For grid search try the ideas:**
-
+**Grid search**
+^^^^^^^^^^^^^^^
+try different ideas:
 * estimator: linear vs lightgbm vs xgboost.
 * features 'yeo-johnson' transformation.
 * features quantile scaler.
@@ -24,126 +25,45 @@ Regression
 
 If time is limited:
 
-    * use subset of data (set `rows_limit`, set `random_skip` to randomize subset)
+    * use subset of data (`rows_limit` and `random_skip` implemented in classes.GetData example)
     * use greedy approach:
 
-        * find approximately reasonable estimator` hps
-        * try ideas
-        * for the best refine estimator hps
+        * find approximately reasonable estimator` hps.
+        * try ideas.
+        * for the best refine estimator hps.
 
-**conf.py example:**
+**Example conf.py**
+^^^^^^^^^^^^^^^^^^^
 
-* use target_transformer instead of default.
-* GS add_polynomial__degree and transform_normal__skip.
+* use ``target_transformer`` instead of default.
+* GS ``add_polynomial__degree`` and ``transform_normal__skip``.
 * 10000 rows subset of data.
 
-.. code-block:: python
+.. https://docutils.sourceforge.io/docs/ref/rst/directives.html#including-an-external-document-fragment
+.. literalinclude:: /../../examples/regression/conf.py
+   :language: python
+   :linenos:
 
-    import numpy as np
-    import sklearn
-    import lightgbm
-    import xgboost
+.. .. code-block:: python
 
+**Results**
+^^^^^^^^^^^
 
-    # choose estimator
-    main_estimator = [
-        # sklearn.linear_model.SGDRegressor(penalty= 'elasticnet',
-        #                                   l1_ratio=0.01,
-        #                                   alpha=0.01,
-        #                                   shuffle=False,
-        #                                   max_iter=1000,
-        #                                   early_stopping=True,
-        #                                   learning_rate='invscaling',
-        #                                   power_t=0.25,
-        #                                   eta0=0.01,
-        #                                   verbose=1),
-        # ensemble.RandomForestRegressor(n_estimators=300, max_depth=10, max_features=0.1, criterion='mae'),
-        lightgbm.LGBMRegressor(objective='fair',
-                               num_leaves=2,
-                               min_data_in_leaf=1,
-                               n_estimators=250,
-                               max_depth=-1,
-                               silent=False)
-        # xgboost.XGBRegressor(objective="reg:squarederror", **{
-        #     'min_child_weight': 1,
-        #     'eta': 0.01,
-        #     'n_estimators': 500,
-        #     'colsample_bytree': 0.5,
-        #     'max_depth': 12,
-        #     'subsample': 0.8,
-        #     'alpha': 1,
-        #     'gamma': 1,
-        #     'silent': 1,
-        #     'verbose_eval': True,
-        #     'seed': 42,
-        #     })
-        ][0]
+**``info`` logs**
 
+.. include:: ./_static/text/regressor_run_info.log
+   :literal:
 
-    # define hyperparameters (hp) to cv
-    def target_func(y):
-        return y**0.25
+**``minimal`` logs**
 
+.. include:: ./_static/text/regressor_run_minimal.log
+   :literal:
 
-    def target_inverse_func(y):
-        return y**4
+**gui**
 
+base_plot is sorted target
 
-    # create target transformers (don`t use lambda function)
-    target_transformer = sklearn.preprocessing.FunctionTransformer(func=target_func, inverse_func=target_inverse_func, validate=False, check_inverse=True)
-    target_transformer_2 = sklearn.preprocessing.FunctionTransformer(func=np.log, inverse_func=np.exp, validate=False, check_inverse=True)
-
-
-    # set ranges for hp
-    hp_grid = {
-        # 'process_parallel__pipeline_numeric__impute__gaps__strategy': ['median', 'constant'],
-        'process_parallel__pipeline_numeric__transform_normal__skip': [True, False],
-        # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(0, 100), (1, 99)],
-        'process_parallel__pipeline_numeric__add_polynomial__degree': [2, 3],
-        'estimate__transformer': [target_transformer],
-
-        # # lgbm
-        # 'estimate__regressor__n_estimators': np.linspace(50, 1000, 10, dtype=int),
-        # 'estimate__regressor__num_leaves': [2**i for i in range(1, 6 + 1)],
-        # 'estimate__regressor__min_data_in_leaf': np.linspace(10, 100, 10, dtype=int),
-        # 'estimate__regressor__max_depth': np.linspace(1, 30, 10, dtype=int),
-    }
-
-
-    # set workflow params
-    params = {
-        'estimator_type': 'regressor',
-        'main_estimator': main_estimator,
-        'cv_splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
-        'metrics': {
-            'score': (sklearn.metrics.mean_absolute_error, False),
-            'r2': (sklearn.metrics.r2_score, True),
-            'mse': (sklearn.metrics.mean_squared_error, False),
-        },
-        'split_train_size': 0.7,
-        'hp_grid': hp_grid,
-        'gs_flag': True,
-        'del_duplicates': False,
-        'debug_pipeline': False,
-        'isneed_cache': False,
-        'cache_update': False,
-        'gs_verbose': 1000,
-        'n_jobs': 1,
-        'isneeddump': False,
-        'runs': None,
-        'plot_analysis': False,
-
-        'train_file': 'data/train.csv',
-        'test_file': 'data/test.csv',
-        'rows_limit': 10000,
-        'random_skip': False,
-    }
-
-
-
-**Results:**
-
-.. image:: ./_static/images/result_regression.jpg
+.. image:: ./_static/images/gui_regression.png
   :width: 1000
   :alt: error
 
@@ -151,4 +71,82 @@ Classification
 ~~~~~~~~~~~~~~
 `"IEEE fraud detection" dataset <https://www.kaggle.com/c/ieee-fraud-detection>`_
 
-`example code classifiction <https://github.com/nizaevka/mlshell/tree/master/examples/classification>`_
+:github:`code example </examples/classification>`
+
+**Grid search**
+^^^^^^^^^^^^^^^
+
+  * estimators.
+  * splitters.
+  * hps.
+
+If time is limited:
+
+    * use subset of data (`rows_limit` and `random_skip` implemented in classes.GetData examples)
+    * use greedy approach:
+
+        * find approximately reasonable estimator` hps.
+        * try ideas.
+        * for the best refine estimator hps.
+
+**Example conf.py**
+^^^^^^^^^^^^^^^^^^^
+
+* GS ``estimate__classifier__num_leaves``.
+* 10000 rows subset of data.
+
+.. literalinclude:: /../../examples/classification/conf.py
+   :language: python
+   :linenos:
+
+
+.. .. code-block:: python
+
+
+**Results**
+^^^^^^^^^^^
+
+**``info`` logs**
+
+.. include:: ./_static/text/classifier_th_0_run_info.log
+   :literal:
+
+For demonstrative purpose, set ``th_strategy`` to ``1``/``3``,
+so additional grid search CV for threshold applied:
+
+.. include:: ./_static/text/classifier_th_1_run_info.log
+   :literal:
+   :start-line: 120
+
+As you can see,
+
+- main ``score`` value (roc-auc) not depends on threshold values as expected (evaluates on predict_proba).
+- precision/custom precision depends on threshold.
+
+If positive class ``th_`` close to 1, all samples classified as negative class (TP=0 and FP=0),
+so precision become ill-defined, score set to 0 as specified in 'zero_division' argument in ``metrics``.
+
+- gs ignore other metrics and select best run where main is maximum  (first  occurrence in that case).
+
+Threshold gridsearch is reasonable only for threshold-dependent metrics.
+
+- ``th_`` range came from roc_curve on OOF prediction.
+
+You can set number of poins ``th_points_number`` and trig plot roc_curve with ``th_plot_flag`` in conf.py.
+
+.. image:: ./_static/images/th_.png
+  :width: 1000
+  :alt: error
+
+see `Concepts: Classification threshold <Concepts.html#classification-threshold>`_ for details.
+
+**gui**
+
+base_plot is diagonal line
+
+.. image:: ./_static/images/gui_classification.png
+  :width: 1000
+  :alt: error
+
+see `Concepts: Results <Concepts.html#gui>`_ for details.
+

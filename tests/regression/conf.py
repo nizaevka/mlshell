@@ -9,6 +9,7 @@ Attributes:
 from mlshell.libs import np, sklearn
 import lightgbm
 import xgboost
+import scipy
 
 
 # 'regressor'
@@ -34,6 +35,7 @@ hp_grid = {
     # # lgbm
     # 'estimate__regressor__n_estimators': np.linspace(50, 500, 2, dtype=int),
     # 'estimate__regressor__num_leaves':[2**i for i in range(1, 2 + 1)],
+    # 'estimate__regressor__min_data_in_leaf': scipy.stats.randint(1, 3),
     # 'estimate__regressor__min_data_in_leaf':np.linspace(10, 100, 2, dtype=int),
     # 'estimate__regressor__max_depth':np.linspace(1, 5, 5, dtype=int),
     # 'estimate__regressor__objective': ['regression', 'regression_l1', 'fair'],
@@ -45,21 +47,22 @@ params = {
     'main_estimator': main_estimator,
     'cv_splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
     'metrics': {
-        'score': (sklearn.metrics.mean_absolute_error, False),
-        'r2': (sklearn.metrics.r2_score, True),
+        'score': (sklearn.metrics.mean_absolute_error, {'greater_is_better': False}),
+        'r2': (sklearn.metrics.r2_score, {'greater_is_better': True}),
     },
     'split_train_size': 0.7,
     'hp_grid': hp_grid,
     'gs_flag': True,
     'del_duplicates': False,
     'debug_pipeline': False,
-    'isneed_cache': False,
-    'cache_update': False,
+    'use_pipeline_cache': False,
+    'update_pipeline_cache': False,
+    'use_unifier_cache': False,
+    'update_unifier_cache': False,
     'gs_verbose': 1000,
     'n_jobs': 1,
-    'isneeddump': False,
+    'model_dump': False,
     'runs': None,
-    'plot_analysis': False,
 
     'get_data': {
         'train': {

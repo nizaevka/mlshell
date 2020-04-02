@@ -12,11 +12,18 @@ PyPi
 ~~~~
 |PyPI|
 
-command to install package:
+command to install package latest version:
 
 .. code-block:: none
 
     pip install -U mlshell
+
+command to install version with additional dev dependencies:
+
+.. code-block:: none
+
+    pip install -U mlshell[dev]
+
 
 Docker hub
 ~~~~~~~~~~
