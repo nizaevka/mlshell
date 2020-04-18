@@ -32,7 +32,6 @@ import jsbeautifier
 import seaborn as sns
 import tabulate
 from IPython import get_ipython
-# devs
 import line_profiler
 from memory_profiler import profile as memory_profiler
 
@@ -90,7 +89,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 pd.options.mode.use_inf_as_na = True
 np.seterr(all='call')
 # need both, without np CV no reproducible
-# but would be problem with scipy rvs (numpy one)
+# lgbm model random_state ignored
 rd.seed(42)
 np.random.seed(42)
 
@@ -121,5 +120,5 @@ def check_hash(function_to_decorate):
     return wrapper
 
 
-if __name__ == 'main':
+if __name__ == '__main__':
     pass

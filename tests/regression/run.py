@@ -1,4 +1,4 @@
-﻿"""Example module for ml workflow"""
+﻿"""Start script example for ml workflow."""
 
 import mlshell
 if 'GetData' not in globals() or 'DataPreprocessor' not in globals():
@@ -14,8 +14,8 @@ logger = mlshell.logger.CreateLogger(project_path, script_name).logger
 params = mlshell.GetParams(logger=logger).get_params(project_path)
 
 # get data from db (user-defined)
-train_raw = GetData(logger=logger).get_data(*params['get_data']['train']['args'],
-                                            **params['get_data']['train']['kw_args'])
+train_raw = GetData(logger=logger).get_data(*params['data__train__args'],
+                                            **params['data__train__kw_args'])
 # preprocess data for Workflow (user-defined)
 train, train_raw_columns, train_base_plot = DataPreprocessor(logger=logger).preprocess_data(train_raw)
 
@@ -31,7 +31,7 @@ wf.create_pipeline()  # self.estimator
 wf.split()  # self.x_train, self.y_train, self.x_test, self.y_test
 
 # fit pipeline on train/tune hp if gs_flag=True
-wf.fit(gs_flag=params['gs_flag'])
+wf.fit(gs_flag=params['gs__flag'])
 
 # validate predictions
 wf.validate()
@@ -43,8 +43,8 @@ file = wf.dump()
 wf.load(file)
 
 # read and preprocess test data
-test_raw = GetData(logger).get_data(*params['get_data']['test']['args'],
-                                    **params['get_data']['test']['kw_args'])
+test_raw = GetData(logger).get_data(*params['data__test__args'],
+                                    **params['data__test__kw_args'])
 test, test_raw_columns, test_base_plot = DataPreprocessor(logger=logger).preprocess_data(test_raw)
 
 # make predictions on test data (auto unified)

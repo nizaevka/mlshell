@@ -9,9 +9,12 @@ from .read_conf import GetParams
 from .general import Workflow
 from .default import CreateDefaultPipeline, DEFAULT_PARAMS
 from .gui import GUI
+from .eda import EDA
+from .run import run
 
 
-__all__ = ['find_path', 'CreateLogger', 'GetParams', 'Workflow', 'CreateDefaultPipeline', 'DEFAULT_PARAMS', 'GUI']
+__all__ = ['run', 'find_path', 'CreateLogger', 'GetParams',
+           'Workflow', 'CreateDefaultPipeline', 'DEFAULT_PARAMS', 'GUI', 'EDA']
 
 # import platform
 # import warnings

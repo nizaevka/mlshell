@@ -1,17 +1,9 @@
-"""The module with GUI class description
+"""The module with GUI class description.
 
-mpl3d
-TODO:
-    self.metric user-defined dynamic for unknown cases. (4 parameter in metrics)
-TODO:
-    run button, set slider and push run to calculate
-TODO:
-    set original index as x_ticks
-TODO:
-    fast up https://stackoverflow.com/questions/40126176/fast-live-plotting-in-matplotlib-pyplotpip
 Note:
     radio 1 template is hidden in fig_element_prepare.
     text_box template is hidden in initdraw.
+
 """
 
 
@@ -200,12 +192,12 @@ class GUI(Draw):
             raise ValueError("Base plot should be pd.DataFrame with one column or pd.Series, not {}".format(type(base_plot)))
 
     def user_params(self, params):
-        self.estimator_type = params['estimator_type']
+        self.estimator_type = params['pipeline__type']
         self.data = params['data']
         self.train_index = params['train_index'].tolist()  # без tolist error почему-то в loc
         self.test_index = params['test_index'].tolist()
         self.estimator = params['estimator']
-        self.hp_grid = params['hp_grid']  # self.hp_grid = {'hp1_name':range_hp1, 'hp2_name':range_hp2, }
+        self.hp_grid = params['gs__hp_grid']  # self.hp_grid = {'hp1_name':range_hp1, 'hp2_name':range_hp2, }
         self.best_params_ = params['best_params_']  # from gs  по ключу должно быть число
         self.hp_grid_flat = params['hp_grid_flat']  # self.hp_grid = {'hp1_name':range_hp1, 'hp2_name':range_hp2, }
         self.best_params_flat = params['best_params_flat']  # from gs  по ключу должно быть число
@@ -327,7 +319,8 @@ class GUI(Draw):
     def sliders_data(self):
         """ Prepare hp_grid to use in slider"""
         self.sliders_params = []
-        self.logger.info('Sliders map index-value:')
+        if self.hp_grid:
+            self.logger.info('Sliders map index-value:')
         for i, key in enumerate(self.hp_grid_flat.keys()):
             values = self.hp_grid_flat[key]
             l_ = values.shape[0]
@@ -343,7 +336,7 @@ class GUI(Draw):
                                         'index': np.arange(l_),  # self.pi_index
                                         'length': l_,
                                         })
-            self.logger.info('{}'.format(tabulate.tabulate(pd.DataFrame(columns=[key], data=values_sorted),
+            self.logger.info('{}'.format(tabulate.tabulate(pd.DataFrame(columns=[self.short_name(key)], data=values_sorted),
                                                            headers='keys', tablefmt='psql')))
             # self.logger.info('param_{} amount of values={}'.format(key, l_))
 
@@ -400,7 +393,8 @@ class GUI(Draw):
         for i, val_ in enumerate(self.sliders_params):
             key = val_['orig_name']
             val = val_['sort_values'][val_['current_index']]
-            if isinstance(key, tuple):  # functiontransformer
+            if isinstance(key, tuple):
+                # functiontransformer kw_args compliance
                 if key[0] not in sliders_hp_params:
                     sliders_hp_params[key[0]] = {}
                 sliders_hp_params[key[0]][key[1]] = val
@@ -475,7 +469,7 @@ class GUI(Draw):
         # hide radio0
         radio0 = ([0, 0, 0, 0], list0)  # x,y,dx,dy
         # radio0 = ([0.025, 0., 0.15, 0.27], list0)  # x,y,dx,dy
-        radio1 = ([0.175, 0., 0.1, 0.075], list1)
+        radio1 = ([0.175, 0.01, 0.1, 0.075], list1)
         # slider
         sliders = []
         y1 = iter(range(10, 30, 20 // len(self.sliders_params))) if len(self.sliders_params) != 0 else None
@@ -629,7 +623,8 @@ class GUI(Draw):
         # update axes
         for ax in self.fig.axes:
             # recompute the ax.dataLim
-            # TODO: for collections https://github.com/matplotlib/matplotlib/issues/7413 https://stackoverflow.com/questions/51323505/how-to-make-relim-and-autoscale-in-a-scatter-plot
+            # TODO: for collections
+            # https://github.com/matplotlib/matplotlib/issues/7413 https://stackoverflow.com/questions/51323505/how-to-make-relim-and-autoscale-in-a-scatter-plot
             ax.relim()
             # update ax.viewLim using the new dataLim
             ax.autoscale_view()
@@ -638,6 +633,9 @@ class GUI(Draw):
         self.fig.canvas.draw_idle()
 
     def short_name(self, long):
+        if isinstance(long, tuple):
+            # functiontransformer kw_args compliance
+            long = '__'.join(long)
         lis = long.split('__')
         if len(lis) > 2:
             short = '__'.join(lis[-2:])
@@ -663,5 +661,5 @@ class GUI(Draw):
         return text
 
 
-if __name__ == 'main':
+if __name__ == '__main__':
     pass

@@ -14,7 +14,7 @@ from abc import ABC
 from mlshell.libs import *
 
 
-class preprocessing_SkippablePowerTransformer(sklearn.preprocessing.PowerTransformer):
+class SkippablePowerTransformer(sklearn.preprocessing.PowerTransformer):
     """Skippable version of PowerTransformer."""
 
     def __init__(self, method='yeo-johnson', standardize=True, copy=True, skip=False):
@@ -40,7 +40,7 @@ class preprocessing_SkippablePowerTransformer(sklearn.preprocessing.PowerTransfo
             return super().transform(x)
 
 
-class preprocessing_OneHotEncoder(sklearn.preprocessing.OneHotEncoder):
+class SkippableOneHotEncoder(sklearn.preprocessing.OneHotEncoder):
     """Skippable version of OneHotEncoder."""
 
     def __init__(self, categories=None, drop=None, sparse=True, dtype=np.float64,
@@ -49,7 +49,7 @@ class preprocessing_OneHotEncoder(sklearn.preprocessing.OneHotEncoder):
         self.skip = skip
         super().__init__(categories=categories, drop=drop, sparse=sparse, dtype=dtype,
                          handle_unknown=handle_unknown)
-        # [deprecated] forbided example wwith kwargs
+        # [deprecated] forbade example with kwargs
         # def __init__(self, **kwarg):
         #     params = dict(categories=None, drop=None, sparse=True, dtype=np.float64,
         #              handle_unknown='error', skip=False)
@@ -83,7 +83,7 @@ class preprocessing_OneHotEncoder(sklearn.preprocessing.OneHotEncoder):
             self.skip = True
 
 
-class decomposition_CustomReducer(sklearn.base.BaseEstimator):
+class CustomReducer(sklearn.base.BaseEstimator):
     """Class custom dimension reducer """
 
     def __init__(self, skip=False):
@@ -130,7 +130,7 @@ class decomposition_CustomReducer(sklearn.base.BaseEstimator):
             self.fit(x, y).transform(x)
 
 
-class impute_CustomImputer(object):
+class CustomImputer(object):
     """Class custom imputer."""
 
     def __init__(self, *args, **kwargs):
@@ -146,7 +146,7 @@ class impute_CustomImputer(object):
         # надо кастомный класс, в зависимости от типа алгоритма своё ставить
 
 
-class model_selection_CustomCV(sklearn.model_selection.BaseCrossValidator, ABC):
+class CustomCV(sklearn.model_selection.BaseCrossValidator, ABC):
     """Custom CV
 
     Attributes:
@@ -206,84 +206,9 @@ class CustomSelectorEstimator(sklearn.base.BaseEstimator):
         if self.skip:
             self.feature_importances_ = np.full(x.shape[1], fill_value=1)
             return self
-        # TODO:
-        #   score all features between [0, 1]
-        #   0 - delete, 1-remain, other-on threshold
-        #   !! can be multiple target
-        #   prepare
-        #   * collinearity
-        #   * log target
-        #   * homo
-        #   * correct HC1
-        #   ols
-        #   check Fisher criteria => delete non-informative features,
-        #   univariate
-        #   sparse model
-        #   end-estimator will have regularization => sparse not necessary
-
-        # self.univariate_test(x, y)
-        # self.recursive_elimination(x, y)
-        # self.sparse_selector(x, y)
-        # self.feature_importances_ = np.full(x.shape[1], fill_value=1)
+        # TODO: some logic
+        self.feature_importances_ = np.full(x.shape[1], fill_value=1)
         return self
-
-    # def univariate_test(self, x, y):
-    #     # TODO: need non-collin, homo
-    #     # statsmodels
-    #     # sklearn analog
-    #     if self.estimator_type == 'regressor':
-    #         score_funcs = ['f_regression', 'mutual_info_regression']
-    #     elif self.estimator_type == 'classificator':
-    #         score_funcs = ['chi2', 'f_classif', 'mutual_info_classif']
-    #     else:
-    #         raise MyException('MyError: unknown estimator type')
-    #     for score_func in score_funcs:
-    #         if 'mutual' in score_func:
-    #             modes = ['percentile', 'k_best']
-    #         else:
-    #             modes = ['percentile', 'k_best', 'fpr', 'fdr', 'fwe']
-    #         for mode in modes:
-    #             # param default
-    #             temp = sklearn.feature_selection.GenericUnivariateSelect(score_func=score_func, mode=mode).fit(x, y)
-    #             self.logger.info('Univariate analysis: mode:{} score_func:{}:\n'
-    #                              'scores:\n'
-    #                              '{}\n'
-    #                              'pvalues:\n'
-    #                              'p-values\n'
-    #                              '{}\n'
-    #                              '{}'.format(mode, score_func, temp.scores_, temp.pvalues_, self.delimeter))
-
-    # def recursive_elimination(self, x, y):
-    #     # recursive CV elimination analysis
-    #     if self.estimator_type == 'regressor':
-    #         simple_estimator = sklearn.linear_model.LinearRegression()
-    #     elif self.estimator_type == 'classificator':
-    #         simple_estimator = sklearn.linear_model.LogisticRegression()  # sklearn.svm.SVC(kernel="linear")
-    #     else:
-    #         raise MyException('MyError: unknown estimator type')
-
-    #     rfecv = feature_selection.RFECV(estimator=simple_estimator, step=1, cv=self.cv, scoring=self.score)
-    #     rfecv.fit(x, y)
-    #     self.logger.info("Recursive CV elimination: remain features={}"
-    #                      " ranking=\n"
-    #                      "{}"
-    #                      "mask=\n"
-    #                      "{}"
-    #                      "grid_scores_=\n"
-    #                      "{}".format(rfecv.n_features_, rfecv.ranking_, rfecv.suppor_, rfecv.grid_scores_))
-
-    # def sparse_selector(self, x, y):
-    #     # SelectFromModel
-
-    #     if self.estimator_type == 'regressor':
-    #         sparse_estimator = linear_model.LassoCV(cv=self.cv, random_state=42)
-    #     elif self.estimator_type == 'classificator':
-    #         sparse_estimator = linear_model.LogisticRegressionCV(cv=self.cv, random_state=42)
-    #     else:
-    #         raise MyException('MyError: unknown estimator type')
-
-    #     sparse_estimator = sparse_estimator.fit(x, y)
-    #     selector_sparse = feature_selection.SelectFromModel(sparse_estimator, prefit=True)
 
 
 class PredictionTransformer(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin, sklearn.base.MetaEstimatorMixin):
@@ -304,17 +229,16 @@ class PredictionTransformer(sklearn.base.BaseEstimator, sklearn.base.Transformer
 class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMixin):
     """Classify samples based on whether they are above of below `threshold`
 
-    work only with binary
-    pos_label=1
+    Note:
+        binary classes only.
 
     """
-
     def __init__(self, classes_, pos_label_ind, pos_label, neg_label, threshold=0.5):
         self.classes_ = classes_
         self.pos_label_ind = pos_label_ind
         self.pos_label = pos_label
-        self.threshold = threshold
         self.neg_label = neg_label
+        self.threshold = threshold
 
     def fit(self, x, y, **fit_params):
         return self
@@ -325,7 +249,7 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
         # return self.classes_.take(np.argmax(x, axis=1), axis=0)
         if x.shape[1] != self.classes_.shape[0]:
             raise MyException('MyError: not all class labels in train folds')
-        return np.where(x[:, self.pos_label_ind] > self.threshold, [self.pos_label], [self.neg_label])  # *self.classes_
+        return np.where(x[:, self.pos_label_ind] > self.threshold, [self.pos_label], [self.neg_label])
 
     def predict_proba(self, x):
         return x
@@ -377,21 +301,5 @@ class SMWrapper(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
         return self.results_.predict(x)
 
 
-if __name__ == 'main':
-
-    # test threshold tunning, dynamic pass user params in score in GS
-    def set_scorer_param(self, *arg, **kwarg):
-        # self.logger.info(kwarg)
-        for k, v in kwarg.items():
-            setattr(self, k, v)
-        return arg[0]  # pass x futher
-
-
-    pipe = sklearn.model_selection.make_pipeline(
-        sklearn.preprocessing.FunctionTransformer(set_scorer_param, validate=False),
-        PredictionTransformer(sklearn.ensemble.RandomForestClassifier()),
-        ThresholdClassifier(2, -1, 1, 1))
-
-    pipe_param_grid = {'predictiontransformer__clf__max_depth': [1, 2, 5, 10, 20, 30, 40, 50],
-                       'predictiontransformer__clf__max_features': [8, 16, 32, 64, 80, 100],
-                       'thresholdclassifier__threshold': np.linspace(0., 1., num=100)}
+if __name__ == '__main__':
+    pass

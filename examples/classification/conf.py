@@ -14,7 +14,7 @@ import scipy
 
 
 # choose estimator
-main_estimator = [
+estimator = [
     # sklearn.linear_model.SGDClassifier(loss='hinge',
     #                                    penalty='elasticnet',
     #                                    l1_ratio=0.01,
@@ -52,14 +52,16 @@ main_estimator = [
                             reg_lambda=0.3,
                             colsample_bytree=0.9,
                             silent=True,
+                            n_jobs=-1,
                             )
 
 ][0]
 
 
-# define hyperparameters (hp) to cv
-# set ranges for hp
+# define hyperparameters (hps) to cv
+# set ranges for hps
 hp_grid = {
+    # 'pass_custom__kw_args': [{'param_a': 1, 'param_b': 'c'}, {'param_a': 2, 'param_b': 'd'}, ],
     # 'process_parallel__pipeline_numeric__impute__gaps__strategy': ['median', 'constant'],
     # 'process_parallel__pipeline_numeric__transform_normal__skip': [True],
     # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(0, 100), (1, 99)],
@@ -71,54 +73,51 @@ hp_grid = {
     # 'estimate__classifier__min_child_samples': scipy.stats.randint(1, 100),
     # 'estimate__classifier__max_depth': np.linspace(1, 30, 10, dtype=int),
 
-    # 'estimate__apply_threshold__threshold': [0.5]
+    # 'estimate__apply_threshold__threshold': [0.1, 0.2]
 }
 
 
 # classifier custom metric example
-def custom_score_metric(y_true, y_pred):
+def custom_score_metric(y_true, y_pred, **kw_args):
     """Custom precision metric."""
-    # sklearn.metrics.confusion_matrix(y_true, y_pred)
+    if kw_args:
+        # `pass_custom_kw_args` are passed here.
+        # some logic.
+        pass
     tp = np.count_nonzero((y_true == 1) & (y_pred == 1))
     fp = np.count_nonzero((y_true == 0) & (y_pred == 1))
-    # tp_fn = np.count_nonzero(y_true == 1)
     score = tp/(fp+tp) if tp+fp != 0 else 0
     return score
 
 
 # set workflow params
 params = {
-    'estimator_type': 'classifier',
-    'main_estimator': main_estimator,
+    'pipeline': {
+        'estimator': estimator,
+        'type': 'classifier',
+        'fit_params': {},
+        'steps': None,
+        'debug': False,
+    },
     'metrics': {
         'score': (sklearn.metrics.roc_auc_score, {'greater_is_better': True, 'needs_proba': True}),
         'precision': (sklearn.metrics.precision_score, {'greater_is_better': True, 'zero_division': 0, 'pos_label': 1}),
-        'custom': (custom_score_metric, {'greater_is_better': True}),
-        'confusion matrix': (sklearn.metrics.confusion_matrix, {'labels': [1, 0]}, False),
-        'classification report': (sklearn.metrics.classification_report, {'output_dict': True, 'zero_division': 0}, False),
+        'custom': (custom_score_metric, {'greater_is_better': True, 'needs_custom_kw_args': True}),
+        'confusion matrix': (sklearn.metrics.confusion_matrix, {'labels': [1, 0]}),
+        'classification report': (sklearn.metrics.classification_report, {'output_dict': True, 'zero_division': 0}),
     },
-    'split_train_size': 0.7,
-    'cv_splitter': sklearn.model_selection.TimeSeriesSplit(n_splits=3),  # KFold(n_splits=3, shuffle=True),
-    'hp_grid': hp_grid,
-    'gs_flag': True,
-    'estimator_fit_params': {},
-    'del_duplicates': False,
-    'debug_pipeline': False,
-    'use_pipeline_cache': False,
-    'update_pipeline_cache': False,
-    'use_unifier_cache': False,
-    'update_unifier_cache': False,
-    'gs_verbose': 1000,
-    'n_jobs': 1,
-    'model_dump': False,
-    'runs': None,
-
-    'pos_label': 1,
-    'th_strategy': 0,
-    'th_points_number': 10,
-    'th_plot_flag': True,
-
-    'get_data': {
+    'gs': {
+        'flag': True,
+        'splitter': sklearn.model_selection.TimeSeriesSplit(n_splits=3),
+        'hp_grid': hp_grid,
+        'verbose': 1000,
+        'n_jobs': 1,
+        'runs': None,
+        'metrics': ['score', 'precision', 'custom'],
+    },
+    'data': {
+        'split_train_size': 0.7,
+        'del_duplicates': False,
         'train': {
             'args': ['data/train_transaction.csv',
                      'data/train_identity.csv'],
@@ -134,4 +133,15 @@ params = {
                         'index_col': 'TransactionID'},
         },
     },
+    'th': {
+        'pos_label': 1,
+        'strategy': 1,
+        'samples': 10,
+        'plot_flag': True,
+    },
+    'cache': {
+        'pipeline': False,
+        'unifier': False,
+    },
+    'seed': 42,
 }

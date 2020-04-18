@@ -10,11 +10,13 @@ Regression
 ~~~~~~~~~~
 `"Allstate claims severity" dataset <https://www.kaggle.com/c/allstate-claims-severity>`_
 
-:github:`code example </examples/regression>`
+:github:`github repo </examples/regression>`
 
 **Grid search**
 ^^^^^^^^^^^^^^^
+
 try different ideas:
+
 * estimator: linear vs lightgbm vs xgboost.
 * features 'yeo-johnson' transformation.
 * features quantile scaler.
@@ -71,10 +73,12 @@ Classification
 ~~~~~~~~~~~~~~
 `"IEEE fraud detection" dataset <https://www.kaggle.com/c/ieee-fraud-detection>`_
 
-:github:`code example </examples/classification>`
+:github:`github repo </examples/classification>`
 
 **Grid search**
 ^^^^^^^^^^^^^^^
+
+try different ideas:
 
   * estimators.
   * splitters.

@@ -9,20 +9,27 @@ Python Quick Start
 Data preparation
 ~~~~~~~~~~~~~~~~
 - Create workdir.
-- Create conf.py in wokdir with workflow configuration (for example see `Examples <Examples.html>`_).
-- Implement custom GetData to read the raw data from db (for example see  :github:`classes.py </examples/regression/classes.py>`).
-- Implement custom DataPreprocessor to transform readed data in consistence with Workflow class.
-
-    * for example see :github:`classes.py </examples/regression/classes.py>`.
-    * for Workflow data requirements see Note for `Workflow class <_pythonapi/mlshell.Workflow.html#mlshell.Workflow>`_.
+- Create conf.py in workdir with workflow configuration.
+- Implement custom GetData to read the raw data from db.
+- Implement custom DataPreprocessor to transform data in consistence with Workflow class.
 - Create a run script or a notebook to control workflow.
 
-Code example
-~~~~~~~~~~~~
+Code
+~~~~
+
+:github:`github repo </examples/simplest>`
+
+Simplest conf.py example:
+
+.. literalinclude:: /../../examples/simplest/conf.py
+   :language: python
+   :lineno-match:
+
+Control workflow example:
 
 .. literalinclude:: /../../examples/regression/run.py
    :language: python
-   :end-before: # read and preprocess new data
+   :end-before: # read and preprocess test data
    :lineno-match:
 
 to make prediction on new data:
@@ -40,7 +47,14 @@ to plot "score vs samples" gui on train data:
    :start-after: wf.predict
    :lineno-match:
 
-For detailed example please follow:
+Next
+~~~~
+
+For detailed examples please follow:
 
 - `regression <Examples.html#regression>`_
 - `classification <Examples.html#classification>`_
+
+
+| For Workflow data requirements see `Workflow class <_pythonapi/mlshell.Workflow.html#mlshell.Workflow>`_ Note.
+| For full list of conf.py params see `DEFAULT_PARAMS <Default-configuration.html#mlshell.default.DEFAULT_PARAMS>`_  description.

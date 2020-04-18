@@ -102,7 +102,7 @@ class DataPreprocessor(object):
         return features, raw_features_names
 
     def make_dataframe(self, index, targets, features, categor_names):
-        columns = [f'feature_categor_{i}__{raw_name}' if raw_name.startswith('cat')
+        columns = [f'feature_categor_{i}__{raw_name}' if raw_name in categor_names
                    else f'feature_{i}__{raw_name}'
                    for i, raw_name in enumerate(self.raw_features_names)]
         df = pd.DataFrame(

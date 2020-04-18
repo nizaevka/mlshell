@@ -1,7 +1,6 @@
 Concepts
 ========
 
-
 .. image:: ./_static/images/workflow.png
     :width: 1000
     :alt: error
@@ -24,7 +23,7 @@ Embedded universal pipeline for grid search:
 .. code-block:: none
 
     default_steps = [
-        ('pass_custom',      pass custom params to custom scorer in GS)
+        ('pass_custom',      pass custom params to custom scorer while grid search)
         ('select_rows',      delete rows (outliers/anomalies))
         ('process_parallel',
             ('pipeline_categoric',
@@ -52,12 +51,27 @@ Embedded universal pipeline for grid search:
     ]
 
 
-see `CreateDefaultPipeline source <_modules/mlshell/default.html#CreateDefaultPipeline>`_ for details.
+See `CreateDefaultPipeline <_modules/mlshell/default.html#CreateDefaultPipeline>`_ source for details.
 
 By default only OneHot encoder and imputer (gaps and indicators) are activated.
 Set corresponding parameters in conf.py hp_grid dictionary to overwrite default.
 
-If necessary engineer can redefine ``CreateDefaultPipeline`` class in conf.py by specify ``pipeline`` parameter.
+.. note::
+
+    | If necessary, you can redefine pipeline in conf.py by specifying ``pipeline__steps`` parameter.
+    | It can be either list of sklearn.pipeline.Pipeline steps or class like ``CreateDefaultPipeline``:
+    | Method .get_steps() will be called from Workflow class.
+    | Init method  ``.__init__(categoric_ind_name, numeric_ind_name, params)`` should take:
+
+        * | categoric_ind_name(dict): {column_index: ('feature_categor__name',['B','A','C']),}
+          |   keys: index of categorical columns in input dataframe.
+          |   values: tuple(column's name, raw categories' names).
+
+        * | numeric_ind_name (dict):  {column_index: ('feature__name',),}
+          |   keys: index of numerica column in input dataframe.
+          |   values: (column's name).
+
+        * params (dict): user-defined conf.py parameters, see `DEFAULT_PARAMS <./mlshell.html#mlshell.default.default_params>`__.
 
 Data requirements
 ^^^^^^^^^^^^^^^^^
@@ -69,25 +83,27 @@ Engineer have to write:
 
 .. note::
 
-    dataframe should have columns={'targets', 'feature_<name>', 'feature_categor_<name>'}
+    dataframe should have columns={``targets``, ``feature_<name>``, ``feature_categor_<name>``}
 
-        * 'feature_categor_<name>': any dtype.
+    * ``feature_categor_<name>``: any dtype.
 
         order is not important (include binary).
 
-        * 'feature_<name>': any numeric dtype (should support float(val): np.issubdtype(type(val), np.number))
+    * ``feature_<name>``: any numeric dtype (should support float(val): np.issubdtype(type(val), np.number))
 
         order is important.
 
-        * 'targets': any dtype.
+    * ``targets``: any dtype.
 
-        for classification ``targets`` should be binary, ordinalencoded.
-        | positive label should be > others in np.unique(``targets``) sort.
+        | for classification ``targets`` should be binary, ordinalencoded.
+        | positive label should be > others when np.unique(``targets``) sort.
+
+    Most often wrapper/preprocessor classes from `Examples <Examples.html>`_ with minimal changes will be sufficient.
 
 Data unification
 ^^^^^^^^^^^^^^^^
 
-Before use with pipeline input data should be unified with ``Workflow.unify_data()`` method.
+Before pass to pipeline input data need to unified with ``Workflow.unify_data()`` method.
 
 Internally:
 
@@ -99,55 +115,79 @@ Internally:
 Configuration file example
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Data scientist can set all workflow parameters through one configuration file.
+| Data scientist can set all workflow parameters through one configuration file ``conf.py``.
+| Typically ``conf.py`` should specify:
 
-``conf.py`` should specify at least:
-
-- main estimator.
-- cross-validation splitter and split ratio.
-- metrics to evaluate (metric with name 'score' will use to sort results in GS).
-- grid search parameters ``hp_grid``.
+- last step estimator and its type.
+- train-validation split ratio.
+- metrics to evaluate on validation data.
+- grid search parameters ``hp_grid`` and cross-validation splitter.
+- arguments passed to data wrapper.
 
 .. code-block:: python
 
     params = {
-        'estimator_type': 'classifier',
-        'main_estimator': main_estimator,
+        'pipeline': {
+            'estimator': estimator,
+            'type': 'regressor',
+        },
         'metrics': {
             'score': (sklearn.metrics.roc_auc_score, {'greater_is_better': True, 'needs_proba': True}),
-            'precision': (sklearn.metrics.precision_score, {'greater_is_better': True, 'zero_division': 0}),
-            'custom': (custom_score_metric, {'greater_is_better': True}),
-            'confusion matrix': (sklearn.metrics.confusion_matrix, {'labels': [1, 0]}, False),
-            'classification report': (sklearn.metrics.classification_report, {'output_dict': True, 'zero_division': 0}, False),
+            'custom': (custom_score_metric, {'greater_is_better': True, 'needs_custom_kw_args': True}),
+            'confusion matrix': (sklearn.metrics.confusion_matrix, {'labels': [1, 0]}),
         },
-        'split_train_size': 0.7,
-        'cv_splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
-        'hp_grid': hp_grid,
+        'gs': {
+            'flag': True,
+            'splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+            'hp_grid': hp_grid,
+            'metrics' ['score', 'custom']
+        },
+        'data': {
+            'split_train_size': 0.75,
+            'train': {
+                'args': ['data/train.csv'],
+                'kw_args': {},
+            },
+            'test': {
+                'args': ['data/test.csv'],
+                'kw_args': {},
+            },
+        },
+        # classification only
+        'th': {
+            'pos_label': 1,
+            'strategy': 1,
+            'samples': 10,
+            'plot_flag': True,
+        },
+        'seed': 42,
+    }
 
 see `default params <Default-configuration.html#mlshell.default.DEFAULT_PARAMS>`_ for full list.
+
+.. note::
+
+    Internally, params are converted to flat {'key__subkey':val}.
+
+    Ramdom state is controlled by 'seed' parameter (both random.seed() and np.random.seed()).
+
 
 Split
 ^^^^^
 
 - ``train`` data will be split on ``subtrain`` and ``validation`` datasets by sklearn.model_selection.train_test_split with ``split_train_size`` proportion.
-- ``subtrain`` will be passed to gs cross-validation with ``cv_splitter``.
+- ``subtrain`` will be used in gs cross-validation with ``splitter``.
 - ``validation`` will be used to evaluate metrics on best model from gs.
-- If ``split_train_size`` = 1, gs use whole dataset and ``validation``=``train`` for compatibility.
-
+- If ``split_train_size`` = 1, gs use whole dataset and ``validation`` = ``train`` for compatibility.
 
 Metrics
 ^^^^^^^
 
-Specify metrics in ``metrics`` dictionary.
-One with ``score`` key  will be used for best model selection in grid search.
-Metric dict value should contain tuple/list with at most three entity:
+| Specify metrics in ``metrics`` dictionary, which will be used for validation.
+| Metric dict value should contain tuple/list with at most two entity:
 
-    * 0 index: metric callback.
-    * 1 index: make_scorer or metric function kwargs.
-    * | 2 index: boolean flag, pass metric in grid search to evaluation.
-      | if True: create make_scorer from metric and pass in gs.
-      | else: evaluate metric only on holdout validation set (confusion matrix for example).
-
+    * 0 index: metric callback or str (sklearn built-in names)
+    * 1 index: make_scorer and metric function kwargs.
 
 Hyperparameters grid
 ^^^^^^^^^^^^^^^^^^^^
@@ -160,7 +200,7 @@ Hyperparameters grid
 
     hp_grid = {
         # custom scorer param
-        'pass_custom__kw_args': [{'param_a': 0, 'param_b': 0}, ],
+        'pass_custom__kw_args': [{'param_a': 1, 'param_b': 'c'}, {'param_a': 2, 'param_b': 'd'},],
         # transformers param
         'select_rows__kw_args': [{}],
         'process_parallel__pipeline_numeric__impute__gaps__strategy': ['constant'],
@@ -183,43 +223,70 @@ Hyperparameters grid
 
 .. note::
 
-    'estimate__transformer' applied only to regressors for target transformation, ignored if classifier.
+    Probaility distribution for ``hp_grid`` params are also possible, should have .rvs() sampling method.
 
-    'estimate__apply_threshold__threshold' applied only to classifier for threshold tuning (default = 0.5).
+    ``estimate__transformer`` is applied only to regressors for target transformation, ignored if classifier.
+    Should be the last in pipeline.
+
+    ``estimate__apply_threshold__threshold`` id applied only to classifier for threshold tuning (default = 0.5).
+    Inserted in the end of pipeline automatically.
+
+    ``pass_custom__kw_args`` is applied when need to pass custom parameters to custom scorer function while grid search.
+    So we can tune arbitrary hyperparameters.
+    If used, should be the first step in pipeline.
+    Specify specify {'needs_custom_kw_args': True} in ``metrics`` for custom metric`s , so custom params will be passed
+    in metric` kw_args while grid search.
+
+    .. code-block:: python
+
+        # classifier custom metric example
+        def custom_score_metric(y_true, y_pred, **kwargs):
+            """Custom precision metric."""
+            if kwargs:
+                # some logic.
+                # pass_custom_kw_args are passed here.
+                pass
+            tp = np.count_nonzero((y_true == 1) & (y_pred == 1))
+            fp = np.count_nonzero((y_true == 0) & (y_pred == 1))
+            score = tp/(fp+tp) if tp+fp != 0 else 0
+            return score
+
+.. .. warning::
+    Set ``seed`` None, if use sampling from distribution for any parameter.
 
 Grid Search
 ^^^^^^^^^^^
-* if ``gs_flag`` is True:
+* if ``gs__flag`` is True:
 
     | Will run gridsearch(GS) and fit estimator with the best parameters.
     | sklearn.model_selection.RandomizedSearchCV is used by default.
+
+
+    | Metric name in ``refit`` will be used for best model selection in grid search.
+    | This name should be one from global ``metrics`` key.
+    | ``gs`` has its own `metrics`` subkey, where you can specify metrics name appropriate for grid search.
+    | It can subset of global ``metrics`` or sklearn built-in metrics names.
+
 
 * else:
 
     | If any param specified in hp_grid with sequence:
     | pipeline will be fitted with the value on the zero position of parameter range, otherwise  default value.
 
+| Internally hps are optimized sklearn.model_selection.RandomizedSearchCV(
+|   pipeline, ``hp_grid`` scoring=scorers, **params['gs']).fit(x_subtrain, y_subtrain, ** ``pipeline__fit_params``)
+
 .. note::
 
-    | Internal hps optimization:
-    | optimizer = sklearn.model_selection.RandomizedSearchCV(
-    |   pipeline, ``hp_grid``, scoring=scorers, n_iter= ``n_iter``,
-    |   n_jobs= ``n_jobs``, pre_dispatch=pre_dispatch,
-    |   refit='score', cv= ``cv_splitter``, verbose= ``gs_verbose``, error_score=np.nan,
-    |   return_train_score=True).fit(x_subtrain, y_subtrain, ** ``estimator_fit_params``)
+    Scorers are generally made from ``gs__metrics`` (see `below <Concepts.html#classification-threshold>`_ for special cases).
 
-    Scorers generally are made from ``metrics`` (see `Classification threshold` below for special cases).
-
-    | If ``runs`` is None, there will be as much runs as hps combinations defined in hp_grid.
-    | If any of the params specified in hp_grid with distribution: ``runs`` should be specified.
+    | If ``gs__n_iter`` is None, there will be as much runs as hps combinations defined in hp_grid.
+    | If any of the params specified in ``hp_grid`` with distribution: ``gs__n_iter`` should be specified as int.
 
     | The ``n_jobs`` control number of parallel CV, and dataset is copied in RAM pre_dispatch times.
-    | pre_dispatch = max(2, ``n_jobs``) if ``n_jobs`` else 1 (spawn jobs in advance for faster queueing)
+    | pre_dispatch = max(1, ``n_jobs``) if ``n_jobs`` else 1 (spawn jobs in advance for faster queueing)
     | If ``n_jobs`` = -1, dataset is copied in RAM hp-combinations times (ignores pre_dispatch limit).
 
-.. warning::
-
-    Disable np.random.seed() if use sampling from distribution for any parameter.
 
 Classification threshold
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -227,6 +294,19 @@ Classification threshold
 For classification task it is possible to tune classification threshold ``th_`` on CV.
 If positive class probability P(positive label) = 1 - P(negative label) > ``th_`` for some sample,
 classifier set pos_label for this sample, otherwise negative_label.
+
+Built-in last step configuration for classifiers:
+
+.. code-block:: python
+
+    import mlshell
+
+    pipe = sklearn.pipeline.Pipeline([
+        ('estimate', sklearn.pipeline.Pipeline([
+            ('classifier', mlshell.custom.PredictionTransformer(estimator)),
+            ('apply_threshold', mlshell.custom.ThresholdClassifier(n_classes, pos_label_ind, pos_label, neg_label, threshold=0.5)),
+        ]))
+    ])
 
 In general,
 
@@ -252,6 +332,11 @@ Mlshell support multiple strategy for ``th_`` tuning:
 
         * For GS hps by default used auc-roc as score.
         * For GS ``th_`` used main score.
+        * ``th_`` range should be unknown in advance:
+
+            (1.1) set in arbitrary in hp_grid.
+
+            (2.2) take typical values from ROC curve on OOF predicted with best hps.
 
 
     (2) Use additional step in pipeline (meta-estimator) to GS ``th_`` in predefined range (experimental).
@@ -261,7 +346,7 @@ Mlshell support multiple strategy for ``th_`` tuning:
 
             (2.1) set in arbitrary in hp_grid.
 
-            (2.2) take typical values from ROC curve OOF.
+            (2.2) take typical values from ROC curve on OOF predicted with default hps.
 
     (3) While GS best hps with CV, select best ``th_`` for each fold separately (experimental).
 
@@ -269,12 +354,17 @@ Mlshell support multiple strategy for ``th_`` tuning:
         * | Although there will different best ``th_`` on folds,
           | the generalizing ability of classifier might be better.
         * Then select single overall best ``th_`` on GS with main score.
+        * ``th_`` range should be unknown in advance:
 
-    In 1/2.2/3 strategies ``th_`` range came from ROC curve on OOF prediction_proba.
+            (3.1) set in arbitrary in hp_grid.
 
-    By default tpr/(tpr+fpr) is maximized, then points are linear sampled from [max/100,max*2] with [0,1] limits.
+            (3.2) take typical values from ROC curve on OOF predicted with best hps.
 
-    Engineer can specify number of samples 'th_points_number' (default=100) and plot roc_curve 'th_plot_flag'.
+    For 1/2/3 ``th_staretegy`` `(*.1)` is used if ``hp_grid`` contains ``estimate__apply_threshold__threshold`` , otherwise `(*.2)`
+
+    | In `(*.2)` strategies ``th_`` range came from ROC curve on OOF prediction_proba.
+    | By default tpr/(tpr+fpr) is maximized, then points are linear sampled from [max/100, max*2] with [0,1] limits.
+    | Engineer can specify number of samples ``th__samples`` and plot roc_curve ``th__plot_flag``.
 
 ``th_`` range extract example:
 
@@ -350,21 +440,21 @@ see `dump_runs method <_pythonapi/mlshell.Workflow.html#mlshell.Workflow.dump_ru
             continue
         try:
             df_lis[i]=pd.read_csv("results/runs/" + f, sep=",", header=0)
-            print(f, df_lis[i].shape, df_lis[i]['data_hash'][0], df_lis[i]['params_hash'][0])
+            print(f, df_lis[i].shape, df_lis[i]['data__hash'][0], df_lis[i]['params__hash'][0])
         except Exception as e:
             print(e)
             continue
 
     df=pd.concat(df_lis,axis=0,sort=False).reset_index()
     # groupby data hash
-    df.groupby('data_hash').size()
-    # groupby estumator type
-    df.groupby('estimator_name').size()
+    df.groupby('data__hash').size()
+    # groupby estimator
+    df.groupby('pipeline__estimator__name').size()
 
 **logs**
 ~~~~~~~~
 
-- If it possible, logger files will be called the same as workflow start file.
+- If possible, logger files will be called the same as workflow start file.
 - There are 7 levels of logging files:
 
     * critical
@@ -405,7 +495,7 @@ Mlshell provides experimental gui:
     * dynamical plot main (precision) score (figure right axis),
     * TP/FP/FN scatters on user-defined base_plot (diagonal line for example).
 
-Also sliders for grid search range available, model retrained and make predict at each slider change (except threshold)
+Sliders for grid search params ranges available. Model retrained and make predict at each slider change (except threshold)
 
 Engineer should specify base_plot in classes.DataPreprocessor.
 

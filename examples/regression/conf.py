@@ -13,7 +13,7 @@ import scipy
 
 
 # choose estimator
-main_estimator = [
+estimator = [
     # sklearn.linear_model.SGDRegressor(penalty= 'elasticnet',
     #                                   l1_ratio=0.01,
     #                                   alpha=0.01,
@@ -74,7 +74,7 @@ hp_grid = {
     # # lgbm
     # 'estimate__regressor__n_estimators': np.linspace(50, 1000, 10, dtype=int),
     # 'estimate__regressor__num_leaves': [2**i for i in range(1, 6 + 1)],
-    # 'estimate__regressor__min_data_in_leaf': np.linspace(10, 100, 10, dtype=int),
+    # 'estimate__regressor__min_data_in_leaf': np.linspace(1, 100, 10, dtype=int),
     # 'estimate__regressor__min_data_in_leaf': scipy.stats.randint(1, 100),
     # 'estimate__regressor__max_depth': np.linspace(1, 30, 10, dtype=int),
 }
@@ -82,27 +82,29 @@ hp_grid = {
 
 # set workflow params
 params = {
-    'estimator_type': 'regressor',
-    'main_estimator': main_estimator,
-    'cv_splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+    'pipeline': {
+        'estimator': estimator,
+        'type': 'regressor',
+        'fit_params': {},
+        'steps': None,
+        'debug': False,
+    },
     'metrics': {
         'score': (sklearn.metrics.mean_absolute_error, {'greater_is_better': False}),
         'r2': (sklearn.metrics.r2_score, {'greater_is_better': True}),
     },
-    'split_train_size': 0.7,
-    'hp_grid': hp_grid,
-    'gs_flag': True,
-    'estimator_fit_params': {},
-    'del_duplicates': False,
-    'debug_pipeline': False,
-    'use_pipeline_cache': False,
-    'update_pipeline_cache': False,
-    'gs_verbose': 1000,
-    'n_jobs': 1,
-    'model_dump': False,
-    'runs': None,
-
-    'get_data': {
+    'gs': {
+        'flag': True,
+        'splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+        'hp_grid': hp_grid,
+        'verbose': 1000,
+        'n_jobs': 1,
+        'runs': None,
+        'metrics': ['score', 'r2'],
+    },
+    'data': {
+        'split_train_size': 0.7,
+        'del_duplicates': False,
         'train': {
             'args': ['data/train.csv'],
             'kw_args': {'rows_limit': 10000,
@@ -116,4 +118,9 @@ params = {
                         'index_col': 'id'},
         },
     },
+    'cache': {
+        'pipeline': False,
+        'unifier': False,
+    },
+    'seed': 42,
 }

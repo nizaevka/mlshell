@@ -11,8 +11,9 @@ import sklearn
 import lightgbm
 import xgboost
 
+
 # choose estimator
-main_estimator = [
+estimator = [
     # sklearn.linear_model.SGDClassifier(loss='log',
     #                                    penalty='elasticnet',
     #                                    l1_ratio=0.01,
@@ -25,7 +26,7 @@ main_estimator = [
     #                                    eta0=0.01,
     #                                    verbose=1),
     lightgbm.LGBMClassifier(objective='binary', num_leaves=2, min_child_samples=1,
-                            n_estimators=250, max_depth=-1, silent=False, random_state=42)
+                            n_estimators=250, max_depth=-1, silent=False)
     # xgboost.XGBClassifier(objective='binary:hinge', **{
     #     'min_child_weight': 1,
     #     'eta': 0.01,
@@ -77,37 +78,30 @@ def custom_score_metric(y_true, y_pred):
 
 # set workflow params
 params = {
-    'estimator_type': 'classifier',
-    'main_estimator': main_estimator,
-    'cv_splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+    'pipeline': {
+        'estimator': estimator,
+        'type': 'classifier',
+        'fit_params': {},
+        'steps': None,
+        'debug': False,
+    },
     'metrics': {
         'score': (sklearn.metrics.roc_auc_score, {'greater_is_better': True, 'needs_proba': True}),
-        'precision': (sklearn.metrics.precision_score, {'greater_is_better': True, 'zero_division': 0}),
-        'custom': (custom_score_metric, {'greater_is_better': True}),
-        'confusion matrix': (sklearn.metrics.confusion_matrix, {}, False),
-        'classification report': (sklearn.metrics.classification_report, {}, False),
-
+        'precision': (sklearn.metrics.precision_score, {'greater_is_better': True, 'zero_division': 0, 'pos_label': 1}),
+        'custom': (custom_score_metric, {'greater_is_better': True, 'needs_custom_kw_args': True}),
+        'confusion matrix': (sklearn.metrics.confusion_matrix, {'labels': [0, 1]}),
+        'classification report': (sklearn.metrics.classification_report, {'output_dict': True, 'zero_division': 0}),
     },
-    'split_train_size': 0.7,
-    'hp_grid': hp_grid,
-    'gs_flag': True,
-    'estimator_fit_params': {},
-    'del_duplicates': False,
-    'debug_pipeline': False,
-    'use_pipeline_cache': False,
-    'update_pipeline_cache': False,
-    'use_unifier_cache': False,
-    'update_unifier_cache': False,
-    'gs_verbose': 1000,
-    'n_jobs': 1,
-    'model_dump': False,
-    'runs': None,
-
-    'th_strategy': 1,
-    'th_points_number': 10,
-    'pos_label': 1,
-
-    'get_data': {
+    'gs': {
+        'flag': True,
+        'splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+        'hp_grid': hp_grid,
+        'verbose': 1000,
+        'n_jobs': 1,
+        'runs': None,
+        'metrics': ['score', 'precision', 'custom'],
+    },
+    'data': {
         'train': {
             'args': ['data/train_transaction_5k.csv',
                      'data/train_identity_5k.csv'],
@@ -122,5 +116,18 @@ params = {
                         'random_skip': False,
                         'index_col': 'TransactionID'},
         },
+        'split_train_size': 0.7,
+        'del_duplicates': False,
     },
+    'th': {
+        'pos_label': 1,
+        'strategy': 1,
+        'samples': 10,
+        'plot_flag': False,
+    },
+    'cache': {
+        'pipeline': False,
+        'unifier': False,
+    },
+    'seed': 42,
 }

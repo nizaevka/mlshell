@@ -111,7 +111,7 @@ autosummary_imported_members = True  # need document imported in mmodule?
 # InstanceAttributeDocumenter.add_directive_header = iad_add_directive_header
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
+todo_include_todos = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

@@ -10,30 +10,29 @@ project_path, script_name = mlshell.find_path()
 logger = mlshell.logger.CreateLogger(project_path, script_name).logger
 
 # get params from conf.py
-gp = mlshell.GetParams(project_path)
+params = mlshell.GetParams(logger=logger).get_params(project_path)
 
 # get data from db (user-defined)
-gd = classes.GetData(logger=logger)
-gd.get_data(*gp.params['get_data']['train']['args'], **gp.params['get_data']['train']['kw_args'])
-
-# prepare data for analyse (user-defined)
-pp = classes.DataPreprocessor(gd.raw, logger=logger)
+train_raw = classes.GetData(logger=logger).get_data(*params['data__train__args'],
+                                                    **params['data__train__kw_args'])
+# preprocess data for Workflow (user-defined)
+train, train_raw_columns, train_base_plot = classes.DataPreprocessor(logger=logger).preprocess_data(train_raw)
 
 # initialize Workflow class object
-wf = mlshell.Workflow(project_path, logger=logger, params=gp.params)
+wf = mlshell.Workflow(project_path, logger=logger, params=params)
 # unify data
-wf.unify_data(pp.data)
+wf.unify_data(data=train)  # self.data_df
 
 # create pipeline
 wf.create_pipeline()  # self.estimator
 
 # split data
-wf.split()  # => self.train, self.test
+wf.split()  # self.x_train, self.y_train, self.x_test, self.y_test
 
 # fit pipeline on train/tune hp if gs_flag=True
-wf.fit(gs_flag=gp.params['gs_flag'])
+wf.fit(gs_flag=params['gs__flag'])
 
-# validate prediction
+# validate predictions
 wf.validate()
 
 # dump on disk
@@ -42,19 +41,19 @@ file = wf.dump()
 # load from disk
 wf.load(file)
 
-# read and preprocess new data
-gd2 = classes.GetData(logger)
-gd2.get_data(*gp.params['get_data']['test']['args'], **gp.params['get_data']['test']['kw_args'])
-pp2 = classes.DataPreprocessor(gd2.raw, logger=logger)
+# read and preprocess test data
+test_raw = classes.GetData(logger=logger).get_data(*params['data__test__args'],
+                                            **params['data__test__kw_args'])
+test, test_raw_columns, test_base_plot = classes.DataPreprocessor(logger=logger).preprocess_data(test_raw)
 
-# make predictions on new data
-wf.predict(pp2.data, pp2.raw_targets_names, pp2.raw_index_names)
+# make predictions on test data (auto unified)
+wf.predict(test, test_raw_columns)
 
-# generate param for gui module
+# generate param for gui module (only train data used)
 wf.gen_gui_params()
 
 # init gui object
-gui = mlshell.GUI(pp.base_plot, wf.gui_params, logger=logger)
+gui = mlshell.GUI(train_base_plot, wf.gui_params, logger=logger)
 
 # plot results
-gui.plot()
+gui.plot(base_sort=True)

@@ -13,7 +13,7 @@ import scipy
 
 
 # 'regressor'
-main_estimator = [
+estimator = [
     lightgbm.LGBMRegressor(num_leaves=2, min_data_in_leaf=1, n_estimators=250, max_depth=-1, silent=False)
 ][0]
 
@@ -26,7 +26,8 @@ def target_inverse_func(y):
     return y**4
 
 
-target_transformer = sklearn.preprocessing.FunctionTransformer(func=np.log, inverse_func=np.exp, validate=False, check_inverse=True)
+target_transformer = sklearn.preprocessing.FunctionTransformer(func=np.log, inverse_func=np.exp,
+                                                               validate=False, check_inverse=True)
 
 hp_grid = {
     'process_parallel__pipeline_numeric__add_polynomial__degree': [3],
@@ -43,28 +44,27 @@ hp_grid = {
 
 
 params = {
-    'estimator_type': 'regressor',
-    'main_estimator': main_estimator,
-    'cv_splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+    'pipeline': {
+        'estimator': estimator,
+        'type': 'regressor',
+        'fit_params': {},
+        'steps': None,
+        'debug': False,
+    },
     'metrics': {
         'score': (sklearn.metrics.mean_absolute_error, {'greater_is_better': False}),
         'r2': (sklearn.metrics.r2_score, {'greater_is_better': True}),
     },
-    'split_train_size': 0.7,
-    'hp_grid': hp_grid,
-    'gs_flag': True,
-    'del_duplicates': False,
-    'debug_pipeline': False,
-    'use_pipeline_cache': False,
-    'update_pipeline_cache': False,
-    'use_unifier_cache': False,
-    'update_unifier_cache': False,
-    'gs_verbose': 1000,
-    'n_jobs': 1,
-    'model_dump': False,
-    'runs': None,
-
-    'get_data': {
+    'gs': {
+        'flag': True,
+        'splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+        'hp_grid': hp_grid,
+        'verbose': 1000,
+        'n_jobs': 1,
+        'runs': None,
+        'metrics': ['score', 'r2'],
+    },
+    'data': {
         'train': {
             'args': ['data/train_10k.csv'],
             'kw_args': {'rows_limit': 1000,
@@ -77,5 +77,11 @@ params = {
                         'random_skip': False,
                         'index_col': 'id'},
         },
+        'split_train_size': 0.7,
+        'del_duplicates': False,
+    },
+    'cache': {
+        'pipeline': False,
+        'unifier': False,
     },
 }

@@ -1,58 +1,10 @@
-﻿"""ML workflow class
-
-TODO:
-    gui metric should be user-defined
-
-TODO:
-    ram consumption section in concepts, main cases
-
-TODO:
-    logger initialize in __init__ and use as default for GUI, Workflow. More beautify run.py
-    EDA reorganize to share (logger, results)
-
-TODO:
-    encoder step in pipeline, add choose variants
-    # ('encode_features',    mlshell.custom.encoder(encoder=sklearn.ensemble.RandomTreesEmbedding(n_estimators=300, max_depth=9), skip=True)),
-TODO:
-    for custon "score" we don`t know how to calculate score_vector, it is possible to specify in conf function
-    currently replace with r2 for regression
-TODO:
-    model dump, add file to append description of models (will autoerase if delete models) to fast identify and sorting
-    how many data was used, score, hp
-TODO:
-    add multitarget  support
-    add multilabel   support
-TODO: встроенный CV для линейных моделей и out-of-bag можно использовать для первичного выбора диапозона параметров
-TODO: добавить графиков
-    https://scikit-learn.org/stable/auto_examples/feature_selection/plot_rfe_with_cross_validation.html#sphx-glr-auto-examples-feature-selection-plot-rfe-with-cross-validation-py
-    https://scikit-learn.org/stable/auto_examples/model_selection/plot_cv_predict.html#sphx-glr-auto-examples-model-selection-plot-cv-predict-py
-    https://scikit-learn.org/stable/auto_examples/model_selection/plot_multi_metric_evaluation.html#sphx-glr-auto-examples-model-selection-plot-multi-metric-evaluation-py
-    "Постройте два графика оценок точности +- их стандратного отклонения в зависимости от гиперпараметра,
-    убедитесь что вы действительно нашли её максимум,
-    обратите внимание на большую дисперсию получаемых оценок (уменьшить её можно увеличением числа фолдов cv)."
-    validation_curve для проверки переобучения.
-    learning_curve для проверки сложности модели/необходимости добавить данные
-    https://scikit-learn.org/stable/modules/learning_curve.html
-TODO: причесать EDA
-TODO: каждый GS с несколькоми эпохами с разным random state использовать, не будем попадать на выбросы
-TODO: добавить проверку что в каждом фолде есть примеры обоих классов
-TODO: все модели сохранять в temp необученными с индексом, чтобы если что извлечь по логу
-
-TODO: gs надо запускать воркерами, чтобы при падении промежуточные результаты не терять
-    мастер один раз заготаливает данные,
-    GS в мастере, раскидывает по воркерам
-    воркер для каждого фита должен создавать файл, чтобы не потерять в случае чего
-    который мастер мержит для анализа
-TODO: добавь сообщение чтобы выводил если папка cache слишком большая
-TODO:
-    runs.csv to sql base transformer
-
-"""
+﻿"""ML workflow class."""
 
 
 import mlshell.custom
 import mlshell.default
 from mlshell.libs import *
+from mlshell.callbacks import dic_flatter, json_keys2int
 
 
 class Workflow(object):
@@ -104,8 +56,9 @@ class Workflow(object):
         # use default if skipped in params
         temp = copy.deepcopy(mlshell.default.DEFAULT_PARAMS)
         if params is not None:
-            self.check_params(temp, params)
+            self.check_params_keys(temp, params)
             temp.update(params)
+        self.check_params_vals(temp)
         self.p = temp
         self.logger.info('Used params:\n    {}'.format(jsbeautifier.beautify(str(self.p))))
 
@@ -118,17 +71,19 @@ class Workflow(object):
         self.classes_ = None
         self.n_classes = None
         self.neg_label = None
+        self.pos_label = None
         self.pos_label_ind = None
         self.data_df = None
         self.categoric_ind_name = None
         self.numeric_ind_name = None
         self.data_hash = None
-        self.value_counts = None
         # [deprected] make separate function call
         # self.unify_data(data)
 
-        # self.scorers = self.metrics_to_scorers(self.p['metrics'], self.p['gs_metrics'])
-        self.scorers = self.metrics_to_scorers(self.p['metrics'])
+        self.custom_scorer = None
+        self.default_custom_kw_args = {}
+        self.main_score_name = self.p['gs__refit']
+        self.scorers = self.metrics_to_scorers(self.p['metrics'], self.p['gs__metrics'])
         # fullfill in self.create_pipeline()
         self.estimator = None
         # fullfill in self.split()
@@ -153,25 +108,51 @@ class Workflow(object):
         if size_mb > n:
             self.logger.warning(f"Warning: results/ directory size {size_mb:.2f}Gb more than {n}Gb")
 
-    def check_params(self, default_params, params):
-        self.check_params_keys(default_params, params)
-        self.check_params_vals(params)
-
     def check_params_keys(self, default_params, params):
         miss_keys = set()
         for key in params:
             if key not in default_params:
                 miss_keys.add(key)
+                del params[key]
         if miss_keys:
-            raise ValueError(f"Don`t understand key(s) in conf.py params, check\n    {miss_keys}")
+            self.logger.warning(f"Ignore unknown key(s) in conf.py params, check\n    {miss_keys}")
 
     def check_params_vals(self, params):
         # hp_grid, remove non unique
-        if 'hp_grid' in params:
-            for key, val in params['hp_grid'].items():
-                if hasattr(val, '__iter__'):
-                    # not use numpy, cause not all values can be sorted
-                    params['hp_grid'][key] = pd.unique(val)
+        # [deprecated] use zero-position, need to clean user error
+        # if 'gs__hp_grid' in params:
+        remove_keys = set()
+        for key, val in params['gs__hp_grid'].items():
+            if hasattr(val, '__iter__'):
+                # np.unique use built-in sort => not applicable for objects (dict, list, transformers)
+                # pd.unique use built-in set => not work with unhashable types (list of dict, list of list)
+                # transform to str, drop repeated and back to dict
+                if hasattr(val, '__len__'):
+                    if len(val) == 0:
+                        remove_keys.add(key)
+                    else:
+                        if isinstance(val[0], dict):
+                            # not prevent repetition
+                            # [deprecated] [{}] => [];  [{},{'a':7}] => [{'a': nan}, {'a': 7.0}]
+                            # params['gs__hp_grid'][key] = pd.DataFrame(val).drop_duplicates().to_dict('r')
+                            pass
+                        else:
+                            params['gs__hp_grid'][key] = pd.unique(val)
+        for key in remove_keys:
+            del params['gs__hp_grid'][key]
+
+        # main_score_name come from 'gs__refit'
+        # check self.main_score_name in 'metrics' and 'gs__metrics'
+        main_score_name = params['gs__refit']
+        if params['gs__flag']:
+            if main_score_name not in params['metrics']:
+                raise KeyError(f"Warning: gs refit metric '{main_score_name}' should be present"
+                               f" in 'metrics'.")
+
+            if main_score_name not in params['gs__metrics']:
+                params['gs__metrics'].append(main_score_name)
+                self.logger.warning(f"Warning: gs refit metric '{main_score_name}' should be present"
+                                    f" in 'gs__metrics', '{main_score_name}' added.")
 
     def check_data_format(self, data, params):
         """check data format"""
@@ -181,14 +162,14 @@ class Workflow(object):
             raise KeyError("input dataframe should contain 'targets' column, set zero values columns if absent")
         if not all(['feature_' in column for column in data.columns if 'targets' not in column]):
             raise KeyError("all name of dataframe features columns should start with 'feature_'")
-        if params['estimator_type'] == 'classifier':
+        if params['pipeline__type'] == 'classifier':
             if self.n_classes > 2:
-                raise ValueError('only binary classification with pos_label={}'.format(params['pos_label']))
-            if params['pos_label'] != self.classes_[-1]:
+                raise ValueError('only binary classification with pos_label={}'.format(params['th__pos_label']))
+            if params['th__pos_label'] != self.classes_[-1]:
                 raise ValueError("pos_label={} should be last in np.unique(targets), current={}"
-                                 .format(params['pos_label'], self.classes_))
+                                 .format(params['th__pos_label'], self.classes_))
         # check that all non-categoric features are numeric type
-        # [deprecated] move to self.unifier (some object-type column could be casted float())
+        # [deprecated] move to self.unify_data (some object-type column could be casted float())
 
     def np_error_callback(self, *args):
         """Numpy errors handler, count errors by type"""
@@ -198,16 +179,17 @@ class Workflow(object):
             self.np_error_stat[args[0]] = 1
 
     # =============================================== unify ============================================================
-    def unify_data(self, data=None, cache_prefix='train'):
+    def set_data(self, data_id, data=None):
         """ Unify dataframe in compliance to workflow class.
 
         Arg:
+            data_id (str):
+                identification key for datasets from params['data']
+                used as prefix to cache file if `'cache__unifier'` flag is True
             data (:py:class:``pandas.DataFrame``, optional (default=None)):
                 object (save original row index after deletes row, need reindex).
-            cache_name (str, optional (default='train')):
-                prefix to cache file if `'use_unifier_cache'` flag is True
 
-        Note:.
+        Note:
             If ``use_unifier_cache`` is True:
 
                 * If ``update_unifier_cache`` if False, try to load cache if available (``data`` arg can be skipped).
@@ -216,57 +198,60 @@ class Workflow(object):
             Else: run unifer without cahing results.
 
         """
-        self.logger.info("\u25CF UNIFY DATA")
-        if self.p['use_unifier_cache'] and not self.p['update_unifier_cache']:
-            cache = self.load_instead_unifier(prefix=cache_prefix)
+        self.logger.info("\u25CF SET DATA")
+        if data_id in self.p['data']:
+            del_duplicates = self.p['data__del_duplicates']
+        else:
+            raise KeyError(f"Unknown data_id {data_id}, key should be in params['data'] dictionary.")
+
+        if self.p['cache__unifier'] and not self.p['cache__unifier'] == 'update':
+            cache, meta = self.load_instead_unify(prefix=data_id)
             if cache is not None:
                 data = cache
-                categoric_ind_name = {}
-                numeric_ind_name = {}
-                for ind, column_name in enumerate(data):
-                    if 'targets' in column_name:
-                        continue
-                    if '_categor_' in column_name:
-                        # loose categories names
-                        categoric_ind_name[ind - 1] = (column_name,)
-                    else:
-                        numeric_ind_name[ind - 1] = (column_name,)
                 self.data_df = data
-                self.categoric_ind_name = categoric_ind_name
-                self.numeric_ind_name = numeric_ind_name
+                self.categoric_ind_name = meta['categoric']
+                self.numeric_ind_name = meta['numeric']
         else:
             cache = None
 
         if data is None:
-            raise ValueError("Set `data` arg in unify_data or turn on 'use_unifier_cache' in conf.py")
+            raise ValueError("Set `data` arg in unify_data or turn on 'cache__unifier' in conf.py")
 
-        if self.p['estimator_type'] == 'classifier':
+        if self.p['pipeline__type'] == 'classifier':
             self.classes_ = np.unique(data['targets'])
             self.n_classes = self.classes_.shape[0]
+            self.pos_label = self.p['th__pos_label']
             self.neg_label = self.classes_[0]
-            assert self.classes_[1] == self.p['pos_label']
-            self.pos_label_ind = np.where(self.classes_ == self.p['pos_label'])[0][0]
+            self.pos_label_ind = np.where(self.classes_ == self.pos_label)[0][0]
 
         self.check_data_format(data, self.p)
 
         if cache is None:
-            self.data_df, self.categoric_ind_name, self.numeric_ind_name = self.unifier(data)
-            if self.p['use_unifier_cache']:
-                self.dump_after_unifier(self.data_df, prefix=cache_prefix)
+            self.check_duplicates(data, del_duplicates)
+            self.check_gaps(data)
+            if self.p['unify__flag']:
+                self.data_df, self.categoric_ind_name, self.numeric_ind_name = self.unify_data(data)
+            else:
+                self.data_df, self.categoric_ind_name, self.numeric_ind_name = self.extract_ind_name(data)
+            self.check_numeric_types(data)
+            if self.p['cache__unifier']:
+                self.dump_after_unifier(self.data_df, self.categoric_ind_name,
+                                        self.numeric_ind_name, prefix=data_id)
 
         # hash of data before split
         self.data_hash = pd.util.hash_pandas_object(self.data_df).sum()
-        # calc unique values (np.nan not included as value)
-        self.value_counts = {column_name: self.data_df[column_name].value_counts()
-                             for i, column_name in enumerate(self.data_df.columns)}
 
-    def dump_after_unifier(self, data, prefix=''):
+    def dump_after_unifier(self, data, categoric_ind_name, numeric_ind_name, prefix=''):
         """Dump imtermediate dataframe to disk."""
         cachedir = f"{self.project_path}/results/cache/unifier"
         filepath = f'{cachedir}/{prefix}_after_unifier.csv'
-        if self.p['use_unifier_cache']:
-            if self.p['update_unifier_cache'] and os.path.exists(filepath):
-                os.remove(filepath)
+        filepath_meta = f'{cachedir}/{prefix}_after_unifier_meta.json'
+        if self.p['cache__unifier']:
+            if self.p['cache__unifier'] == 'update':
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                if os.path.exists(filepath):
+                    os.remove(filepath_meta)
                 # shutil.rmtree(cachedir, ignore_errors=True)
             if not os.path.exists(cachedir):
                 # create temp dir for cache if not exist
@@ -275,19 +260,82 @@ class Workflow(object):
             self.logger.warning('Warning: update unifier cache file:\n    {}'.format(filepath))
             with open(filepath, 'w', newline='') as f:
                 data.to_csv(f, mode='w', header=True, index=True, line_terminator='\n')
+            column_ind_name = {'categoric': categoric_ind_name, 'numeric': numeric_ind_name}
+            with open(filepath_meta, 'w') as f:
+                json.dump(column_ind_name, f)
 
-    def load_instead_unifier(self, prefix=''):
+    def load_instead_unify(self, prefix=''):
         """Load imtermediate dataframe from disk"""
         cachedir = f"{self.project_path}/results/cache/unifier"
         filepath = f'{cachedir}/{prefix}_after_unifier.csv'
-        if self.p['use_unifier_cache'] and os.path.exists(filepath) and not self.p['update_unifier_cache']:
+        filepath_meta = f'{cachedir}/{prefix}_after_unifier_meta.json'
+        if self.p['cache__unifier'] \
+                and os.path.exists(filepath) \
+                and os.path.exists(filepath_meta) \
+                and not self.p['cache__unifier'] == 'update':
             with open(filepath, 'r') as f:
-                data = pd.read_csv(f, sep=",", index_col=0)
+                cache = pd.read_csv(f, sep=",", index_col=0)
+            with open(filepath_meta, 'r') as f:
+                meta = json.load(f, object_hook=json_keys2int)
             self.logger.warning(f"Warning: use cache file instead unifier:\n    {cachedir}")
-            return data
-        return None
+            return cache, meta
+        return None, None
 
-    def unifier(self, data):
+    def check_duplicates(self, data, del_duplicates):
+        # find duplicates rows
+        mask = data.duplicated(subset=None, keep='first')  # duplicate rows index
+        dupl_n = np.sum(mask)
+        if dupl_n:
+            self.logger.warning('Warning: {} duplicates rows found,\n    see debug.log for details.'.format(dupl_n))
+            # count unique duplicated rows
+            rows_count = data[mask].groupby(data.columns.tolist())\
+                .size().reset_index().rename(columns={0: 'count'})
+            rows_count.sort_values(by=['count'], axis=0, ascending=False, inplace=True)
+            with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+                self.logger.debug('Duplicates found\n{}\n'
+                                  .format(tabulate.tabulate(rows_count, headers='keys', tablefmt='psql')))
+
+        if del_duplicates:
+            # delete duplicates, (not reset index, otherwise problem with base_plot)
+            size_before = data.size
+            data.drop_duplicates(keep='first', inplace=True)
+            # data.reset_index(drop=True, inplace=True) problem with base_plot
+            size_after = data.size
+            if size_before - size_after != 0:
+                self.logger.warning('Warning: delete duplicates rows ({} values)\n'.format(size_before - size_after))
+
+    def check_gaps(self, data):
+        # calculate amount of gaps
+        gaps_number = data.size - data.count().sum()
+        # log
+        columns_with_gaps_dic = {}
+        if gaps_number > 0:
+            for column_name in data:
+                column_gaps_namber = data[column_name].size - data[column_name].count()
+                if column_gaps_namber > 0:
+                    columns_with_gaps_dic[column_name] = column_gaps_namber
+            self.logger.warning('Warning: gaps found: {} {:.3f}%,\n'
+                                '    see debug.log for details.'.format(gaps_number, gaps_number / data.size))
+            self.logger.debug('Gaps per column:\n{}'.format(jsbeautifier.beautify(str(columns_with_gaps_dic))))
+
+        if 'targets' in columns_with_gaps_dic:
+            raise MyException("MyError: gaps in targets")
+            # delete rows with gaps in targets
+            # data.dropna(self, axis=0, how='any', thresh=None, subset=[column_name], inplace=True)
+
+    def check_numeric_types(self, data):
+        # check that all non-categoric features are numeric type
+        dtypes = data.dtypes
+        misstype = []
+        for ind, column_name in enumerate(data):
+            if '_categor_' not in column_name:
+                if not np.issubdtype(dtypes[column_name], np.number):
+                    misstype.append(column_name)
+        if misstype:
+            raise ValueError("Input data non-categoric columns"
+                             " should be subtype of np.number, check:\n    {}".format(misstype))
+
+    def unify_data(self, data):
         """ unify input dataframe
 
         Note:
@@ -303,7 +351,6 @@ class Workflow(object):
 
                 * self.categoric_ind_name => {1:('feat_n', ['cat1', 'cat2'])}
                 * self.numeric_ind_name   => {2:('feat_n',)}
-                * self.value_counts       => {'feat_n':uniq_values}
 
         Returns:
             data (pd.DataFrame): unified input dataframe
@@ -311,49 +358,12 @@ class Workflow(object):
             numeric_ind_name (dict):  {column_index: ('feature__name',),}
 
         """
-        # find duplicates rows
-        mask = data.duplicated(subset=None, keep='first')  # duplicate rows index
-        dupl_n = np.sum(mask)
-        if dupl_n:
-            self.logger.warning('Warning: {} duplicates rows found,\n    see debug.log for details.'.format(dupl_n))
-            # count unique duplicated rows
-            rows_count = data[mask].groupby(data.columns.tolist())\
-                .size().reset_index().rename(columns={0: 'count'})
-            rows_count.sort_values(by=['count'], axis=0, ascending=False, inplace=True)
-            with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-                self.logger.debug('Duplicates found\n{}\n'
-                                  .format(tabulate.tabulate(rows_count, headers='keys', tablefmt='psql')))
 
-        if self.p['del_duplicates']:
-            # delete duplicates, (not reset index, otherwise problem with base_plot)
-            size_before = data.size
-            data.drop_duplicates(keep='first', inplace=True)
-            # data.reset_index(drop=True, inplace=True) problem with base_plot
-            size_after = data.size
-            if size_before - size_after != 0:
-                self.logger.warning('Warning: delete duplicates rows ({} values)\n'.format(size_before - size_after))
-
-        # calculate amount of gaps
-        gaps_number = data.size - data.count().sum()
-        # log
-        columns_with_gaps_dic = {}
-        if gaps_number > 0:
-            for column_name in data:
-                column_gaps_namber = data[column_name].size - data[column_name].count()
-                if column_gaps_namber > 0:
-                    columns_with_gaps_dic[column_name] = column_gaps_namber
-            self.logger.warning('Warning: gaps found: {} {:.3f}%,\n'
-                                '    see debug.log for details.'.format(gaps_number, gaps_number / data.size))
-            self.logger.debug('Gaps per column:\n{}'.format(jsbeautifier.beautify(str(columns_with_gaps_dic))))
 
         categoric_ind_name = {}
         numeric_ind_name = {}
         for ind, column_name in enumerate(data):
             if 'targets' in column_name:
-                if 'targets' in columns_with_gaps_dic:
-                    raise MyException("MyError: gaps in targets")
-                    # delete rows with gaps in targets
-                    # data.dropna(self, axis=0, how='any', thresh=None, subset=[column_name],inplace=True)
                 continue
             if '_categor_' in column_name:
                 # fill gaps with 'unknown'
@@ -366,28 +376,31 @@ class Workflow(object):
                 # encode
                 encoder = sklearn.preprocessing.OrdinalEncoder(categories='auto')
                 data[column_name] = encoder.fit_transform(data[column_name].values.reshape(-1, 1))
+                # ('feature_categor__name',['B','A','C'])
+                # tolist need to json.dump in cache
                 categoric_ind_name[ind-1] = (column_name,
-                                             encoder.categories_[0])  # ('feature_categor__name',['B','A','C'])
+                                             encoder.categories_[0].tolist())
             else:
                 # fill gaps with np.nan
                 data[column_name].fillna(value=np.nan, method=None, axis=None,
                                          inplace=True, limit=None, downcast=None)
                 numeric_ind_name[ind-1] = (column_name,)
-
         # cast to np.float64 without copy
         # alternative: try .to_numeric
         data = data.astype(np.float64, copy=False, errors='ignore')
-        # check that all non-categoric features are numeric type
-        dtypes = data.dtypes
-        misstype = []
-        for ind, column_name in enumerate(data):
-            if '_categor_' not in column_name:
-                if not np.issubdtype(dtypes[column_name], np.number):
-                    misstype.append(column_name)
-        if misstype:
-            raise ValueError("Input data non-categoric columns"
-                             " should be subtype of np.number, check:\n    {}".format(misstype))
+        return data, categoric_ind_name, numeric_ind_name
 
+    def extract_ind_name(self, data):
+        categoric_ind_name = {}
+        numeric_ind_name = {}
+        for ind, column_name in enumerate(data):
+            if 'targets' in column_name:
+                continue
+            if '_categor_' in column_name:
+                # loose categories names
+                categoric_ind_name[ind - 1] = (column_name, np.unique(data[column_name]))
+            else:
+                numeric_ind_name[ind - 1] = (column_name,)
         return data, categoric_ind_name, numeric_ind_name
 
     # =============================================== pipeline =========================================================
@@ -410,10 +423,10 @@ class Workflow(object):
 
         """
         self.logger.info("\u25CF CREATE PIPELINE")
-        if self.p['use_pipeline_cache']:
+        if self.p['cache__pipeline']:
             cachedir = f"{self.project_path}/results/cache/pipeline"
             # delete cache if necessary
-            if self.p['update_pipeline_cache'] and os.path.exists(cachedir):
+            if self.p['cache__pipeline'] == 'update' and os.path.exists(cachedir):
                 shutil.rmtree(cachedir, ignore_errors=True)
                 self.logger.warning(f'Warning: update pipeline cache:\n    {cachedir}')
             else:
@@ -426,34 +439,10 @@ class Workflow(object):
 
         # assemble several steps that can be cross-validated together
         pipeline_ = self.pipeline_steps()
-        last_step = self.create_last(self.p['main_estimator'], pipeline_)
+        last_step = self.create_last(self.p['pipeline__estimator'], pipeline_)
         self.logger.info(f"Estimator step:\n    {last_step}")
         pipeline_.append(('estimate', last_step))
         self.estimator = sklearn.pipeline.Pipeline(pipeline_, memory=cachedir)
-        # set zero position params from hp_grid
-        for name, vals in self.p['hp_grid'].items():
-            # check if distribution in hp_grid
-            if hasattr(type(vals), '__iter__'):
-                self.estimator.set_params(**{name: vals[0]})
-
-        #     path = param.split('__')
-        #     for step in steps:
-        #         if step[0] == path[0]:
-        #             step.__setattr__()
-        #       #      default_steps[]
-
-        # nice print of pipeline
-        params = self.estimator.get_params()
-        self.logger.debug('Pipeline steps:')
-        for i, step in enumerate(params['steps']):
-            step_name = step[0]
-            step_hp = {key: params[key] for key in params.keys() if step_name + '__' in key}
-            self.logger.debug('  ({})  {}\n    {}'.format(i, step[0], step[1]))
-            self.logger.debug('    hp:\n   {}'.format(jsbeautifier.beautify(str(step_hp))))
-        self.logger.debug('+' * 100)
-
-        if self.p['debug_pipeline']:
-            self.debug_pipeline_()
 
     def create_last(self, estimator, pipeline_):
         """Create last step of pipeline
@@ -470,7 +459,7 @@ class Workflow(object):
             if classification: will raise error 'estimate', add custom threshold tuner
 
         """
-        if self.p['estimator_type'] == 'regressor':
+        if self.p['pipeline__type'] == 'regressor':
             if pipeline_[-1][0] == 'estimate':
                 transformer = pipeline_[-1][1].__dict__['transformer']
                 del pipeline_[-1]
@@ -478,40 +467,40 @@ class Workflow(object):
                 transformer = None
             last_step = sklearn.compose.TransformedTargetRegressor(regressor=estimator,
                                                                    transformer=transformer, check_inverse=True)
-        elif self.p['estimator_type'] == 'classifier':
+        elif self.p['pipeline__type'] == 'classifier':
             if pipeline_[-1][0] == 'estimate':
                 del pipeline_[-1]
-            if self.p['th_strategy'] == 0:
+            if self.p['th__strategy'] == 0:
                 last_step = sklearn.pipeline.Pipeline(steps=[('classifier', estimator)])
-                _ = self.p['hp_grid'].pop('estimate__apply_threshold__threshold', None)
+                _ = self.p['gs__hp_grid'].pop('estimate__apply_threshold__threshold', None)
             else:
                 last_step = sklearn.pipeline.Pipeline(steps=[
                         ('classifier',       mlshell.custom.PredictionTransformer(estimator)),
                         ('apply_threshold',  mlshell.custom.ThresholdClassifier(self.classes_,
                                                                                 self.pos_label_ind,
-                                                                                self.p['pos_label'],
+                                                                                self.pos_label,
                                                                                 self.neg_label, threshold=0.5)),
                         ])
                 # add __clf__ to estimator hps names to pass in PredictTransformer
-                for name, vals in list(self.p['hp_grid'].items()):
+                for name, vals in list(self.p['gs__hp_grid'].items()):
                     if 'estimate__classifier' in name:
                         lis = name.split('__')
                         lis.insert(-1, 'clf')
                         new_name = '__'.join(lis)
-                        self.p['hp_grid'][new_name] = self.p['hp_grid'].pop(name)
+                        self.p['gs__hp_grid'][new_name] = self.p['gs__hp_grid'].pop(name)
         else:
-            raise MyException("MyError: unknown estimator type = {}".format(self.p['estimator_type']))
+            raise MyException("MyError: unknown estimator type = {}".format(self.p['pipeline__type']))
 
-        if last_step._estimator_type != self.p['estimator_type']:
+        if last_step._estimator_type != self.p['pipeline__type']:
             raise MyException('MyError:{}:{}: wrong estimator type'.format(self.__class__.__name__,
                                                                            inspect.stack()[0][3]))
         return last_step
 
     def pipeline_steps(self):
-        """Configure pipeline steps
+        """Configure pipeline steps.
 
         Returns:
-            pipeline
+            sklearn.pipeline.Pipeline steps.
 
         Note:
             * | feature/object selections should be independent at every fold,
@@ -529,32 +518,22 @@ class Workflow(object):
             use dill instead.
 
         """
-        if self.p['pipeline'] is None:
-            clss = mlshell.default.CreateDefaultPipeline
+        if isinstance(self.p['pipeline__steps'], list):
+            steps = self.p['pipeline__steps']
+            self.logger.warning('Warning: user-defined pipeline is used instead of default.')
         else:
-            clss = self.p['pipeline']
-        steps = clss(self.categoric_ind_name, self.numeric_ind_name, self.set_custom_param, self.p).steps
+            if self.p['pipeline__steps'] is None:
+                clss = mlshell.default.CreateDefaultPipeline
+            else:
+                clss = self.p['pipeline__steps']
+                self.logger.warning('Warning: user-defined pipeline is used instead of default.')
+            steps = clss(self.categoric_ind_name, self.numeric_ind_name, self.p).get_steps()
         return steps
-        # sklearn.pipeline.Pipeline(steps)
-        # # update with zero postion hp_grid:
-        # for param in self.p['hp_grid']:
-        #     path = param.split('__')
-        #     for step in steps:
-        #         if step[0] == path[0]:
-        #             step.__setattr__()
-#       #      default_steps[]
-
-    def set_custom_param(self, *arg, **kwarg):
-        """Use with FunctionTransformer to set self-attributes in GS"""
-        # self.logger.debug(kwarg)
-        for k, v in kwarg.items():
-            setattr(self, k, v)
-        return arg[0]  # pass x further
 
     def debug_pipeline_(self):
         """Fit estimator on whole data for debug"""
-        x, y = self.tonumpy(self.data_df)
-        fitted = self.estimator.fit(x, y, **self.p['estimator_fit_params'])
+        x, y = self.tonumpy(self.data_df[:min(1000, len(self.data_df))])
+        fitted = self.estimator.fit(x, y, **self.p['pipeline__fit_params'])
         self.recursive_logger(fitted.steps)
 
     def recursive_logger(self, steps, level=0):
@@ -592,29 +571,52 @@ class Workflow(object):
 
     # =============================================== split ============================================================
     # @memory_profiler
-    def split(self):
+    def split(self, data=None, data_id=None, **kwargs):
         """Split data on train, test
 
-        Note:
-            if `split_train_size` set to 1.0, use full dataset to CV (test=train)
+        data (pandas.DataFrame, optional (default=None)):
+            if not None ``data_id`` ignored, read kwargs.
+        data_id (str, optional (default='train')):
+            | should be known key from params['data`]
+            | if None, used default ``data_id`` from params['fit__data_id'] and corresponding kwargs.
+        kwargs:
+            if data_id is not None, ignore current, use global from params['data__data_id__split'].
 
+        Note:
+            input data updated inplace with additional split key.
+            if split ``train_size`` set to 1.0, use test=train.
         """
         self.logger.info("\u25CF SPLIT DATA")
-        if self.p['split_train_size'] == 1.0:
-            train = test = self.data_df
-            self.train_index = self.test_index = self.data_df.index
+        if data:
+            data_df = data
         else:
-            train, test, self.train_index, self.test_index = sklearn.model_selection.train_test_split(
-                self.data_df, self.data_df.index.values,
-                train_size=self.p['split_train_size'], test_size=None,
-                random_state=42, shuffle=False, stratify=None)
-        columns = self.data_df.columns
-        # deconcatenate without copy, better use dataframe (provide index)
-        self.x_train = train[[name for name in columns if 'feature' in name]]  # .values
-        self.y_train = train['targets']  # .values
-        self.x_test = test[[name for name in columns if 'feature' in name]]  # .values
-        self.y_test = test['targets']  # .values
-        # TODO: добавить проверку что в трейне каждого фолда будут объекты обоих классов, иначе проблема c predict_proba
+            if not data_id:
+                data_id = self.p['fit']['data_id']
+            data_df = self.data_df[data_id]
+            kwargs = self.p['data'][data_id]['split']
+
+        if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
+            or kwargs['train_size'] is None and kwargs['test_size'] == 0):
+            train = test = data_df
+            train_index, test_index = data_df.index
+        else:
+            train, test, train_index, test_index = sklearn.model_selection.train_test_split(
+                data_df, data_df.index.values, **kwargs)
+        columns = data_df.columns
+        # deconcatenate without copy, better dataframe over numpy (provide index)
+        x_train = train[[name for name in columns if 'feature' in name]]
+        y_train = train['targets']
+        x_test = test[[name for name in columns if 'feature' in name]]
+        y_test = test['targets']
+
+        # add to data
+        data_df['split'] = {}
+        data_df['split']['train_index'] = train_index
+        data_df['split']['test_index'] = test_index
+        data_df['split']['x_train'] = x_train
+        data_df['split']['y_train'] = y_train
+        data_df['split']['x_test'] = x_test
+        data_df['split']['y_test'] = y_test
 
     # =============================================== cv ===============================================================
     def cv(self, n_splits=None):
@@ -627,9 +629,9 @@ class Workflow(object):
             object which have split method yielding train/test splits indices
         """
         if n_splits is not None:
-            self.p['cv_splitter'].n_splits = n_splits
+            self.p['gs__splitter'].n_splits = n_splits
 
-        return self.p['cv_splitter']
+        return self.p['gs__splitter']
 
     # =============================================== scorers ==========================================================
     def scorer_strategy_1(self, estimator, x, y_true):
@@ -654,7 +656,7 @@ class Workflow(object):
                 Score main metric after fix best th.
 
         """
-        scorer = self.scorers['score']
+        scorer = self.scorers[self.main_score_name]
         metric = scorer._score_func
         if isinstance(scorer, sklearn.metrics._scorer._PredictScorer):
             y_pred_proba = estimator.predict_proba(x)
@@ -675,7 +677,7 @@ class Workflow(object):
     # =============================================== gridsearch =======================================================
     @check_hash
     # @memory_profiler
-    def fit(self, gs_flag=False):
+    def fit(self, data=None, data_id=None, gs_flag=False, pipeline_debug=False, **kwargs):
         """Tune hp, fit best.
             https://scikit-learn.org/stable/modules/grid_search.html#grid-search
 
@@ -690,20 +692,24 @@ class Workflow(object):
                 * Above 50, the output is sent to stdout.
                  The frequency of the messages increases with the verbosity level.
 
-            Alternative:
-                * random sampling from param space: model_selection.RandomizedSearchCV(), GaussProcess(), Tpot()
-                * estimators with regularization have self, efficient gridsearch
-                * estimators with bagging have self, efficient gridsearch
-                * estimators with AIC, BIC
-
-        If gs_flag is True and hp_grid is not {}: run grid search else just fit estimator
-        For regression:
-            use 'score' from score_metrics as main
-        For classification:
-            th1: use roc_auc score on predict_proba
-            th2:
-
+            If gs_flag is True run grid search else just fit estimator
         """
+        if data:
+            data_df = data
+        else:
+            if not data_id:
+                data_id = self.p['fit']['data_id']
+            data_df = self.data_df[data_id]
+            kwargs = self.p['gs']
+            gs_flag = self.p['fit__gs_flag']
+            pipeline_debug = self.p['fit__pipeline_debug']
+
+
+        self.set_zero_position_hps()
+        if pipeline_debug:
+            # duplicate nice print from set_zero_position_hps
+            self.debug_pipeline_()
+
         if gs_flag:
             self.logger.info("\u25CF OPTIMIZE PIPELINE")
             runs, best_run_index = self.optimize()
@@ -711,56 +717,75 @@ class Workflow(object):
             self.dump_runs(runs, best_run_index)
         else:
             self.logger.info("FIT PIPELINE")
-            self.estimator.fit(self.x_train, self.y_train, **self.p['estimator_fit_params'])
+            self.estimator.fit(self.x_train, self.y_train, **self.p['pipeline__fit_params'])
             # dump not needed, no score evaluation
             # best_run_index = 0
             # runs = {'params': [self.estimator.get_params(),]}
+
+    def set_zero_position_hps(self):
+        # set zero position params from hp_grid
+        for name, vals in self.p['gs__hp_grid'].items():
+            # check if distribution in hp_grid
+            if hasattr(type(vals), '__iter__'):
+                self.estimator.set_params(**{name: vals[0]})
+
+        # nice print of pipeline
+        params = self.estimator.get_params()
+        self.logger.debug('Pipeline steps:')
+        for i, step in enumerate(params['steps']):
+            step_name = step[0]
+            step_hp = {key: params[key] for key in params.keys() if step_name + '__' in key}
+            self.logger.debug('  ({})  {}\n    {}'.format(i, step[0], step[1]))
+            self.logger.debug('    hp:\n   {}'.format(jsbeautifier.beautify(str(step_hp))))
+        self.logger.debug('+' * 100)
 
     def optimize(self):
         """Tune hp on train by cv."""
         self.logger.info("\u25CF \u25B6 GRID SEARCH HYPERPARAMETERS")
         # param, fold -> fit(fold_train) -> predict(fold_test) -> score for params
-        scoring = self.get_scoring()
+        scoring, th_range = self.get_scoring()
         n_iter = self.get_n_iter()
         pre_dispatch = self.get_pre_dispatch()
 
         # optimize score
         optimizer = sklearn.model_selection.RandomizedSearchCV(
-            self.estimator, self.p['hp_grid'], scoring=scoring, n_iter=n_iter,
-            n_jobs=self.p['n_jobs'], pre_dispatch=pre_dispatch,
-            refit='score', cv=self.cv(), verbose=self.p['gs_verbose'], error_score=np.nan,
-            return_train_score=True).fit(self.x_train, self.y_train, **self.p['estimator_fit_params'])
+            self.estimator, self.p['gs__hp_grid'], scoring=scoring, n_iter=n_iter,
+            n_jobs=self.p['gs__n_jobs'], pre_dispatch=pre_dispatch,
+            refit=self.main_score_name, cv=self.cv(), verbose=self.p['gs__verbose'], error_score=np.nan,
+            return_train_score=True).fit(self.x_train, self.y_train, **self.p['pipeline__fit_params'])
         self.estimator = optimizer.best_estimator_
         self.best_params_ = optimizer.best_params_
         best_run_index = optimizer.best_index_
-        self.distribution_compliance(optimizer.cv_results_, self.p['hp_grid'])
-        self.modifiers = self.find_modifiers(self.p['hp_grid'])
+        if 'pass_custom__kw_args' in self.best_params_:
+            self.default_custom_kw_args = self.best_params_['pass_custom__kw_args']
+        self.distribution_compliance(optimizer.cv_results_, self.p['gs__hp_grid'])
+        self.modifiers = self.find_modifiers(self.p['gs__hp_grid'])
         runs = copy.deepcopy(optimizer.cv_results_)
         # nice print
         self.gs_print(optimizer, self.modifiers)
 
         # optimize threshold if necessary
-        if self.p['estimator_type'] == 'classifier' and (self.p['th_strategy'] == 1 or self.p['th_strategy'] == 3):
+        if self.p['pipeline__type'] == 'classifier' and (self.p['th__strategy'] == 1 or self.p['th__strategy'] == 3):
             self.logger.info("\u25CF \u25B6 GRID SEARCH CLASSIFIER THRESHOLD")
             scoring = self.scorers
-            th_range, predict_proba, y_true = self.calc_th_range()
+            th_range, predict_proba, y_true = self.calc_th_range(th_range)
             optimizer_th_ = sklearn.model_selection.RandomizedSearchCV(
                 mlshell.custom.ThresholdClassifier(self.classes_, self.pos_label_ind,
-                                                   self.p['pos_label'], self.neg_label),
+                                                   self.pos_label, self.neg_label),
                 {'threshold': th_range}, n_iter=th_range.shape[0],
                 scoring=scoring,
-                n_jobs=1, pre_dispatch=2, refit='score', cv=self.cv(),
+                n_jobs=1, pre_dispatch=2, refit=self.main_score_name, cv=self.cv(),
                 verbose=1, error_score=np.nan, return_train_score=True).fit(predict_proba, y_true,
-                                                                            **self.p['estimator_fit_params'])
+                                                                            **self.p['pipeline__fit_params'])
             best_th_ = optimizer_th_.best_params_['threshold']
             runs_th_ = copy.deepcopy(optimizer_th_.cv_results_)
             best_run_index = len(runs['params']) + optimizer_th_.best_index_
-            self.distribution_compliance(optimizer.cv_results_, self.p['hp_grid'])
+            self.distribution_compliance(optimizer.cv_results_, self.p['gs__hp_grid'])
 
             runs = self.runs_compliance(runs, runs_th_, optimizer.best_index_)
             self.best_params_['estimate__apply_threshold__threshold'] = best_th_
             self.modifiers.append('estimate__apply_threshold__threshold')
-            self.p['hp_grid']['estimate__apply_threshold__threshold'] = th_range
+            self.p['gs__hp_grid']['estimate__apply_threshold__threshold'] = th_range
             self.gs_print(optimizer_th_, ['threshold'])
 
             #  need refit, otherwise not reproduce results
@@ -769,82 +794,111 @@ class Workflow(object):
             # refit with threshold (only after update best_params)
             # self.estimator.set_params(**self.best_params_)  # the same as just threshold
             # # assert np.array_equal(self.y_train.values, y_true)
-            self.estimator.fit(self.x_train, self.y_train, **self.p['estimator_fit_params'])
+            self.estimator.fit(self.x_train, self.y_train, **self.p['pipeline__fit_params'])
 
         return runs, best_run_index
 
-    def metrics_to_scorers(self, metrics, gs_metrics=None):
+    def custom_scorer_shell(self, estimator, x, y):
+        """Read custom_kw_args from current pipeline, pass to scorer.
+
+        Note: in gs self object copy, we can dynamically get param only from estimator,
+        """
+        try:
+            if estimator.steps[0][0] == 'pass_custom':
+                if estimator.steps[0][1].kw_args:
+                    self.custom_scorer._kwargs.update(estimator.steps[0][1].kw_args)
+        except AttributeError:
+            # 'ThresholdClassifier' object has no attribute 'steps'
+            self.custom_scorer._kwargs.update(self.default_custom_kw_args)
+
+        return self.custom_scorer(estimator, x, y)
+
+    def metrics_to_scorers(self, metrics, gs_metrics):
         """Make from scorers from metrics
 
         Args:
-            gs_metrics (sequence of str): metrics names to use in gs.
             metrics (dict): {'name': (sklearn metric object, bool greater_is_better), }
+            gs_metrics (sequence of str): metrics names to use in gs.
 
         Returns
             scorers (dict): {'name': sklearn scorer object, }
 
         """
         scorers = {}
-        # for name in gs_metrics:
-        #     metric = metrics[name]
-        #     if len(metric) == 1:
-        #         kw_args = {}
-        #     else:
-        #         kw_args = metric[1]
-        #     scorers[name] = sklearn.metrics.make_scorer(metric[0], **kw_args)
-
-        # [deprecated]
-        for name, metric in metrics.items():
-            if len(metric) == 1:
-                kw_args = {}
-                gs_flag = True
-            elif len(metric) == 2:
-                kw_args = metric[1]
-                gs_flag = True
-            else:
-                kw_args = metric[1]
-                gs_flag = metric[2]
-            if gs_flag:
+        for name in gs_metrics:
+            if name in metrics:
+                metric = metrics[name]
+                if isinstance(metric[0], str):
+                    # convert to callable
+                    # ignore kw_args (built-in `str` metrics has hard-coded kwargs)
+                    scorers[name] = sklearn.metrics.get_scorer(metric[0])
+                    continue
+                if len(metric) == 1:
+                    kw_args = {}
+                else:
+                    kw_args = copy.deepcopy(metric[1])
+                    if 'needs_custom_kw_args' in kw_args:
+                        if self.custom_scorer:
+                            raise ValueError("Only one custom metric can be set with 'needs_custom_kw_args'.")
+                        del kw_args['needs_custom_kw_args']
+                        self.custom_scorer = sklearn.metrics.make_scorer(metric[0], **kw_args)
+                        scorers[name] = self.custom_scorer_shell
+                        continue
                 scorers[name] = sklearn.metrics.make_scorer(metric[0], **kw_args)
+            else:
+                scorers[name] = sklearn.metrics.get_scorer(name)
         return scorers
 
     def get_scoring(self):
-        """Set gs target score for different approaches"""
-        if self.p['estimator_type'] == 'classifier':
-            if self.p['th_strategy'] == 0:
+        """Set gs target score for different strategies."""
+        th_range = None
+        if self.p['pipeline__type'] == 'classifier':
+            if self.p['th__strategy'] == 0:
                 scoring = self.scorers
-            elif self.p['th_strategy'] == 1:
-                scoring = {**self.scorers, 'score': self.scorer_strategy_1, }
-            elif self.p['th_strategy'] == 2:
+            elif self.p['th__strategy'] == 1:
+                scoring = {**self.scorers, self.main_score_name: self.scorer_strategy_1, }
+                if 'estimate__apply_threshold__threshold' in self.p['gs__hp_grid']:
+                    th_range = self.p['gs__hp_grid'].pop('estimate__apply_threshold__threshold')
+                    self.logger.warning('Warning: brutforce threshold experimental strategy 1.1')
+                else:
+                    self.logger.warning('Warning: brutforce threshold experimental strategy 1.2')
+            elif self.p['th__strategy'] == 2:
                 scoring = self.scorers
-                if 'estimate__apply_threshold__threshold' in self.p['hp_grid']:
+                if 'estimate__apply_threshold__threshold' in self.p['gs__hp_grid']:
                     self.logger.warning('Warning: brutforce threshold experimental strategy 2.1')
                 else:
                     th_range, _, _ = self.calc_th_range()
-                    self.p['hp_grid'].update({'estimate__apply_threshold__threshold': th_range})
+                    self.p['gs__hp_grid'].update({'estimate__apply_threshold__threshold': th_range})
                     self.logger.warning('Warning: brutforce threshold experimental strategy 2.2')
-            elif self.p['th_strategy'] == 3:
-                scoring = {**self.scorers, 'score': self.scorer_strategy_3}
+            elif self.p['th__strategy'] == 3:
+                scoring = {**self.scorers, self.main_score_name: self.scorer_strategy_3}
                 self.logger.warning('Warning: brutforce threshold experimental strategy 3')
+                if 'estimate__apply_threshold__threshold' in self.p['gs__hp_grid']:
+                    th_range = self.p['gs__hp_grid'].pop('estimate__apply_threshold__threshold')
+                    self.logger.warning('Warning: brutforce threshold experimental strategy 3.1')
+                else:
+                    self.logger.warning('Warning: brutforce threshold experimental strategy 3.2')
             else:
-                raise MyException("th_strategy should be 0-3")
+                raise MyException("th__strategy should be 0-3")
         else:
             # regression
             scoring = self.scorers
 
-        return scoring
+        return scoring, th_range
 
     def get_n_iter(self):
         """Set gs number of runs"""
-        # calculate from hps ranges if user 'runs' is not given
-        if self.p['runs'] is None:
+        # calculate from hps ranges if user 'gs__runs' is not given
+        if self.p['gs__runs'] is None:
             try:
-                n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0] for i in self.p['hp_grid'].values()])
+                n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0]
+                                  for i in self.p['gs__hp_grid'].values()])
             except AttributeError as e:
-                self.logger.critical("Error: distribution for hyperparameter grid is used, specify 'runs' in params.")
-                raise ValueError("distribution for hyperparameter grid is used, specify 'runs' in params.")
+                self.logger.critical("Error: distribution for hyperparameter grid is used,"
+                                     " specify 'gs__runs' in params.")
+                raise ValueError("distribution for hyperparameter grid is used, specify 'gs__runs' in params.")
         else:
-            n_iter = self.p['runs']
+            n_iter = self.p['gs__runs']
         return n_iter
 
     def get_pre_dispatch(self):
@@ -853,10 +907,13 @@ class Workflow(object):
         If n_jobs was set to a value higher than one, the data is copied for each parameter setting.
         Using pre_dispatch you can set how many pre-dispatched jobs you want to spawn.
         The memory is copied only pre_dispatch many times. A reasonable value for pre_dispatch is 2 * n_jobs.
+        n_jobs can be -1, mean spawn all
 
         """
-        # n_jobs can be -1, pre_dispatch=1 mean  spawn all
-        pre_dispatch = max(2, self.p['n_jobs']) if self.p['n_jobs'] else 1
+        # deprecated
+        # if self.p['gs__pre_dispatch'] == 'minimal':
+        #     pre_dispatch = max(1, self.p['gs__n_jobs']) if self.p['gs__n_jobs'] else 1
+        pre_dispatch = self.p['gs__pre_dispatch']
         return pre_dispatch
 
     def runs_compliance(self, runs, runs_th_, best_index):
@@ -908,12 +965,13 @@ class Workflow(object):
 
                 * all estimator parameters.
                 * 'id' random UUID for one run (hp combination).
-                * 'data_hash' pd.util.hash_pandas_object hash of data before split.
-                * 'params_hash' user params md5 hash (cause of function memory address will change at each workflow).
-                * 'estimator_type' regressor or classifier.
-                * 'cv_splitter'.
-                * 'split_train_size'.
-                * 'data' from params.
+                * 'data__hash' pd.util.hash_pandas_object hash of data before split.
+                * 'params__hash' user params md5 hash (cause of function memory address will change at each workflow).
+                * 'pipeline__type' regressor or classifier.
+                * 'pipeline__estimator__name' estimator.__name__.
+                * 'gs__splitter'.
+                * 'data__split_train_size'.
+                * 'data__source' params['data'].
         """
         self.logger.info("\u25CF \u25B6 DUMP RUNS")
         # get full params for each run
@@ -943,14 +1001,16 @@ class Workflow(object):
         run_id_list = [str(uuid.uuid4()) for _ in range(nums)]
 
         df['id'] = run_id_list
-        df['data_hash'] = self.data_hash
-        df['estimator_type'] = self.p['estimator_type']
-        df['estimator_name'] = self.p['main_estimator'].__class__.__name__
-        df['cv_splitter'] = self.p['cv_splitter']
-        df['split_train_size'] = self.p['split_train_size']
-        df['data'] = str(self.p['get_data'])
-        df['params_hash'] = self.p_hash
-        # df=df.assign(**{'id':run_id_list, 'data_hash':data_hash_list, 'estimator_type':es })
+        df['data__hash'] = self.data_hash
+        df['pipeline__type'] = self.p['pipeline__type']
+        df['pipeline__estimator__name'] = self.p['pipeline__estimator'].__class__.__name__
+        df['gs__splitter'] = self.p['gs__splitter']
+        df['data__split_train_size'] = self.p['data__split_train_size']
+        df['data__source'] = jsbeautifier.beautify(str({
+            key: self.p[key] for key in self.p if key.startswith('data')
+        }))
+        df['params__hash'] = self.p_hash
+        # df=df.assign(**{'id':run_id_list, 'data__hash':data_hash_list, .. })
 
         # cast to string before dump and print, otherwise it is too long
         # alternative: json.loads(json.dumps(data)) before create df
@@ -1011,9 +1071,11 @@ class Workflow(object):
 
         self.logger.info('GridSearch best index:\n    {}'.format(res.best_index_))
         self.logger.info('GridSearch time:\n    {}'.format(runs_avg))
-        self.logger.log(25, 'CV best modifiers:\n    {}'.format({key: res.best_params_[key] for key in modifiers
-                                                                 if key in res.best_params_}))
-        # self.logger.info('CV best configuration:\n    {}'.format(res.best_params_))
+        self.logger.log(25, 'CV best modifiers:\n'
+                            '    {}'.format(jsbeautifier.beautify(str({key: res.best_params_[key]
+                                                                       for key in modifiers
+                                                                       if key in res.best_params_}))))
+        self.logger.info('CV best configuration:\n    {}'.format(jsbeautifier.beautify(str(res.best_params_))))
         self.logger.info('CV best mean test score:\n    {}'.format(res.best_score_))
         self.logger.info('Errors:\n    {}'.format(self.np_error_stat))
         # Alternative: nested dic to MultiIndex df
@@ -1024,14 +1086,17 @@ class Workflow(object):
         # Example:
         # dic = {'a': list(range(10)), 'b': {'c': list(range(10)), 'd': list(range(10))}}
         # dic_flat = {}
-        # self.dic_flatter(dic, dic_flat)
+        # dic_flatter(dic, dic_flat)
         # pd.DataFrame(dic_flat)
 
     # =============================================== threshold calcs ==================================================
-    def calc_th_range(self):
+    def calc_th_range(self, th_range=None):
         """ Сalculate th range from OOF roc_curve.
 
-        Used in th_strategy (1)(2)(3.2).
+        Used in th__strategy (1)(2)(3.2).
+
+        Args:
+            th_range (array-like, optional(default=None)): if None, will be calculated from roc_curve.
 
         Returns:
             th_range
@@ -1081,32 +1146,38 @@ class Workflow(object):
         """
         y_pred_proba, _, y_true = self.cross_val_predict(
             self.estimator, self.x_train, y=self.y_train, groups=None,
-            cv=self.cv(), fit_params=None, method='predict_proba')
-        best_th_, best_ind, q, fpr, tpr, th_ = self.brut_th_(y_true, y_pred_proba)
-        coarse_th_, coarse_index = self.coarse_th_range(best_th_, th_)
-        if self.p['th_plot_flag']:
-            fig, axs = plt.subplots(nrows=2, ncols=1)
-            fig.set_size_inches(10, 10)
-            # roc_curve
-            roc_auc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba[:, self.pos_label_ind])
-            axs[0].plot(fpr, tpr, 'darkorange', label=f"ROC curve (area = {roc_auc:.3f})")
-            axs[0].scatter(fpr[coarse_index], tpr[coarse_index], c='b', marker="o")
-            axs[0].plot([0, 1], [0, 1], color='navy', linestyle='--')
-            axs[0].set_xlabel('False Positive Rate')
-            axs[0].set_ylabel('True Positive Rate')
-            axs[0].set_title(f"Receiver operating characteristic (label '{self.p['pos_label']}')")
-            axs[0].legend(loc="lower right")
-            # tpr/(tpr+fpr)
-            axs[1].plot(th_, q, 'green')
-            axs[1].vlines(best_th_, np.min(q), np.max(q))
-            axs[1].vlines(coarse_th_, np.min(q), np.max(q), colors='b', linestyles=':')
-            axs[1].set_xlim([0.0, 1.0])
-            axs[1].set_xlabel('Threshold')
-            axs[1].set_ylabel('TPR/(TPR+FPR)')
-            axs[1].set_title('Selected th values near maximum')
-            # plt.plot(th_, fpr, 'red')
-            plt.show()
-        return coarse_th_, y_pred_proba, y_true
+            cv=self.cv(), fit_params=self.p['pipeline__fit_params'], method='predict_proba')
+        if th_range is None:
+            best_th_, best_ind, q, fpr, tpr, th_range = self.brut_th_(y_true, y_pred_proba)
+            coarse_th_range, coarse_index = self.coarse_th_range(best_th_, th_range)
+            if self.p['th__plot_flag']:
+                self.th_plot(y_true, y_pred_proba, best_th_, q, tpr, fpr, th_range, coarse_th_range, coarse_index)
+        else:
+            coarse_th_range = th_range
+        return coarse_th_range, y_pred_proba, y_true
+
+    def th_plot(self, y_true, y_pred_proba, best_th_, q, tpr, fpr, th_, coarse_th_, coarse_index):
+        fig, axs = plt.subplots(nrows=2, ncols=1)
+        fig.set_size_inches(10, 10)
+        # roc_curve
+        roc_auc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba[:, self.pos_label_ind])
+        axs[0].plot(fpr, tpr, 'darkorange', label=f"ROC curve (area = {roc_auc:.3f})")
+        axs[0].scatter(fpr[coarse_index], tpr[coarse_index], c='b', marker="o")
+        axs[0].plot([0, 1], [0, 1], color='navy', linestyle='--')
+        axs[0].set_xlabel('False Positive Rate')
+        axs[0].set_ylabel('True Positive Rate')
+        axs[0].set_title(f"Receiver operating characteristic (label '{self.pos_label}')")
+        axs[0].legend(loc="lower right")
+        # tpr/(tpr+fpr)
+        axs[1].plot(th_, q, 'green')
+        axs[1].vlines(best_th_, np.min(q), np.max(q))
+        axs[1].vlines(coarse_th_, np.min(q), np.max(q), colors='b', linestyles=':')
+        axs[1].set_xlim([0.0, 1.0])
+        axs[1].set_xlabel('Threshold')
+        axs[1].set_ylabel('TPR/(TPR+FPR)')
+        axs[1].set_title('Selected th values near maximum')
+        # plt.plot(th_, fpr, 'red')
+        plt.show()
 
     def cross_val_predict(self, *args, **kwargs):
         """Function to make bind OOF prediction/predict_proba.
@@ -1151,11 +1222,11 @@ class Workflow(object):
                 if hasattr(x, 'loc'):
                     estimator.fit(x.loc[x.index[fold_train_index]],
                                   y.loc[y.index[fold_train_index]],
-                                  **self.p['estimator_fit_params'])
+                                  **self.p['pipeline__fit_params'])
                     # in order of self.estimator.classes_
                     fold_predict_proba = estimator.predict_proba(x.loc[x.index[fold_test_index]])
                 else:
-                    estimator.fit(x[fold_train_index], y[fold_train_index], **self.p['estimator_fit_params'])
+                    estimator.fit(x[fold_train_index], y[fold_train_index], **self.p['pipeline__fit_params'])
                     # in order of self.estimator.classes_
                     fold_predict_proba = estimator.predict_proba(x[fold_test_index])
                 # merge th_ for class
@@ -1184,7 +1255,7 @@ class Workflow(object):
             th descending
             th_range ascending
         """
-        th_range_desire = np.linspace(max(best_th_ / 100, np.min(th_)), min(best_th_ * 2, 1), self.p['th_points_number'])
+        th_range_desire = np.linspace(max(best_th_ / 100, np.min(th_)), min(best_th_ * 2, 1), self.p['th__samples'])
         # find index of nearest from th_reverse
         index_rev = np.searchsorted(th_[::-1], th_range_desire, side='left')  # a[i-1] < v <= a[i]
         index = len(th_) - index_rev - 1
@@ -1204,7 +1275,7 @@ class Workflow(object):
         """
         fpr, tpr, th_ = sklearn.metrics.roc_curve(
             y_true, y_pred_proba[:, self.pos_label_ind],
-            pos_label=self.p['pos_label'], drop_intermediate=True)
+            pos_label=self.pos_label, drop_intermediate=True)
         # th_ sorted descending
         # fpr sorted ascending
         # tpr sorted ascending
@@ -1219,7 +1290,7 @@ class Workflow(object):
 
     def prob_to_pred(self, y_pred_proba, th_):
         """Fix threshold on predict_proba"""
-        y_pred = np.where(y_pred_proba[:, self.pos_label_ind] > th_, [self.p['pos_label']], [self.neg_label])
+        y_pred = np.where(y_pred_proba[:, self.pos_label_ind] > th_, [self.pos_label], [self.neg_label])
         return y_pred
 
     # =============================================== validate =========================================================
@@ -1287,7 +1358,13 @@ class Workflow(object):
             self.logger.log(5, f"{name}:")
             # skip make_scorer params
             kw_args = {key: metric[1][key] for key in metric[1]
-                       if key not in ['greater_is_better', 'needs_proba', 'needs_threshold']}
+                       if key not in ['greater_is_better', 'needs_proba',
+                                      'needs_threshold', 'needs_custom_kw_args']}
+
+            if metric[1].get('needs_custom_kw_args', False):
+                if self.estimator.steps[0][1].kw_args:
+                    kw_args.update(self.estimator.steps[0][1].kw_args)
+
             # result score on Train
             score_train = metric[0](self.y_train, y_pred_train_curr, **kw_args)
             # result score on test
@@ -1391,7 +1468,7 @@ class Workflow(object):
         raw_targets_names = raw_names['targets']
         if estimator is None:
             estimator = self.estimator
-        data_df, _, _ = self.unifier(data)
+        data_df, _, _ = self.unify_data(data)
         x_df = data_df.drop(['targets'], axis=1)  # was used for compatibility with unifier
         y_pred = estimator.predict(x_df.values)
         y_pred_df = pd.DataFrame(index=data_df.index.values,
@@ -1414,60 +1491,44 @@ class Workflow(object):
     def gen_gui_params(self):
         """Prepare params for visualization."""
         self.logger.info("\u25CF PREPARE GUI PARAMS")
-        # rearange nested hp params
+        # rearrange nested hp params
         hp_grid_flat = {}
-        for key, val in self.p['hp_grid'].items():
+        for key, val in self.p['gs__hp_grid'].items():
             if key not in self.modifiers:  # only if multiple values
                 continue
-            if isinstance(val[0], dict):  # functiontransformer
-                dic = {tuple([key, key_]): np.zeros(len(val), dtype=np.float64, order='C') for key_ in val[0].keys()}
+            if isinstance(val[0], dict):
+                # functiontransformer kw_args compliance (pass_custom)
+                # ('pass_custom__kw_args','param_a')
+                dic = {tuple([key, key_]): np.zeros(len(val), dtype=type(val[0]), order='C')
+                       for key_ in val[0].keys()}
+                # [deprecated] problem in inverse transform in gui (can`t understand if needed)
+                # 'pass_custom__kw_args__param_a'
+                # dic = {'__'.join([key, key_]): np.zeros(len(val), dtype=np.float64, order='C')
+                #        for key_ in val[0].keys()}
                 for i, item in enumerate(val):
                     for key_ in dic:
-                        dic[key_][i] = (item[key_[1]])
+                        dic[key_][i] = item[key_[1]]
+                        # dic[key_][i] = item[key_.split('__')[-1]]
                 hp_grid_flat.update(dic)
             else:
                 hp_grid_flat[key] = self.to_numpy(val)
 
         # not necessary
         best_params_flat = {}
-        self.dic_flatter(self.best_params_, best_params_flat)
+        dic_flatter(self.best_params_, best_params_flat, key_transform=tuple, val_transform=self.to_numpy)
 
         self.gui_params = {
-            'estimator_type': self.p['estimator_type'],
+            'pipeline__type': self.p['pipeline__type'],
             'data': self.data_df,
             'train_index': self.train_index,
             'test_index': self.test_index,
             'estimator': self.estimator,
-            'hp_grid': self.p['hp_grid'],               # {'param':range,}
+            'gs__hp_grid': self.p['gs__hp_grid'],       # {'param':range,}
             'best_params_': self.best_params_,          # {'param':value,}
             'hp_grid_flat': hp_grid_flat,               # {'param':range,}
             'best_params_flat': best_params_flat,       # {'param':value,}
             'metric': self.metric,
         }
-
-    def dic_flatter(self, dic, dic_flat, keys_lis_prev=None):
-        """Flatten the dict.
-
-        {'a':{'b':[], 'c':[]},} =>  {('a','b'):[], ('a','c'):[]}
-
-        Args:
-            dic (dict): input dictionary
-            dic_flat (dict): result dictionary
-            keys_lis_prev: need for recursion
-
-        """
-        if keys_lis_prev is None:
-            keys_lis_prev = []
-        for key, val in dic.items():
-            keys_lis = keys_lis_prev[:]
-            keys_lis.append(key)
-            if isinstance(val, dict):
-                self.dic_flatter(val, dic_flat, keys_lis)
-            else:
-                if len(keys_lis) == 1:
-                    dic_flat[keys_lis[0]] = self.to_numpy(val)
-                else:
-                    dic_flat[tuple(keys_lis)] = self.to_numpy(val)
 
     def to_numpy(self, val):
         """Hp param to numpy.
@@ -1559,7 +1620,7 @@ class Workflow(object):
             meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
 
         """
-        if self.p['estimator_type'] == 'classifier':
+        if self.p['pipeline__type'] == 'classifier':
             return self.metric_classifier(y_true, y_pred, y_pred_type, meta)
         else:
             return self.metric_regressor(y_true, y_pred, meta)
@@ -1590,15 +1651,15 @@ class Workflow(object):
 
         """
         # score
-        scorer_kwargs = self.p['metrics']['score'][1] if len(self.p['metrics']['score']) > 1 else {}
+        scorer_kwargs = self.p['metrics'][self.main_score_name][1] if len(self.p['metrics'][self.main_score_name]) > 1 else {}
         if scorer_kwargs.get('needs_proba') or scorer_kwargs.get('needs_threshold'):
             # [deprecated] confusing
             # self.logger.warning("Warning:  gui classification metric don`t suport predict_proba "
             #                     "or decision_function based metrics\n    "
             #                     "score set to None")
-            score = None  # sklearn.metrics.f1_score(y_true, y_pred, pos_label=self.p['pos_label'])
+            score = None  # sklearn.metrics.f1_score(y_true, y_pred, pos_label=self.pos_label)
         else:
-            score = self.p['metrics']['score'][0](y_true, y_pred)
+            score = self.p['metrics'][self.main_score_name][0](y_true, y_pred)
 
         if not meta:
             return score
@@ -1658,7 +1719,7 @@ class Workflow(object):
             np.nan_to_num(y_pred, copy=False)
 
         # score
-        score = self.p['metrics']['score'][0](y_true, y_pred)
+        score = self.p['metrics'][self.main_score_name][0](y_true, y_pred)
         if not meta:
             return score
 
@@ -1700,5 +1761,5 @@ class Workflow(object):
         return score, meta
 
 
-if __name__ == 'main':
+if __name__ == '__main__':
     pass

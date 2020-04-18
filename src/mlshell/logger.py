@@ -1,7 +1,4 @@
-"""The :mod:`mlshell.logger_class` module includes CreateLogger class
-
-TODO: logbook (better developed library) some chamges
-"""
+"""The :mod:`mlshell.logger_class` module includes CreateLogger class."""
 
 from mlshell.libs import os
 from mlshell.libs import sys
@@ -179,5 +176,5 @@ class CreateLogger(object):
             del dict_log_config["loggers"][logger_name]['handlers'][index]
 
 
-if __name__ == 'main':
+if __name__ == '__main__':
     pass
