@@ -53,13 +53,19 @@ class Workflow(object):
             self.logger = logger
         self.logger.info("\u25CF INITITALIZE WORKFLOW")
         self.check_results_size(project_path)
-        # use default if skipped in params
-        temp = copy.deepcopy(mlshell.default.DEFAULT_PARAMS)
-        if params is not None:
-            self.check_params_keys(temp, params)
-            temp.update(params)
-        self.check_params_vals(temp)
-        self.p = temp
+
+        # [deprecated]
+        # merge in read conf
+        # check_params_vals in fit
+        # # use default if skipped in params
+        # temp = copy.deepcopy(mlshell.default.DEFAULT_PARAMS)
+        # if params is not None:
+        #     self.check_params_keys(temp, params)
+        #     temp.update(params)
+        # self.check_params_vals(temp)
+        # self.p = temp
+
+        self.p = params
         self.logger.info('Used params:\n    {}'.format(jsbeautifier.beautify(str(self.p))))
 
         # hash of hp_params
@@ -73,7 +79,7 @@ class Workflow(object):
         self.neg_label = None
         self.pos_label = None
         self.pos_label_ind = None
-        self.data_df = None
+        self.data_df = {}
         self.categoric_ind_name = None
         self.numeric_ind_name = None
         self.data_hash = None
@@ -82,8 +88,9 @@ class Workflow(object):
 
         self.custom_scorer = None
         self.default_custom_kw_args = {}
-        self.main_score_name = self.p['gs__refit']
-        self.scorers = self.metrics_to_scorers(self.p['metrics'], self.p['gs__metrics'])
+        # fit
+        self.refit = None
+        self.scorers = None
         # fullfill in self.create_pipeline()
         self.estimator = None
         # fullfill in self.split()
@@ -108,52 +115,6 @@ class Workflow(object):
         if size_mb > n:
             self.logger.warning(f"Warning: results/ directory size {size_mb:.2f}Gb more than {n}Gb")
 
-    def check_params_keys(self, default_params, params):
-        miss_keys = set()
-        for key in params:
-            if key not in default_params:
-                miss_keys.add(key)
-                del params[key]
-        if miss_keys:
-            self.logger.warning(f"Ignore unknown key(s) in conf.py params, check\n    {miss_keys}")
-
-    def check_params_vals(self, params):
-        # hp_grid, remove non unique
-        # [deprecated] use zero-position, need to clean user error
-        # if 'gs__hp_grid' in params:
-        remove_keys = set()
-        for key, val in params['gs__hp_grid'].items():
-            if hasattr(val, '__iter__'):
-                # np.unique use built-in sort => not applicable for objects (dict, list, transformers)
-                # pd.unique use built-in set => not work with unhashable types (list of dict, list of list)
-                # transform to str, drop repeated and back to dict
-                if hasattr(val, '__len__'):
-                    if len(val) == 0:
-                        remove_keys.add(key)
-                    else:
-                        if isinstance(val[0], dict):
-                            # not prevent repetition
-                            # [deprecated] [{}] => [];  [{},{'a':7}] => [{'a': nan}, {'a': 7.0}]
-                            # params['gs__hp_grid'][key] = pd.DataFrame(val).drop_duplicates().to_dict('r')
-                            pass
-                        else:
-                            params['gs__hp_grid'][key] = pd.unique(val)
-        for key in remove_keys:
-            del params['gs__hp_grid'][key]
-
-        # main_score_name come from 'gs__refit'
-        # check self.main_score_name in 'metrics' and 'gs__metrics'
-        main_score_name = params['gs__refit']
-        if params['gs__flag']:
-            if main_score_name not in params['metrics']:
-                raise KeyError(f"Warning: gs refit metric '{main_score_name}' should be present"
-                               f" in 'metrics'.")
-
-            if main_score_name not in params['gs__metrics']:
-                params['gs__metrics'].append(main_score_name)
-                self.logger.warning(f"Warning: gs refit metric '{main_score_name}' should be present"
-                                    f" in 'gs__metrics', '{main_score_name}' added.")
-
     def check_data_format(self, data, params):
         """check data format"""
         if not isinstance(data, pd.DataFrame):
@@ -164,10 +125,12 @@ class Workflow(object):
             raise KeyError("all name of dataframe features columns should start with 'feature_'")
         if params['pipeline__type'] == 'classifier':
             if self.n_classes > 2:
-                raise ValueError('only binary classification with pos_label={}'.format(params['th__pos_label']))
-            if params['th__pos_label'] != self.classes_[-1]:
-                raise ValueError("pos_label={} should be last in np.unique(targets), current={}"
-                                 .format(params['th__pos_label'], self.classes_))
+                raise ValueError('Currently only binary classification supported.')
+            # [deprecated] get from data
+            # [deprecated] get from data
+            # if params['th__pos_label'] != self.classes_[-1]:
+            #     raise ValueError("pos_label={} should be last in np.unique(targets), current={}"
+            #                      .format(params['th__pos_label'], self.classes_))
         # check that all non-categoric features are numeric type
         # [deprecated] move to self.unify_data (some object-type column could be casted float())
 
@@ -179,6 +142,27 @@ class Workflow(object):
             self.np_error_stat[args[0]] = 1
 
     # =============================================== unify ============================================================
+    def set_data(self):
+
+        if self.p['pipeline__type'] == 'classifier':
+            self.classes_ = np.unique(data['targets'])
+            self.n_classes = self.classes_.shape[0]
+            self.pos_label = self.classes_[-1]  # self.p['th__pos_label']
+            self.neg_label = self.classes_[0]
+            self.pos_label_ind = np.where(self.classes_ == self.pos_label)[0][0]
+            self.logger.info(f"Label {self.pos_label} identified as positive by np.unique(targets)[-1]:\n"
+                             f"    for classifiers provided predict_proba:"
+                             f" if P(pos_label)>threshold, prediction=pos_label on sample.")
+
+        # TODO: this checks are only need for my workflow, user-defined may don`t
+        self.check_data_format(data, self.p)
+
+        data_df, categoric_ind_name, numeric_ind_name = self.extract_ind_name(data)
+        self.check_numeric_types(data_df)
+
+        # hash of data before split
+        data_hash = pd.util.hash_pandas_object(data_df).sum()
+
     def set_data(self, data_id, data=None):
         """ Unify dataframe in compliance to workflow class.
 
@@ -199,6 +183,13 @@ class Workflow(object):
 
         """
         self.logger.info("\u25CF SET DATA")
+
+        self.data[data_id] = {'df': None,
+                              'categoric_ind_name': None,
+                              'numeric_ind_name': None,
+                              'raw_columns': None,
+                              'base_plot': None,}
+
         if data_id in self.p['data']:
             del_duplicates = self.p['data__del_duplicates']
         else:
@@ -208,7 +199,7 @@ class Workflow(object):
             cache, meta = self.load_instead_unify(prefix=data_id)
             if cache is not None:
                 data = cache
-                self.data_df = data
+                self.data_df[data_id] = data
                 self.categoric_ind_name = meta['categoric']
                 self.numeric_ind_name = meta['numeric']
         else:
@@ -217,12 +208,16 @@ class Workflow(object):
         if data is None:
             raise ValueError("Set `data` arg in unify_data or turn on 'cache__unifier' in conf.py")
 
+        # TODO: only acceptable when we use predict_proba, move out from set_data
         if self.p['pipeline__type'] == 'classifier':
             self.classes_ = np.unique(data['targets'])
             self.n_classes = self.classes_.shape[0]
-            self.pos_label = self.p['th__pos_label']
+            self.pos_label = self.classes_[-1]  # self.p['th__pos_label']
             self.neg_label = self.classes_[0]
             self.pos_label_ind = np.where(self.classes_ == self.pos_label)[0][0]
+            self.logger.info(f"Label {self.pos_label} identified as positive by np.unique(targets)[-1]:\n"
+                             f"    for classifiers provided predict_proba:"
+                             f" if P(pos_label)>threshold, prediction=pos_label on sample.")
 
         self.check_data_format(data, self.p)
 
@@ -358,8 +353,6 @@ class Workflow(object):
             numeric_ind_name (dict):  {column_index: ('feature__name',),}
 
         """
-
-
         categoric_ind_name = {}
         numeric_ind_name = {}
         for ind, column_name in enumerate(data):
@@ -656,7 +649,7 @@ class Workflow(object):
                 Score main metric after fix best th.
 
         """
-        scorer = self.scorers[self.main_score_name]
+        scorer = self.scorers[self.refit]
         metric = scorer._score_func
         if isinstance(scorer, sklearn.metrics._scorer._PredictScorer):
             y_pred_proba = estimator.predict_proba(x)
@@ -704,7 +697,6 @@ class Workflow(object):
             gs_flag = self.p['fit__gs_flag']
             pipeline_debug = self.p['fit__pipeline_debug']
 
-
         self.set_zero_position_hps()
         if pipeline_debug:
             # duplicate nice print from set_zero_position_hps
@@ -742,24 +734,29 @@ class Workflow(object):
     def optimize(self):
         """Tune hp on train by cv."""
         self.logger.info("\u25CF \u25B6 GRID SEARCH HYPERPARAMETERS")
+        # TODO: Add mandatory default keys with warnings.
+        self.check_gs_keys()
         # param, fold -> fit(fold_train) -> predict(fold_test) -> score for params
-        scoring, th_range = self.get_scoring()
+        self.scorers = self.metrics_to_scorers(self.p['metrics'], self.p['gs__metrics'])
+        self.refit = self.get_refit(self.p)
+        hp_grid = self.get_hp_grid(self.p['gs__hp_grid'])
+        scoring, th_range, refit_updated = self.get_scoring(self.refit)
         n_iter = self.get_n_iter()
         pre_dispatch = self.get_pre_dispatch()
 
         # optimize score
         optimizer = sklearn.model_selection.RandomizedSearchCV(
-            self.estimator, self.p['gs__hp_grid'], scoring=scoring, n_iter=n_iter,
+            self.estimator, hp_grid, scoring=scoring, n_iter=n_iter,
             n_jobs=self.p['gs__n_jobs'], pre_dispatch=pre_dispatch,
-            refit=self.main_score_name, cv=self.cv(), verbose=self.p['gs__verbose'], error_score=np.nan,
+            refit=refit_updated, cv=self.cv(), verbose=self.p['gs__verbose'], error_score=np.nan,
             return_train_score=True).fit(self.x_train, self.y_train, **self.p['pipeline__fit_params'])
         self.estimator = optimizer.best_estimator_
         self.best_params_ = optimizer.best_params_
         best_run_index = optimizer.best_index_
         if 'pass_custom__kw_args' in self.best_params_:
             self.default_custom_kw_args = self.best_params_['pass_custom__kw_args']
-        self.distribution_compliance(optimizer.cv_results_, self.p['gs__hp_grid'])
-        self.modifiers = self.find_modifiers(self.p['gs__hp_grid'])
+        self.distribution_compliance(optimizer.cv_results_, hp_grid)
+        self.modifiers = self.find_modifiers(hp_grid)
         runs = copy.deepcopy(optimizer.cv_results_)
         # nice print
         self.gs_print(optimizer, self.modifiers)
@@ -774,13 +771,13 @@ class Workflow(object):
                                                    self.pos_label, self.neg_label),
                 {'threshold': th_range}, n_iter=th_range.shape[0],
                 scoring=scoring,
-                n_jobs=1, pre_dispatch=2, refit=self.main_score_name, cv=self.cv(),
+                n_jobs=1, pre_dispatch=2, refit=self.refit, cv=self.cv(),
                 verbose=1, error_score=np.nan, return_train_score=True).fit(predict_proba, y_true,
                                                                             **self.p['pipeline__fit_params'])
             best_th_ = optimizer_th_.best_params_['threshold']
             runs_th_ = copy.deepcopy(optimizer_th_.cv_results_)
             best_run_index = len(runs['params']) + optimizer_th_.best_index_
-            self.distribution_compliance(optimizer.cv_results_, self.p['gs__hp_grid'])
+            self.distribution_compliance(optimizer.cv_results_, hp_grid)
 
             runs = self.runs_compliance(runs, runs_th_, optimizer.best_index_)
             self.best_params_['estimate__apply_threshold__threshold'] = best_th_
@@ -798,20 +795,9 @@ class Workflow(object):
 
         return runs, best_run_index
 
-    def custom_scorer_shell(self, estimator, x, y):
-        """Read custom_kw_args from current pipeline, pass to scorer.
-
-        Note: in gs self object copy, we can dynamically get param only from estimator,
-        """
-        try:
-            if estimator.steps[0][0] == 'pass_custom':
-                if estimator.steps[0][1].kw_args:
-                    self.custom_scorer._kwargs.update(estimator.steps[0][1].kw_args)
-        except AttributeError:
-            # 'ThresholdClassifier' object has no attribute 'steps'
-            self.custom_scorer._kwargs.update(self.default_custom_kw_args)
-
-        return self.custom_scorer(estimator, x, y)
+    def check_gs_keys(self):
+        # TODO:
+        pass
 
     def metrics_to_scorers(self, metrics, gs_metrics):
         """Make from scorers from metrics
@@ -820,11 +806,19 @@ class Workflow(object):
             metrics (dict): {'name': (sklearn metric object, bool greater_is_better), }
             gs_metrics (sequence of str): metrics names to use in gs.
 
-        Returns
+        Returns:
             scorers (dict): {'name': sklearn scorer object, }
+
+        Note:
+            if 'gs__metric_id' is None, estimator default will be used.
 
         """
         scorers = {}
+        if not gs_metrics:
+            # need to set explicit, because always need not None 'refit' name
+            # can`t extract estimator built-in name, so use all from validation metrics
+            gs_metrics = metrics.keys()
+
         for name in gs_metrics:
             if name in metrics:
                 metric = metrics[name]
@@ -849,19 +843,82 @@ class Workflow(object):
                 scorers[name] = sklearn.metrics.get_scorer(name)
         return scorers
 
-    def get_scoring(self):
+    def get_refit(self, p):
+        # main_score_name come from 'gs__refit'
+        # check self.main_score_name in 'metrics' and 'gs__metrics'
+        if self.p['gs__refit']:
+            refit = self.p['gs__refit']
+
+            if refit not in p['gs__metrics']:
+                p['gs__metrics'].append(refit)
+                self.logger.warning(f"Warning: grid search 'refit' metric '{refit}' should be present"
+                                    f" in 'gs__metrics', added.")
+        elif self.p['gs__scoring']:
+            refit = self.p['gs__scoring'][0]
+            self.logger.warning(f"Warning: gs refit metric not set,"
+                                f"zero position from 'gs__metrics' used: {refit}.")
+        else:
+            # we guaranteed scoring not empty in metrics_to_scorers.
+            assert False, "gs__metrics should be set"
+            # [deprecated]
+            # self.logger.warning(f"Warning: neither 'gs_refit', nor 'gs__metric' set:"
+            #                     f"estimator built-in score method is used.")
+            # refit = list(self.scorers.keys())[0]
+        return refit
+
+    def get_hp_grid(self, hp_grid):
+        # hp_grid, remove non unique
+        remove_keys = set()
+        for key, val in hp_grid['gs__hp_grid'].items():
+            if hasattr(val, '__iter__'):
+                # np.unique use built-in sort => not applicable for objects (dict, list, transformers)
+                # pd.unique use built-in set => not work with unhashable types (list of dict, list of list)
+                # transform to str, drop repeated and back to dict
+                if hasattr(val, '__len__'):
+                    if len(val) == 0:
+                        remove_keys.add(key)
+                    else:
+                        if isinstance(val[0], dict):
+                            # not prevent repetition
+                            # [deprecated] [{}] => [];  [{},{'a':7}] => [{'a': nan}, {'a': 7.0}]
+                            # hp_grid['gs__hp_grid'][key] = pd.DataFrame(val).drop_duplicates().to_dict('r')
+                            pass
+                        else:
+                            hp_grid['gs__hp_grid'][key] = pd.unique(val)
+        for key in remove_keys:
+            del hp_grid['gs__hp_grid'][key]
+        return hp_grid
+
+    def custom_scorer_shell(self, estimator, x, y):
+        """Read custom_kw_args from current pipeline, pass to scorer.
+
+        Note: in gs self object copy, we can dynamically get param only from estimator,
+        """
+        try:
+            if estimator.steps[0][0] == 'pass_custom':
+                if estimator.steps[0][1].kw_args:
+                    self.custom_scorer._kwargs.update(estimator.steps[0][1].kw_args)
+        except AttributeError:
+            # 'ThresholdClassifier' object has no attribute 'steps'
+            self.custom_scorer._kwargs.update(self.default_custom_kw_args)
+
+        return self.custom_scorer(estimator, x, y)
+
+    def get_scoring(self, refit):
         """Set gs target score for different strategies."""
         th_range = None
         if self.p['pipeline__type'] == 'classifier':
             if self.p['th__strategy'] == 0:
                 scoring = self.scorers
             elif self.p['th__strategy'] == 1:
-                scoring = {**self.scorers, self.main_score_name: self.scorer_strategy_1, }
                 if 'estimate__apply_threshold__threshold' in self.p['gs__hp_grid']:
                     th_range = self.p['gs__hp_grid'].pop('estimate__apply_threshold__threshold')
                     self.logger.warning('Warning: brutforce threshold experimental strategy 1.1')
                 else:
                     self.logger.warning('Warning: brutforce threshold experimental strategy 1.2')
+                self.logger.warning("Warning: add 'roc_auc' to grid search scorers.")
+                refit = 'roc_auc'
+                scoring = {**self.scorers, 'roc_auc': sklearn.metrics.get_scorer('roc_auc'), }
             elif self.p['th__strategy'] == 2:
                 scoring = self.scorers
                 if 'estimate__apply_threshold__threshold' in self.p['gs__hp_grid']:
@@ -871,20 +928,23 @@ class Workflow(object):
                     self.p['gs__hp_grid'].update({'estimate__apply_threshold__threshold': th_range})
                     self.logger.warning('Warning: brutforce threshold experimental strategy 2.2')
             elif self.p['th__strategy'] == 3:
-                scoring = {**self.scorers, self.main_score_name: self.scorer_strategy_3}
-                self.logger.warning('Warning: brutforce threshold experimental strategy 3')
                 if 'estimate__apply_threshold__threshold' in self.p['gs__hp_grid']:
                     th_range = self.p['gs__hp_grid'].pop('estimate__apply_threshold__threshold')
                     self.logger.warning('Warning: brutforce threshold experimental strategy 3.1')
                 else:
                     self.logger.warning('Warning: brutforce threshold experimental strategy 3.2')
+                if not isinstance(refit, str):
+                    raise ValueError("Error: for strategy 3 'refit' should be of type 'str'")
+                refit = f'experimental_{refit}'
+                scoring = {**self.scorers, refit: self.scorer_strategy_3}
+                self.logger.warning(f"Warning: add {refit} to grid search scorers.")
             else:
                 raise MyException("th__strategy should be 0-3")
         else:
             # regression
             scoring = self.scorers
 
-        return scoring, th_range
+        return scoring, th_range, refit
 
     def get_n_iter(self):
         """Set gs number of runs"""
@@ -1075,9 +1135,12 @@ class Workflow(object):
                             '    {}'.format(jsbeautifier.beautify(str({key: res.best_params_[key]
                                                                        for key in modifiers
                                                                        if key in res.best_params_}))))
-        self.logger.info('CV best configuration:\n    {}'.format(jsbeautifier.beautify(str(res.best_params_))))
-        self.logger.info('CV best mean test score:\n    {}'.format(res.best_score_))
-        self.logger.info('Errors:\n    {}'.format(self.np_error_stat))
+        self.logger.info('CV best configuration:\n'
+                         '    {}'.format(jsbeautifier.beautify(str(res.best_params_))))
+        self.logger.info('CV best mean test score:\n'
+                         '    {}'.format(res.__dict__.get('best_score_', 'n/a')))  # not exist if refit callable
+        self.logger.info('Errors:\n'
+                         '    {}'.format(self.np_error_stat))
         # Alternative: nested dic to MultiIndex df
         # l = res.cv_results_['mean_fit_time'].shape[0]
         # dic = dict({'index':np.arange(l, dtype=np.float), 'train_score':res.cv_results_['mean_train_score'],
@@ -1299,7 +1362,8 @@ class Workflow(object):
         """Predict and score on validation set."""
         self.logger.info("\u25CF VALIDATE ON HOLDOUT")
         # use best param from cv on train (automated in GridSearch if refit=True)
-        # self.via_scorers(self.scorers)
+        # [deprecated] not all metrics can be converted to scorers
+        # self.via_scorers(self.metrics_to_scorers(self.p['metrics'], self.p['metrics']))
         self.via_metrics(self.p['metrics'])
 
     def via_scorers(self, scorers):

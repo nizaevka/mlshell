@@ -7,63 +7,92 @@ import mlshell.custom
 
 DEFAULT_PARAMS = {
     # data operation automative, create, load pipelines too
-    # metrics better with list metrics_ids instead of metrics_id
     # possibility of multiple pipelines, metrics lists, gs_conf in one workflow!
-    'workflow':
-        {
-            'endpoint_id': 'auto',
-            'steps': {
-                'fit': 1,
-                'dump': 0,
-                'validate': 1,
-                'gui': 1,
-                'predict': 1,
-            },
+    'workflow': {
+        'endpoint_id': None,
+        'steps': {
+            'create': 1,
+            'load_2': 1,
+            'fit': 1,
+            'dump': 0,
+            'validate': 1,
+            'gui': 1,
+            'predict': 1,
         },
+    },
     'endpoint': {
         'default': {
-            'pipeline_id':'auto',
-            # 'endpoint_id':'auto',
-            'get': {'class': 'default'},
-            'preprocess': {'class': 'default'},
-            'split': {'func':'default'},
-
-            'load': {'func': 'default'},
-            'dump': {'func': 'default'},
-            'create': {'func': 'default'},
-            'fit': {'func':'default',
-                    'data_id': 'train',
+            'class': None,
+            'global': {
+                'seed': 42,
+                'pipeline': None,
+                'data': None,
+                'metric': None,
+                'gs': None,
+            },
+            'load': {'func': None,
+                     'pipeline': None,
+                     'seed': None},
+            'create': {'func': None,
+                       'pipeline': None,
+                       'seed': None},
+            'dump': {'func': None,
+                     'pipeline': None,
+                     'seed': None},
+            'fit': {'func': None,
+                    'data': 'train',
                     'gs_flag': False,
-                    'gs_id': 'auto',
-                    'debug':False},
-            'validate': {'data_id': 'train', 'metrics_id': 'auto'},
-            'gui': {'class': 'default', 'base_sort': False, 'data_id': 'train'},
-            'predict': {'function': None, 'data_id': 'test'},
+                    'gs_id': None,
+                    'debug': False,
+                    'pipeline': None,
+                    'seed': None,},
+            'validate': {'func': None,
+                         'data': 'train',
+                         'metric': None,
+                         'pipeline': None,
+                         'seed': None},
+            'predict': {'function': None,
+                        'data': 'test',
+                        'pipeline': None,
+                        'seed': None},
+            'gui': {'class': None,
+                    'base_sort': False,
+                    'data': 'train',
+                    'pipeline': None,
+                    'seed': None},
         },
     },
     'pipeline': {
+        # 'default': {
+        #     'estimator': sklearn.linear_model.LinearRegression(),
+        #     'type': 'regressor',
+        #     'steps_cache': None,
+        #     'steps': None,
+        #     'fit_params': {},
+        #     'filepath': None
+        # },
         'default': {
             'estimator': sklearn.linear_model.LinearRegression(),
             'type': 'regressor',
             'steps_cache': None,
-            'steps': 'default',
+            'steps': None,
             'fit_params': {},
-            'filepath': None
+            'filepath': None,
         },
     },
     'metric': {
-        'default': {
-            'score': (sklearn.metrics.r2_score, {'greater_is_better': True}),
-        },
+        # 'default': (sklearn.metrics.r2_score, {'greater_is_better': True}),
+        'classifier': (sklearn.metrics.accuracy_score, {'greater_is_better': True}),
+        'regressor': (sklearn.metrics.r2_score, {'greater_is_better': True}),
     },
     'gs': {
-        'default' :{
+        'default': {
             # 'flag': True,
             'hp_grid': {},
             'n_iter': None,
-            'scoring': ['score'],
+            'scoring': None,
             'n_jobs': 1,
-            'refit': 'score',
+            'refit': None,
             'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
             'verbose': 1,
             'pre_dispatch': 'n_jobs',
@@ -71,18 +100,26 @@ DEFAULT_PARAMS = {
             #'random_state': None,
             #'error_score': np.nan,
             #'return_train_score': True,
+            'th': {
+                # 'pos_label': 1,  # [eprecated] get from data with info.
+                'strategy': 0,
+                'samples': 10,
+                'plot_flag': False,
+            },
         },
     },
     'data': {
         'default': {
-            'get': {},
-            'preprocess': {},
-            'unify': True,
-            'cache': False,
+            'class': None,
+            'load_cache': {'flag': 0, 'func': None},
+            'get': {'func': None},
+            'preprocess': {'func': None},
+            'info': {'func': None},
+            'unify': {'func': None},
             'split': False,
+            'dump_cache': {'flag': 0, 'func': None},
         },
     },
-    'seed': 42,
 }
 
 # [deprecated]

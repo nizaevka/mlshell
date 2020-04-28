@@ -37,43 +37,14 @@ hp_grid = {
 
 # set workflow params
 params = {
-#    'workflow': {
-#        'pipeline_id':'auto',
-#        'endpoint_id':'auto',
-#        'control': {
-#            'fit': 0,
-#            'dump': 0,
-#            'validate': 0,
-#            'gui': 0,
-#            'predict': 0,
-#        },
-#    },
-#    'endpoint':{
-#        'default':{
-#            'get': {'claas': 'default'},
-#            'preprocess': {'class': 'default'},
-#            'load': {'func': 'default'},
-#            'dump': {'func': 'default'},
-#            'create': {'func': 'default'},
-#            'fit': {'func':'default',
-#                    'gs_flag': True,
-#                    'data_id': 'train',
-#                    'gs_id': 'auto'},
-#            'validate': {'data_id': 'train', 'metrics_id': 'auto'},
-#            'gui': {'class': 'default', 'base_sort': False, 'data_id': 'train'},
-#            'predict': {'function': None, 'data_id': 'test'},
-#        },
-#    },
     'pipeline': {
         'pipeline_1': {'estimator': estimator, 'type': 'regressor'},
         # 'pipeline_2': {'filepath':'some', 'type':'regressor'},
     },
     'metric': {
-        'my_metric':{
-            'score': (sklearn.metrics.r2_score, {'greater_is_better': True}),
-            'mae': (sklearn.metrics.mean_absolute_error, {'greater_is_better': False}),
-            'mse': (sklearn.metrics.mean_squared_error, {'greater_is_better': False, 'squared': False}),
-        },
+        'score': (sklearn.metrics.r2_score, {'greater_is_better': True}),
+        'mae': (sklearn.metrics.mean_absolute_error, {'greater_is_better': False}),
+        'mse': (sklearn.metrics.mean_squared_error, {'greater_is_better': False, 'squared': False}),
     },
     'gs': {
         'my_gs':{
@@ -115,7 +86,6 @@ params = {
             'cache': False,
         },
     },
-    'seed': None,
 }
 
 
@@ -129,6 +99,7 @@ steps: None => steps: 'default'
  gs__splitter => cv
  'cache_pipeline' => 'pipeline_cache'
 
+params => conf
 EVERYTHNG IN WIRKFLOW class
 control-wise, each step as block.
 # check if shuffle train>test with transformer
