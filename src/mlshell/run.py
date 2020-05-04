@@ -18,66 +18,54 @@ def run(params):
     # get params from conf.py
     params = mlshell.GetParams(logger=logger).get_params(project_path, params=params)
 
-    # init workflow with methods
-    # take zero position
-    endpoint_id = params['workflow']['endpoint_id']
-    if not isinstance(endpoint_id, str):
-        endpoint_id = endpoint_id[0]
-
-    if params['endpoint'][endpoint_id]['class']:
-        cls = params['endpoint'][endpoint_id]['class']
-    else:
-        cls = mlshell.Workflow
-
-    wf = cls(project_path, logger=logger, params=params, data=None, pipeline=None)
-    for key, val in params['endpoint'][endpoint_id].items():
-        if isinstance(val, dict) and 'func' in val and val['func']:
-            setattr(wf, key, types.MethodType(val['func'], wf))
-
-    # TODO: actually read data only when call (ram consumption)
-    ## read datasets
-    data = {}
+    # TODO: maybe hide inside classes monkeypatching or in read conf?
+    # prepare datasets
+    datasets = {}
     for data_id in params['data']:
         if params['data'][data_id]['class']:
             cls = params['data'][data_id]['class']
         else:
-            cls = mlshell.DataHandler
-        handler = cls(project_path, logger=logger)
+            cls = mlshell.DataFactory
+        factory = cls(project_path, logger=logger)
         for key, val in params['data'][data_id].items():
             if isinstance(val, dict) and 'func' in val and val['func']:
-                setattr(handler, key, types.MethodType(val['func'], handler))
-            data[data_id] = handler.handle(data_id, val)  # map(handler.handle, [val])
+                setattr(factory, key, types.MethodType(val['func'], factory))
+        datasets[data_id] = factory.produce(data_id, params['data'][data_id])
 
-    ## set data
-    wf.set_data(data)
+    # prepare pipelines
+    pipelines = {}
+    for pipeline_id in params['pipeline']:
+        if params['pipeline'][pipeline_id]['class']:
+            cls = params['pipeline'][pipeline_id]['class']
+        else:
+            cls = mlshell.PipeFactory
+        factory = cls(project_path, logger=logger)
+        for key, val in params['pipeline'][pipeline_id].items():
+            if isinstance(val, dict) and 'func' in val and val['func']:
+                setattr(factory, key, types.MethodType(val['func'], factory))
+        pipelines[pipeline_id] = factory.produce(pipeline_id, params['pipeline'][pipeline_id])
 
-    # [deprecated] load/create pipeline better made part of workflow steps
-    ## read pipelines
-    # PipelinHandler?
-    ## set pipelines
-    # wf.set_pipeline(data)
+    # init workflow with methods
+    # endpoint take zero position
+    endpoint_id = params['workflow']['endpoint_id']
+    if not isinstance(endpoint_id, str):
+        endpoint_id = endpoint_id[0]
+    if params['endpoint'][endpoint_id]['global']['class']:
+        cls = params['endpoint'][endpoint_id]['global']['class']
+    else:
+        cls = mlshell.Workflow
+    wf = cls(project_path, logger=logger, params=params, datasets=datasets, pipelines=pipelines)
+    # TODO: move inside readconf, endpoint should be applied to class there, before creation
+    for key, val in params['endpoint'][endpoint_id].items():
+        if isinstance(val, dict) and 'func' in val and val['func']:
+            setattr(wf, key, types.MethodType(val['func'], wf))
 
-    #[deprecated] move to DataHandler class
-    # wf.set_data(data_id=data_id, data=data)  # self.data_df, self.categoric_ind_name, self.categoric_ind_name
-# TODO: need cache for all data, set here full dict, if any absent, use fit one
-#   but ram consumption?
+    # call steps
 
-if 'split' is not False:
-    # TODO: not split by default at all => 'split':Fasle, but {} mean True
-    wf.split(data_id=data_id)
-    # wf.split(data=data[key], **params['data'][data_id]['split'])
-
-    # create/load pipelines
-    mutable objects
-    * internall data(pos_label and splits add to data in set_data, update TThrehold classifier correspondingly),
-    * pipelines
-
-    # call workflow methods
-    func(self, **kwargs)
-
-
-
-    TODO: pos_label
-    pass
-
-
+    # additional methods to change after creation
+    # ## set data
+    # wf.add_data(data)
+    # wf.pop_data(data_id)
+    # ## set pipelines
+    # wf.add_pipeline(data)
+    # wf.pop_pipeline(pipeline_id)

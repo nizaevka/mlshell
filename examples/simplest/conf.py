@@ -37,9 +37,16 @@ hp_grid = {
 
 # set workflow params
 params = {
+    'workflow': {
+        'endpoint_id': ['endpint_1', 'endpint_2']
+    },
+    'endpoint': {
+        'endpint_1': {'global': {'gs': 'my_gs', 'pipeline': 'pipeline_1'}},
+        'endpint_2': {'global': {'gs': 'my_gs_2', 'pipeline': 'pipeline_2'}},
+    },
     'pipeline': {
         'pipeline_1': {'estimator': estimator, 'type': 'regressor'},
-        # 'pipeline_2': {'filepath':'some', 'type':'regressor'},
+        'pipeline_2': {'filepath': 'some', 'type': 'classifier'},
     },
     'metric': {
         'score': (sklearn.metrics.r2_score, {'greater_is_better': True}),
@@ -61,29 +68,31 @@ params = {
             'error_score': np.nan,
             'return_train_score': True,
         },
+        'my_gs_2': {
+            'flag': False,
+        }
     },
     'data': {
         'train': {
-            'get':
-                {'filiname': 'data/train.csv'},
-            'preprocess':
-                {'categor_columns':[],
-                 'target_column':'target'},
-            'unify': True,
-            'cache':False,
-            'split':
-                {'train_size': 0.7,  # 'split_train_size': 0.75,
-                 'test_size':None,
-                 'shuffle': False,
-                 'stratify': None,
-                 'random_state':None,
-                 },
+            'class': None,
+            'load_cache': {'flag': 1, 'func': None, 'prefix': None},
+            'get': {'func': None, 'filename': 'data/train.csv'},
+            'preprocess': {'func': None, 'categor_names': [], 'target_name': 'target'},
+            'info': {'func': None},
+            'unify': {'func': None},
+            'split': {'func': None,
+                      'train_size': 0.7,  # 'split_train_size': 0.75,
+                      'test_size': None,
+                      'shuffle': False,
+                      'stratify': None,
+                      'random_state': None,},
+            'dump_cache': {'flag': 0, 'func': None, 'prefix': None},
         },
         'test': {
-            'get':
-                {'filiname': 'data/test.csv'},
-            'unify': True,
-            'cache': False,
+            'class': None,
+            'get': {'func': None, 'filename': 'data/test.csv'},
+            'preprocess': {'func': None, 'categor_columns': [], 'target_column': 'target'},
+            'unify': {'func': None},
         },
     },
 }

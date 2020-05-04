@@ -1,7 +1,16 @@
+""""
+data = class
+    .split() should return train, test
+    .df
+Use this as identifiers for hp_grid
+Maybe in sklearn there are special format for datasets?
+
+"""
+
 from mlshell.libs import *
 
 
-class GetData(object):
+class DataExtractor(object):
     def __init__(self, project_path, logger=None):
         if logger is None:
             self.logger = logging.Logger('GetData')
@@ -11,7 +20,7 @@ class GetData(object):
         # self.raw = None  # data attribute, fullfill in self.get_data()
 
     # @memory_profiler
-    def get(self, var, filename=None, rows_limit=None, random_skip=False, index_col=None):
+    def get(self, var, filename=None, rows_limit=None, random_skip=False, index_col=None, **kwargs):
         """ Get data from csv-file.
 
         Args:
@@ -29,9 +38,10 @@ class GetData(object):
             headers shoukd be otherwise return rows_limit+1
 
         """
-        self.logger.info("\u25CF LOAD DATA")
-        currentpath = os.path.dirname(os.path.abspath(__file__))
-        filename = "{}/{}".format(currentpath, filename)
+        self.logger.info("\u25CF \u25B6 LOAD DATA")
+        # [deprecated]
+        # currentpath = os.path.dirname(os.path.abspath(__file__))
+        filename = "{}/{}".format(self.project_path, filename)
         # count lines
         with open(filename, 'r') as f:
             lines = sum(1 for _ in f)
@@ -65,12 +75,12 @@ class DataPreprocessor(object):
         self.logger = logger
         self.project_path = project_path
 
-    def preprocess(self, var, target_name='', categor_names=None):
-        self.logger.info("\u25CF PREPROCESS DATA")
+    def preprocess(self, var, target_name='', categor_names=None, **kwargs):
+        self.logger.info("\u25CF \u25B6 PREPROCESS DATA")
         raw = var['raw']
         if categor_names is None:
             categor_names = []
-        index = raw.index
+        index = list(raw.index)  # otherwise not serializable for cache
         targets, raw_targets_names, base_plot = self.make_targets(raw, target_name=target_name)
         features, raw_features_names = self.make_features(raw, target_name=target_name)
         data = self.make_dataframe(index, targets, features, categor_names, raw_features_names)
@@ -122,80 +132,78 @@ class DataPreprocessor(object):
         return df
 
 
-class DataHandler(GetData, DataPreprocessor):
+class DataFactory(DataExtractor, DataPreprocessor):
     def __init__(self, project_path, logger=None):
-        super().__init__()
+        super().__init__(project_path, logger)
         if logger is None:
-            self.logger = logging.Logger('DataHandler')
+            self.logger = logging.Logger('DataFactory')
         else:
             self.logger = logger
         self.project_path = project_path
 
-    def handle(self, data_id, p):
+    def produce(self, data_id, p):
         """ Read dataset and Unify dataframe in compliance to workflow class.
 
         Arg:
             p():
         Note:
-            If ``p['cache']`` is True:
-
-                * If ``p['cache']`` if False, try to load cache if available.
-                * If cache is None or ``p['cache']`` is True, run unifier on ``data`` and dump cache after.
-
             Else: run unifer without cahing results.
 
         """
         self.logger.info("\u25CF HANDLE DATA")
-
+        self.logger.info(f"Data configuration:\n    {data_id}")
         res_ = {}
         for key, val in p.items():
             if not isinstance(val, dict):
                 continue
             if key == 'dump_cache' and not val['flag']:
                 continue
+            if 'prefix' in val and not val['prefix']:
+                val['prefix'] = data_id
             res_ = getattr(self, key)(res_, **val)
             if key == 'load_cache' and val['flag'] and res_:
                 break
-        res = res_
+
+        res = self.check(res_)
 
         # [deprecated]
-        # cache flag False, True, update
-        if self.p['cache'] and not self.p['cache'] == 'update':
-            cache = self.load_cache(prefix=data_id)
-            # [deprecated] now cache arbitrary types
-            # cache, meta = self.load_cache(prefix=data_id)
-            # if cache is not None:
-            #     data = cache
-            #     data_df = data
-            #     categoric_ind_name = meta['categoric']
-            #     numeric_ind_name = meta['numeric']
-        else:
-            cache = None
+        # # cache flag False, True, update
+        # if self.p['cache'] and not self.p['cache'] == 'update':
+        #     cache = self.load_cache(prefix=data_id)
+        #     # [deprecated] now cache arbitrary types
+        #     # cache, meta = self.load_cache(prefix=data_id)
+        #     # if cache is not None:
+        #     #     data = cache
+        #     #     data_df = data
+        #     #     categoric_ind_name = meta['categoric']
+        #     #     numeric_ind_name = meta['numeric']
+        # else:
+        #     cache = None
 
-        if cache is None:
-            res_ = None
-            for key, val in p.items():
-                if not isinstance(val, dict):
-                    continue
-                res_ = getattr(self, key)(res_, **val)
-            res = res_
+        # if cache is None:
+        #     res_ = None
+        #     for key, val in p.items():
+        #         if not isinstance(val, dict):
+        #             continue
+        #         res_ = getattr(self, key)(res_, **val)
+        #     res = res_
 
-            # [deprecated] manual
-            # raw = self.get(**p['get'])
-            # data = self.preprocess(raw, **p['preprocess'])
-            # data = self.check(data, **p['check'])
-            # data = self.unify(data, **p['unify'])
+        #     # [deprecated] manual
+        #     # raw = self.get(**p['get'])
+        #     # data = self.preprocess(raw, **p['preprocess'])
+        #     # data = self.check(data, **p['check'])
+        #     # data = self.unify(data, **p['unify'])
 
-            # [deprecated] move to workflow
-            # self.check_numeric_types(data_df)
-            if self.p['cache']:
-                self.dump_cache(res, prefix=data_id)
-        else:
-            res = cache
+        #     # [deprecated] move to workflow
+        #     # self.check_numeric_types(data_df)
+        #     if self.p['cache']:
+        #         self.dump_cache(res, prefix=data_id)
+        # else:
+        #     res = cache
 
         return res
 
-    def dump_cache(self, var, prefix=''):
+    def dump_cache(self, var, prefix='', **kwargs):
         """Dump imtermediate dataframe to disk."""
         cachedir = f"{self.project_path}/results/cache/data"
         if not os.path.exists(cachedir):
@@ -205,7 +213,7 @@ class DataHandler(GetData, DataPreprocessor):
             os.remove(filename)
         fps = set()
         for key, val in var.items():
-            if isinstance(var[key], pd.DataFrame):
+            if isinstance(var[key], (pd.DataFrame, pd.Series)):
                 filepath = f'{cachedir}/{prefix}_{key}_.csv'
                 fps.add(filepath)
                 with open(filepath, 'w', newline='') as f:
@@ -220,12 +228,13 @@ class DataHandler(GetData, DataPreprocessor):
                 filepath = f'{cachedir}/{prefix}_{key}_.json'
                 fps.add(filepath)
                 with open(filepath, 'w') as f:
-                    json.dump(val, f)
+                    # items() preserve first level dic keys as int
+                    json.dump(list(val.items()), f)
 
         self.logger.warning('Warning: update cache file(s):\n    {}'.format('\n    '.join(fps)))
         return var
 
-    def load_cache(self, var, prefix=''):
+    def load_cache(self, var, prefix='', **kwargs):
         """Load intermediate dataframe from disk"""
         cachedir = f"{self.project_path}/results/cache/data"
         var = {}
@@ -236,7 +245,7 @@ class DataHandler(GetData, DataPreprocessor):
                     var[key] = pd.read_csv(f, sep=",", index_col=0)
             else:
                 with open(filepath, 'r') as f:
-                    var[key] = json.load(f, object_hook=json_keys2int)
+                    var[key] = dict(json.load(f))  # object_hook=json_keys2int)
         self.logger.warning(f"Warning: use cache file(s):\n    {cachedir}")
         return var
 
@@ -280,7 +289,7 @@ class DataHandler(GetData, DataPreprocessor):
     #         return cache, meta
     #     return None, None
 
-    def check(self, var, **kwargs):
+    def info(self, var, **kwargs):
         self.check_duplicates(var['df'])
         self.check_gaps(var['df'])
         return var
@@ -380,6 +389,59 @@ class DataHandler(GetData, DataPreprocessor):
         # alternative: try .to_numeric
         data = data.astype(np.float64, copy=False, errors='ignore')
         var.update({'df': data, 'categoric_ind_name': categoric_ind_name, 'numeric_ind_name': numeric_ind_name})
+        return var
+
+    # @memory_profiler
+    def split(self, var, **kwargs):
+        """Split data on train, test
+
+        data (pandas.DataFrame, optional (default=None)):
+            if not None ``data_id`` ignored, read kwargs.
+        data_id (str, optional (default='train')):
+            | should be known key from params['data`]
+            | if None, used default ``data_id`` from params['fit__data_id'] and corresponding kwargs.
+        kwargs:
+            if data_id is not None, ignore current, use global from params['data__data_id__split'].
+
+        Note:
+            input data updated inplace with additional split key.
+            if split ``train_size`` set to 1.0, use test=train.
+        """
+        self.logger.info("\u25CF SPLIT DATA")
+        data = var['df']
+
+        if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
+            or kwargs['train_size'] is None and kwargs['test_size'] == 0):
+            train = test = data
+            train_index, test_index = data.index
+        else:
+            shell_kw = ['func']
+            kwargs = copy.deepcopy(kwargs)
+            for kw in shell_kw:
+                kwargs.pop(kw)
+            train, test, train_index, test_index = sklearn.model_selection.train_test_split(
+                data, data.index.values, **kwargs)
+
+        # add to data
+        var.update({'train_index': train_index, 'test_index': test_index})
+        return var
+
+    def check(self, var, **kwargs):
+        var = self._check_numeric_types(var, **kwargs)
+        return var
+
+    def _check_numeric_types(self, var, **kwargs):
+        # check that all non-categoric features are numeric type
+        data = var['df']
+        dtypes = data.dtypes
+        misstype = []
+        for ind, column_name in enumerate(data):
+            if '_categor_' not in column_name:
+                if not np.issubdtype(dtypes[column_name], np.number):
+                    misstype.append(column_name)
+        if misstype:
+            raise ValueError("Input data non-categoric columns"
+                             " should be subtype of np.number, check:\n    {}".format(misstype))
         return var
 
 

@@ -6,78 +6,125 @@ import mlshell.custom
 
 
 DEFAULT_PARAMS = {
-    # data operation automative, create, load pipelines too
+    # when need fit two times
+    #    * multiplpe endpoints [best]
+    #    * either different names 'fit2': {'func':'fit'}  [better, cause rare situation]
+    #    * either additional argument in steps [not beautiful]
+    # DO BOTH!
     # possibility of multiple pipelines, metrics lists, gs_conf in one workflow!
     'workflow': {
         'endpoint_id': None,
-        'steps': {
-            'create': 1,
-            'load_2': 1,
-            'fit': 1,
-            'dump': 0,
-            'validate': 1,
-            'gui': 1,
-            'predict': 1,
-        },
+        'steps': [
+            ('fit', 0),
+            ('fit', 0, {'pipeline':'pipeline_2'}),
+            ('optimize', 1)
+            ('dump', 0),
+            ('validate', 0),
+            ('gui', 0),
+            ('predict', 0),
+        ],
     },
     'endpoint': {
+        # so workflow class have set of built-in function, so we can resolve None by key name
+        # if fit_2 can`t resolve => set from built in or new
+
         'default': {
-            'class': None,
-            'global': {
-                'seed': 42,
-                'pipeline': None,
-                'data': None,
-                'metric': None,
-                'gs': None,
-            },
-            'load': {'func': None,
-                     'pipeline': None,
-                     'seed': None},
-            'create': {'func': None,
-                       'pipeline': None,
-                       'seed': None},
+            # only second-level keys copy if skipped, not third
+            # 'global': {
+            #    'class': None,
+            #    'seed': None,
+            #     'pipeline': None,
+            #     'data': None,
+            #     'metric': None,
+            #     'gs': None,
+            # },
+            # [deprecated] not necessary, better on call and del
+            ## data
+            #'handle': {},
+            # pipeline
+            ##'add': {},
+
+
+            ## call pipeline endpoints
+            # no data
+            # 'load': {'func': None,
+            #          'pipeline': None,
+            #          'seed': None},
+            # 'load2': {'func': 'load',
+            #          'pipeline': None,
+            #          'seed': None},
+            # 'create': {'func': None,
+            #            'pipeline': None,
+            #            'seed': None},
             'dump': {'func': None,
                      'pipeline': None,
                      'seed': None},
+            # both
+            'optimize': {'func': None,
+                         'cls':None, # optimizer
+                         'pipeline': None,  # multiple pipeline? no, user can defined separately if really needed
+                         'data': 'train',
+                         'gs_params':None,
+                         'fit_params': {},
+                         },
             'fit': {'func': None,
-                    'data': 'train',
-                    'gs_flag': False,
-                    'gs_id': None,
-                    'debug': False,
                     'pipeline': None,
-                    'seed': None,},
+                    'data': 'train',
+                    # [deprecated] separate
+                    # 'optimize': {'flag': False,
+                    #              'class': None, # TODO: need to fullfill somewhere
+                    #              'optimize_params': None,},  # second level, how to conf?
+                    'fit_params': {},
+                    'hp': {},
+                    'debug': False,
+                    'seed': None,
+                    },
             'validate': {'func': None,
                          'data': 'train',
                          'metric': None,
+                         'pos_label': None,  # if None, get -1
                          'pipeline': None,
                          'seed': None},
             'predict': {'function': None,
                         'data': 'test',
                         'pipeline': None,
                         'seed': None},
-            'gui': {'class': None,
-                    'base_sort': False,
-                    'data': 'train',
+            'gui': {'cls': None, # gui
                     'pipeline': None,
+                    'data': 'train',
+                    'base_sort': False,
+                    # 'metric': False,  beta
                     'seed': None},
+            # memory
+            'init': {},
+            'reset': {},
+
         },
     },
     'pipeline': {
-        # 'default': {
-        #     'estimator': sklearn.linear_model.LinearRegression(),
-        #     'type': 'regressor',
-        #     'steps_cache': None,
-        #     'steps': None,
-        #     'fit_params': {},
-        #     'filepath': None
-        # },
         'default': {
-            'estimator': sklearn.linear_model.LinearRegression(),
-            'type': 'regressor',
-            'steps_cache': None,
-            'steps': None,
-            'fit_params': {},
-            'filepath': None,
+            'class': None,  # Factory
+
+            # one of two
+            'load': {'func': None,
+                     'filepath': None,
+                     'estimator_type': 'regressor',
+                     },
+            'create': {'func': None,
+                       'cache': None,
+                       'steps': None,
+                       'estimator': sklearn.linear_model.LinearRegression(),
+                       'estimator_type': 'regressor',
+                       'th_strategy': None,
+                       },
+            # endpoint inherent from workflow
+            #'add': {
+            #     # it`s workflow or pipeline method, not factory
+            #     'dump': {'func': None,
+            #              'filepath': None},
+            #     'validate': {},
+            #     #  ...
+            # },
         },
     },
     'metric': {
@@ -85,7 +132,14 @@ DEFAULT_PARAMS = {
         'classifier': (sklearn.metrics.accuracy_score, {'greater_is_better': True}),
         'regressor': (sklearn.metrics.r2_score, {'greater_is_better': True}),
     },
-    'gs': {
+    # can be, but not necessary
+    'optimizer': {
+        'default': {
+            'class': None,
+
+        }
+    },
+    'gs_params': {
         'default': {
             # 'flag': True,
             'hp_grid': {},
@@ -101,7 +155,7 @@ DEFAULT_PARAMS = {
             #'error_score': np.nan,
             #'return_train_score': True,
             'th': {
-                # 'pos_label': 1,  # [eprecated] get from data with info.
+                # 'pos_label': 1,  # [deprecated] get from data with info.
                 'strategy': 0,
                 'samples': 10,
                 'plot_flag': False,
@@ -110,17 +164,19 @@ DEFAULT_PARAMS = {
     },
     'data': {
         'default': {
-            'class': None,
-            'load_cache': {'flag': 0, 'func': None},
-            'get': {'func': None},
-            'preprocess': {'func': None},
-            'info': {'func': None},
-            'unify': {'func': None},
-            'split': False,
-            'dump_cache': {'flag': 0, 'func': None},
+            'class': None,  # Factory
+            # 'steps': [
+                ('load_cache', 0, {'flag': 0, 'func': None, 'prefix': None},)
+                ('get', 1, {'func': None},)
+                ('preprocess': {'func': None},)
+                ('info': {'func': None},)
+                ('unify': {'func': None},)
+                ('split': False,),
+                ('dump_cache': {'flag': 0, 'func': None, 'prefix': None},),
+            # ],
         },
     },
-}
+},
 
 # [deprecated]
 # DEFAULT_PARAMS = {
@@ -254,7 +310,7 @@ def _isbinary_columns(arr: np.ndarray) -> np.ndarray:
 class CreateDefaultPipeline(object):
     """Class to create default pipeline steps."""
 
-    def __init__(self, categoric_ind_name, numeric_ind_name, params):
+    def __init__(self, estimator=None, estimator_type=None, th_strategy=None, **kwargs):
         """
         Args:
             categoric_ind_name (dict): {column_index: ('feature_categor__name', ['B','A','C']),}
@@ -267,16 +323,17 @@ class CreateDefaultPipeline(object):
             Estimator step is auto-filled in workflow.
 
         """
+
         self._steps = [
             ('pass_custom',      sklearn.preprocessing.FunctionTransformer(func=self.set_scorer_kw_args, validate=False)),
             ('select_rows',      sklearn.preprocessing.FunctionTransformer(func=self.subrows, validate=False)),
             ('process_parallel', sklearn.pipeline.FeatureUnion(transformer_list=[
                 ('pipeline_categoric', sklearn.pipeline.Pipeline(steps=[
-                   ('select_columns',      sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices': categoric_ind_name})),
+                   ('select_columns',      sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices': 'data__categoric_ind_name'})),
                    ('encode_onehot',       mlshell.custom.SkippableOneHotEncoder(handle_unknown='ignore', categories='auto', sparse=False, drop=None, skip=False)),
                 ])),
                 ('pipeline_numeric',   sklearn.pipeline.Pipeline(steps=[
-                    ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices': numeric_ind_name})),
+                    ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices':  'data__numeric_ind_name'})),
                     ('impute',             sklearn.pipeline.FeatureUnion([
                         ('indicators',         sklearn.impute.MissingIndicator(missing_values=np.nan, error_on_new=False)),
                         ('gaps',               sklearn.impute.SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0, copy=True)),
@@ -289,17 +346,40 @@ class CreateDefaultPipeline(object):
                         ("discretize",     sklearn.preprocessing.KBinsDiscretizer(n_bins=5, encode='onehot-dense', strategy='quantile'), self.bining_mask)], sparse_threshold=0, remainder='passthrough'))
                 ])),
             ])),
-            ('select_columns',   sklearn.feature_selection.SelectFromModel(estimator=mlshell.custom.CustomSelectorEstimator(estimator_type=params['pipeline__type'], verbose=False, skip=True), prefit=False)),
+            ('select_columns',   sklearn.feature_selection.SelectFromModel(estimator=mlshell.custom.CustomSelectorEstimator(estimator_type=estimator_type, verbose=False, skip=True), prefit=False)),
             ('reduce_dimension', mlshell.custom.CustomReducer(skip=True)),
-            ('estimate', sklearn.compose.TransformedTargetRegressor(regressor=None, transformer=None, check_inverse=True)),
+            ('estimate', self.last_step(estimator, estimator_type, th_strategy=th_strategy)),
         ]
+
+    def last_step(self, estimator, estimator_type, th_strategy=None):
+        if estimator_type == 'regressor':
+            last_step = sklearn.compose.TransformedTargetRegressor(regressor=estimator, transformer=None, check_inverse=True)
+        elif estimator_type == 'classifier':
+            if th_strategy == 0 or not th_strategy:
+                last_step = sklearn.pipeline.Pipeline(steps=[('classifier', estimator)])
+            else:
+                last_step = sklearn.pipeline.Pipeline(steps=[
+                        ('predict_proba',       mlshell.custom.PredictionTransformer(estimator)),
+                        ('apply_threshold',  mlshell.custom.ThresholdClassifier([], # 'classes',
+                                                                                # pos_label_ind,
+                                                                                # pos_label,
+                                                                                # neg_label,
+                                                                                threshold=0.5)),
+                        ])
+        else:
+            raise ValueError(f"Unknown estimator type `{estimator_type}`.")
+
+        if sklearn.base.is_classifier(estimator=last_step) ^ (estimator_type == "classifier"):
+            raise MyException('MyError:{}:{}: wrong estimator type'.format(self.__class__.__name__,
+                                                                           inspect.stack()[0][3]))
+        return last_step
 
     def get_steps(self):
         """Pipeline steps getter."""
         return self._steps
 
     def set_scorer_kw_args(self, *args, **kw_args):
-        """Mock function to set custom kw_args."""
+        """Mock function to allow set custom kw_args."""
         # pass x futher
         return args[0]
 
@@ -315,9 +395,9 @@ class CreateDefaultPipeline(object):
         """
         feat_ind_name = kwargs['indices']
         indices = list(feat_ind_name.keys())
-        names = [i[0] for i in feat_ind_name.values()]
+        # names = [i[0] for i in feat_ind_name.values()]
         if isinstance(x, pd.DataFrame):
-            return x.loc[:, names]
+            return x.iloc[:, indices]  # x.loc[:, names]
         else:
             return x[:, indices]
 

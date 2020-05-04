@@ -52,7 +52,6 @@ class GetParams(object):
         #     item = list(p['metric'].items())[0]
         #     if isinstance(item, dict):
         #         p['metric']['user'] = p.pop('metric')
-
         if 'data' not in p or not p['data']:
             raise KeyError('Specify dataset configuration in conf.py.')
 
@@ -113,20 +112,24 @@ class GetParams(object):
         # if miss_data_ids:
         #     raise KeyError(f"Unknown {name_id} configuration(s): {miss_data_ids}.")
 
-        # TODO: should be enpdoint-wise, also at each subfunction
+        # [deprecated] TODO: should be enpdoint-wise, also at each subfunction,
+        #                   ny default disabled.
         # set global random state as soon as possible.
         # checked, work for whole process (estimator has its own seed).
-        seed = p['endpoint'][endpoint_id]['global']['seed']
-        rd.seed(seed)
-        np.random.seed(seed)
-
+        # if 'seed' in p['endpoint'][endpoint_id]['global']:
+        #     seed = p['endpoint'][endpoint_id]['global']['seed']
+        #     rd.seed(seed)
+        #     np.random.seed(seed)
         return res
 
     def resolve_none(self, p, endpoint_id, ids):
         # if some None, use global, if global None, use from conf list, if more than one, error
 
+        if 'global' not in p['endpoint'][endpoint_id]:
+            p['endpoint'][endpoint_id]['global'] = {}
+
         # metric by default all
-        if not p['endpoint'][endpoint_id]['global']['metric']:
+        if 'metric' not in p['endpoint'][endpoint_id]['global'] or not p['endpoint'][endpoint_id]['global']['metric']:
             p['endpoint'][endpoint_id]['global']['metric'] = p['metric'].keys()
 
         # keys with not separate conf (like 'seed', global None is possible)
@@ -145,7 +148,7 @@ class GetParams(object):
                         value[key_id] = glob_val
 
         # keys with separate conf (like 'data', 'pipeline', 'metric', 'gs')
-        nonprimitive = {key for key in p if key not in ['workflow', 'endpoint']}
+        nonprimitive = {key for key in p.keys() if key not in ['workflow', 'endpoint']}
         for key in nonprimitive:
             key_id = key
             # read glob val if exist
@@ -153,7 +156,8 @@ class GetParams(object):
                 glob_val = p['endpoint'][endpoint_id]['global'][key_id]
             else:
                 glob_val = None
-            ids[key] = set()
+            if key not in ids:
+                ids[key] = set()
             for subkey, value in p['endpoint'][endpoint_id].items():
                 if subkey is not 'global' and key_id in value:
                     # if None use global
@@ -163,8 +167,8 @@ class GetParams(object):
                         if not glob_val:
                             if len(p[key]) > 1:
                                 raise ValueError(
-                                    f"Multiple {key} configuration provided, specify:\n"
-                                    f"    endpoint:{endpoint_id}:{subkey}:{key_id} or endpoint:{endpoint_id}:{key_id}.")
+                                    f"Multiple {key} configurations provided, specify key:\n"
+                                    f"    'endpoint:{endpoint_id}:{subkey}:{key_id}' or 'endpoint:{endpoint_id}:global:{key_id}'.")
                             else:
                                 glob_val = list(p[key].keys())[0]
                         value[key_id] = glob_val
@@ -178,7 +182,7 @@ class GetParams(object):
                         if conf not in p[key]:
                             raise ValueError(f"Unknown {key} configuration: {conf}.")
                     # set
-                    ids[key].union(confs)
+                    ids[key].update(confs)
 
     def merge_default(self, p, dp):
         """Add skipped key from default."""
@@ -190,34 +194,34 @@ class GetParams(object):
             # if 'pipeline_id' not in p[key]:
             #     p[key]['pipeline_id'] = dp[key]['pipeline_id']
             if 'endpoint_id' not in p[key] or not p[key]['endpoint_id']:
-                p[key]['endpoint_id'] = dp[key]['endpoint_id']
+                p[key]['endpoint_id'] = copy.deepcopy(dp[key]['endpoint_id'])
             if 'steps' not in p[key] or p[key] is None:
-                p[key]['steps'] = dp[key]['steps']
+                p[key]['steps'] = copy.deepcopy(dp[key]['steps'])
             # [deprecated] use user steps without additions
             # else:
             #     for subkey in dp[key]['steps']:
             #         if subkey not in p[key]['steps']:
             #             p[key]['steps'][subkey] = dp[key]['steps'][subkey]
         else:
-            p[key] = dp[key]
+            p[key] = copy.deepcopy(dp[key])
 
         for key in ['pipeline', 'endpoint']:
             if key in p and len(p[key]) > 0:
                 for conf in p[key].values():
                     for subkey in dp[key]['default'].keys():
                         if subkey not in conf:
-                            conf[subkey] = dp[key]['default'][subkey]
+                            conf[subkey] = copy.deepcopy(dp[key]['default'][subkey])
             else:
-                p[key] = {'default': dp[key]['default']}
+                p[key] = {'default': copy.deepcopy(dp[key]['default'])}
 
         key = 'metric'
         if key not in p:
             name = p['pipeline']['type']
-            p[key] = dp[key][name]
+            p[key] = copy.deepcopy(dp[key][name])
 
         key = 'gs'
         if key not in p:
-            p[key] = {'default': dp[key]['default']}
+            p[key] = {'default': copy.deepcopy(dp[key]['default'])}
         # [deprecated] too complicated, mode to fit method with warning
         # # update gs only if default fit endpoint and explicit name
         # # from endpoints get all gs_ids with default fit func
@@ -247,11 +251,13 @@ class GetParams(object):
         #         for subkey in dp[key]['default'].keys():
         #             if subkey not in conf:
         #                 conf[subkey] = dp[key]['default'][subkey]
+
+        # [deprecated] always user-defined
         # 'data'
-        for data_id in p['data']:
-            for subkey in dp['data']['default']:
-                if subkey not in p['data'][data_id]:
-                    p['data'][data_id][subkey] = dp['data']['default'][subkey]
+        # for data_id in p['data']:
+        #     for subkey in dp['data']['default']:
+        #         if subkey not in p['data'][data_id]:
+        #             p['data'][data_id][subkey] = dp['data']['default'][subkey]
         return None
 
     def check_params_keys(self, p, dp):

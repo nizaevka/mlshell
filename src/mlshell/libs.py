@@ -23,6 +23,7 @@ import pathlib
 import io
 import functools
 import glob
+import threading
 from typing import List, Optional
 
 # third-party module or package
@@ -92,8 +93,14 @@ pd.options.mode.use_inf_as_na = True
 np.seterr(all='call')
 # need both, without np CV no reproducible
 # lgbm model random_state ignored
-rd.seed(42)
-np.random.seed(42)
+
+# [deprecated] ny default, not fixed at all
+# by default fixed everywhere
+# to disable, need to set None explicit in endpoint
+# https://scikit-learn.org/stable/developers/develop.html#random-numbers
+# better use random_state everythere
+# rd.seed(42)
+# np.random.seed(42)
 
 
 class MyException(Exception):

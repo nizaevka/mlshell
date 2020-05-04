@@ -214,9 +214,9 @@ class CustomSelectorEstimator(sklearn.base.BaseEstimator):
 class PredictionTransformer(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin, sklearn.base.MetaEstimatorMixin):
     """Class to add brutforce of th in GridSearch"""
 
-    def __init__(self, clf):
+    def __init__(self, classifier):
         """Replaces all features with `clf.predict_proba(x)`"""
-        self.clf = clf
+        self.clf = classifier
 
     def fit(self, x, y, **fit_params):
         self.clf.fit(x, y, **fit_params)
@@ -233,11 +233,16 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
         binary classes only.
 
     """
-    def __init__(self, classes_, pos_label_ind, pos_label, neg_label, threshold=0.5):
-        self.classes_ = classes_
-        self.pos_label_ind = pos_label_ind
-        self.pos_label = pos_label
-        self.neg_label = neg_label
+    def __init__(self, classes, pos_label_ind='auto', pos_label='auto', neg_label='auto', threshold=0.5):
+        if len(classes) > 2:
+            raise ValueError('Currently only binary classification supported.')
+        if not classes:
+            raise ValueError('Classes should be non-empty sequence.')
+
+        self.classes_ = classes
+        self.pos_label_ind = len(classes)-1 if pos_label_ind == 'auto' else pos_label_ind
+        self.pos_label = classes[-1] if pos_label == 'auto' else pos_label
+        self.neg_label = classes[0] if neg_label == 'auto' else neg_label
         self.threshold = threshold
 
     def fit(self, x, y, **fit_params):
@@ -246,7 +251,7 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
     def predict(self, x):
         # the implementation used here breaks ties differently
         # from the one used in RFs:
-        # return self.classes_.take(np.argmax(x, axis=1), axis=0)
+        # return self.classes.take(np.argmax(x, axis=1), axis=0)
         if x.shape[1] != self.classes_.shape[0]:
             raise MyException('MyError: not all class labels in train folds')
         return np.where(x[:, self.pos_label_ind] > self.threshold, [self.pos_label], [self.neg_label])
