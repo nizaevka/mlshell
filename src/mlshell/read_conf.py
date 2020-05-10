@@ -74,7 +74,9 @@ class GetParams(object):
         # remain only used configuration
         res = {'workflow': p['workflow'], }
         for key, val in ids.items():
-            res[key] = {id_: p[key][id_] for id_ in val}
+            # if not empty configuration
+            if val:
+                res[key] = {id_: p[key][id_] for id_ in val}
         # [deprecated] too complicated
         # # if pipeline_id specified and more than one conf in dict,
         # # set with pipeline_id.
@@ -120,6 +122,7 @@ class GetParams(object):
         #     seed = p['endpoint'][endpoint_id]['global']['seed']
         #     rd.seed(seed)
         #     np.random.seed(seed)
+
         return res
 
     def resolve_none(self, p, endpoint_id, ids):
@@ -265,12 +268,12 @@ class GetParams(object):
         for key in list(p.keys()):
             if key not in dp:
                 miss_keys.add(key)
-                del p[key]
+                # del p[key]
         if miss_keys:
             # user can create configuration for arbitrary param
             # check if dict type
             for key in miss_keys:
-                if not isinstance(miss_keys[key], dict):
+                if not isinstance(p[key], dict):
                     raise TypeError(f"Custom params[{key}] should be the dict instance.")
             # self.logger.warning(f"Ignore unknown key(s) in conf.py params, check\n    {miss_keys}")
 

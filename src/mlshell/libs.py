@@ -117,17 +117,5 @@ def np_divide(a, b):
         c[~np.isfinite(c)] = 0  # -inf inf NaN
     return c
 
-
-def check_hash(function_to_decorate):
-    """Decorator to check alteration in hash(self.data_df) after call method"""
-    def wrapper(*args, **kwargs):
-        self = args[0]
-        before = pd.util.hash_pandas_object(self.data_df).sum()
-        function_to_decorate(*args, **kwargs)
-        after = pd.util.hash_pandas_object(self.data_df).sum()
-        assert(before == after)
-    return wrapper
-
-
 if __name__ == '__main__':
     pass

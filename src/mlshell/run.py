@@ -50,22 +50,23 @@ def run(params):
     endpoint_id = params['workflow']['endpoint_id']
     if not isinstance(endpoint_id, str):
         endpoint_id = endpoint_id[0]
-    if params['endpoint'][endpoint_id]['global']['class']:
+    if params['endpoint'][endpoint_id]['global'].get('class', None):
         cls = params['endpoint'][endpoint_id]['global']['class']
     else:
         cls = mlshell.Workflow
     wf = cls(project_path, logger=logger, params=params, datasets=datasets, pipelines=pipelines)
     # TODO: move inside readconf, endpoint should be applied to class there, before creation
+    needs_resolve = []
+    # update/add new methods
     for key, val in params['endpoint'][endpoint_id].items():
         if isinstance(val, dict) and 'func' in val and val['func']:
+            if isinstance(val['func'], str):
+                needs_resolve.append((key, val['func']))
+                val['func'] = wf.__getattribute__(val['func'])
             setattr(wf, key, types.MethodType(val['func'], wf))
+    # resolve str name for existed methods
+    for key, name in needs_resolve:
+        setattr(wf, key, getattr(wf, name))
 
     # call steps
-
-    # additional methods to change after creation
-    # ## set data
-    # wf.add_data(data)
-    # wf.pop_data(data_id)
-    # ## set pipelines
-    # wf.add_pipeline(data)
-    # wf.pop_pipeline(pipeline_id)
+    pass

@@ -12,11 +12,14 @@ TODO:
     do google then change
     https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_numpy.html
     https://scikit-learn.org/stable/developers/develop.html#rolling-your-own-estimator
+TODO:
+    resolve scoring more beautiful
 
 TEST:
     multioutput, better under targets column.
     multiclass, should work for all except th_strategy.
     not dataframe format for data.
+    pass_csutom, n_jobs save?
 """
 
 
@@ -26,10 +29,29 @@ from mlshell.libs import *
 from mlshell.callbacks import dic_flatter, json_keys2int
 
 
+def checker(function_to_decorate, options=None):
+    """Decorator to check alteration in hash(self.data_df) after call method"""
+    # TODO: multioptional
+    #     add self._np_error_stat flush and check at the end!
+    #     update hash check
+    # https://stackoverflow.com/questions/10294014/python-decorator-best-practice-using-a-class-vs-a-function/10300995
+    if options is None:
+        options = []
+    def wrapper(*args, **kwargs):
+        self = args[0]
+        # before = pd.util.hash_pandas_object(self.data_df).sum()
+        function_to_decorate(*args, **kwargs)
+        # after = pd.util.hash_pandas_object(self.data_df).sum()
+        # assert before == after, ""
+        self.logger.info('Errors:\n'
+                         '    {}'.format(self.np_error_stat))
+    return wrapper
+
+
 class Workflow(object):
     """Class for ml workflow."""
 
-    def __init__(self, project_path, logger=None, params=None):
+    def __init__(self, project_path, logger=None, params=None, datasets=None, pipelines=None):
         """Initialize workflow object
 
         Args:
@@ -71,7 +93,11 @@ class Workflow(object):
         else:
             self.logger = logger
         self.logger.info("\u25CF INITITALIZE WORKFLOW")
+        self.datasets = datasets if datasets else {}
+        self.pipelines = pipelines if pipelines else {}
+
         self.check_results_size(project_path)
+
 
         # [deprecated]
         # merge in read conf
@@ -87,6 +113,9 @@ class Workflow(object):
         self.p = params
         self.logger.info('Used params:\n    {}'.format(jsbeautifier.beautify(str(self.p))))
 
+        # [not full before init()]
+        # self.logger.info('Workflow metods:\n    {}'.format(jsbeautifier.beautify(str(self.__dict__))))
+
         # hash of hp_params
         self.np_error_stat = {}
         np.seterrcall(self.np_error_callback)
@@ -97,20 +126,20 @@ class Workflow(object):
         self.neg_label = None
         self.pos_label = None
         self.pos_label_ind = None
-        self.data = {}
         self.categoric_ind_name = None
         self.numeric_ind_name = None
         self.data_hash = None
         # [deprected] make separate function call
         # self.unify_data(data)
 
-        self.custom_scorer = None
-        self.default_custom_kw_args = {}
+        # for pass custom only (thread-unsafe)
+        self.custom_scorer = {'n/a': None}
+        self.cache_custom_kw_args = {'n/a':{}}
+        self.current_pipeline_id = 'n/a'
+
         # fit
         self.refit = None
         self.scorers = None
-        # fullfill in self.create_pipeline()
-        self.pipeline = {}
         # fullfill in self.split()
         self.train_index = None
         self.test_index = None
@@ -123,6 +152,12 @@ class Workflow(object):
         self.modifiers = []
         # fulfill in self.gen_gui_params()
         self.gui_params = {}
+        # TODO: Decide use self.metrics or self.p['metrics'] ?
+        #       We extent sklearn metrics namespace, in optimize/validate pass only names
+
+    def __hash__(self):
+        # TODO: hash of it`s self
+        return md5(str(self.p).encode('utf-8')).hexdigest()
 
     def check_results_size(self, project_path):
         root_directory = pathlib.Path(f"{project_path}/results")
@@ -140,15 +175,10 @@ class Workflow(object):
         else:
             self.np_error_stat[args[0]] = 1
 
-    def _workflow_hash(self):
-        # TODO: hash of it`s self
-        return md5(str(self.p).encode('utf-8')).hexdigest()
-
     def check_data_format(self, data, params):
         """check data format"""
-        # TODO: move to pipeline check
-        if not isinstance(data, pd.DataFrame):
-            raise TypeError("input data should be pandas.DataFrame object")
+
+        # TODO: NOT SURE YET
 
         # TODO: move to data check
         if 'targets' not in data.columns:
@@ -156,7 +186,7 @@ class Workflow(object):
         if not all(['feature_' in column for column in data.columns if 'targets' not in column]):
             raise KeyError("all name of dataframe features columns should start with 'feature_'")
 
-        # TODO: workflow level
+        # TODO: pipeline level
         # mayby only with th_strategy != 0
         if params['pipeline__type'] == 'classifier':
             if self.n_classes > 2:
@@ -170,8 +200,9 @@ class Workflow(object):
             data (dict): {'data_id': val,}.
 
         """
-        data = self._data_check(data)
-        self.data.update(data)
+        # [alternative]
+        # data = self.data_check(data)
+        self.datasets.update(data)
         return
 
     def pop_data(self, data_ids):
@@ -184,7 +215,7 @@ class Workflow(object):
         """
         if isinstance(data_ids, str):
             data_ids = [data_ids]
-        return {data_id: self.data.pop(data_id, None)
+        return {data_id: self.datasets.pop(data_id, None)
                 for data_id in data_ids}
 
     def add_pipeline(self, pipeline):
@@ -194,7 +225,7 @@ class Workflow(object):
             pipeline(dict): {'pipeline_id': val,}.
 
         """
-        self.pipeline.update(pipeline)
+        self.pipelines.update(pipeline)
         return
 
     def pop_pipeline(self, pipe_ids):
@@ -207,166 +238,11 @@ class Workflow(object):
         """
         if isinstance(pipe_ids, str):
             pipe_ids = [pipe_ids]
-        return {pipe_id: self.pipeline.pop(pipe_id, None)
+        return {pipe_id: self.pipelines.pop(pipe_id, None)
                 for pipe_id in pipe_ids}
 
-    # =============================================== pipeline =========================================================
-    # TODO: this is analog of sklearn estimator check
-    @ check_hash()
-    def debug_pipeline_(self):
-        """Fit pipeline on small subset for debug"""
-        x, y = self.tonumpy(self.data_df[:min(1000, len(self.data_df))])
-        fitted = self.estimator.fit(x, y, **self.p['pipeline__fit_params'])
-        self.recursive_logger(fitted.steps)
-
-    def recursive_logger(self, steps, level=0):
-        """"Recursive log of params for pipeline steps
-
-            Args:
-                steps (list): steps on current level
-                level (int): level of recursion
-
-        """
-        indent = 3
-        for step in steps:
-            ob_name = step[0]
-            ob = step[1]
-            self.logger.info('{0}{1}\n{0}{2}'.format('   ' * level, ob_name, ob))
-            if hasattr(ob, '__dict__'):
-                for attr_name in ob.__dict__:
-                    attr = getattr(ob, attr_name)
-                    self.logger.info('{0}{1}\n{0}   {2}'.format('   ' * (level + indent), attr_name, attr))
-                    if isinstance(attr, list) and (attr_name == 'steps' or attr_name == 'transformers'):
-                        self.recursive_logger(attr, level + 1)
-                        # [deprecated] specific print
-                        # for i in range(1, len(pipeline_)):
-                        #     steps = pipeline_[:i]
-                        #     last_step = steps[-1][0]
-                        #     est = pipeline.Pipeline(steps)
-                        #
-                        #      if last_step == 'encode_categ':
-                        #          temp = est.fit_transform(x).categories_
-                        #          for i, vals in enumerate(temp):
-                        #              glob_ind = list(self.categoric_ind_name.keys())[i]  # python > 3.0
-                        #              self.logger.debug('{}{}\n'.format(self.categoric_ind_name[glob_ind][0],
-                        #                                                   self.categoric_ind_name[glob_ind][1][vals]))
-                        #      elif last_step =='impute':
-
-    # =============================================== move out ============================================================
-    ## pipeline class
-    def is_classifier_(self, pipeline):
-        return sklearn.base.is_classifier(pipeline)
-
-    def is_regressor_(self, pipeline):
-        return sklearn.base.is_regressor(pipeline)
-
-    def dump_(self, pipeline, file):
-        joblib.dump(pipeline, file)
-        return
-
-    def pipeline_hash_(self, pipeline):
-        return 0
-
-    def ckeck_data_format_(self, pipeline, data):
-        # call everywhere when move to pipeline
-        return
-
-    ## data_class
-    def get_from_data_(self, data, key):
-        # TODO:
-        #      merge with get_classes
-        #      data.get(key) inherent from dict
-        res = key
-        if key == 'raw_names':
-            pass
-        elif key == 'categoric_ind_name':
-            # self.extract_ind_name(data)
-            pass
-        elif key == 'numeric_ind_name':
-            # self.extract_ind_name(data)
-            pass
-        elif key == 'classes':
-            pass
-        elif key == 'hash':
-            res = pd.util.hash_pandas_object(data.get('df')).sum()
-        return res
-
-    def dump_predict_(self, filepath, y_pred, data):
-        raw_names = self.get_from_data_(data, 'raw_names')
-        raw_index_names = raw_names['index']
-        raw_targets_names = raw_names['targets']
-
-        y_pred_df = pd.DataFrame(index=data['df'].index.values,
-                                 data={raw_targets_names[0]: y_pred}).rename_axis(raw_index_names)
-
-        with open(f"{filepath}.csv", 'w', newline='') as f:
-            y_pred_df.to_csv(f, mode='w', header=True, index=True, sep=',', line_terminator='\n')  # only LF
-        return
-
-    def get_classes_(self, data, is_classifier, pos_label=None):
-        # TODO: multi-output target
-        # TODO: remove ['targets'] everywhere or 'targets__origin_targets'
-        #   then i can skip raw_names/indices. base_plot better specify in gui!
-        # Pipeline also no need excessive attributes, but we need methods somehow.
-
-        if is_classifier:
-            classes = np.unique(data['targets'])
-            # [deprecated] easy to get from classes
-            # n_classes = classes_.shape[0]
-
-            if not pos_label:
-                pos_label = classes[-1]  # self.p['th__pos_label']
-                pos_label_ind = -1
-            else:
-                pos_label_ind = np.where(classes == pos_label)[0][0]
-            # [deprecated] multiclass
-            # neg_label = classes[0]
-            self.logger.info(f"Label {pos_label} identified as positive np.unique(targets)[-1]:\n"
-                             f"    for classifiers provided predict_proba:"
-                             f" if P(pos_label)>threshold, prediction=pos_label on sample.")
-        else:
-            classes = None
-            pos_label = None
-            pos_label_ind = None
-        return classes, pos_label, pos_label_ind
-
-    def split_(self, data):
-        # TODO: better move to dataproperties, because could be non dataframe
-        # check for:
-        #    fit
-        #    validate
-
-        df = data['df']
-        train_index = data.get('train_index', None)
-        test_index = data.get('test_index', None)
-        if not train_index and not test_index:
-            train_index = test_index = df.index
-
-        columns = df.columns
-        # deconcatenate without copy, better dataframe over numpy (provide index)
-        train = df.loc[train_index]
-        test = df.loc[test_index]
-        x_train = train[[name for name in columns if 'feature' in name]]
-        y_train = train['targets']
-        x_test = test[[name for name in columns if 'feature' in name]]
-        y_test = test['targets']
-        return (x_train, y_train), (x_test, y_test)
-
-    def extract_ind_name(self, data):
-        categoric_ind_name = {}
-        numeric_ind_name = {}
-        for ind, column_name in enumerate(data):
-            if 'targets' in column_name:
-                continue
-            if '_categor_' in column_name:
-                # loose categories names
-                categoric_ind_name[ind - 1] = (column_name, np.unique(data[column_name]))
-            else:
-                numeric_ind_name[ind - 1] = (column_name,)
-        return data, categoric_ind_name, numeric_ind_name
-
     # =============================================== gridsearch =======================================================
-    @check_hash
+    @checker
     # @memory_profiler
     def fit(self, pipeline_id, data_id=None, **kwargs):
         """Tune hp, fit best.
@@ -385,100 +261,141 @@ class Workflow(object):
 
             If gs_flag is True run grid search else just fit estimator
         """
-
-        data = self.data[data_id]
-        pipeline = self.pipeline[pipeline_id]
+        data = self.datasets[data_id]
+        pipeline = self.pipelines[pipeline_id]
+        # resolve and set hps
         pipeline = self._set_hps(pipeline, data, kwargs)
-
         # optional
         self._print_steps(pipeline)
-        if kwargs.get('debug', False):
-            self.debug_pipeline_(pipeline, data)
+        # [deprecated] excessive
+        # if kwargs.get('debug', False):
+        #     self.debug_pipeline_(pipeline, data)
 
-        train, test = self.split_(data)
+        train, test = data.split()
         # [deprecated] now more abstract
         # x_train, y_train, _, _ = data.split()
 
         self.logger.info("\u25CF FIT PIPELINE")
         # [deprecated] separate fit and optimize
         # if not kwargs.get('gs',{}).get('flag', False):
-        pipeline.fit(*train, **kwargs.get('fit_params', {}))
+        pipeline.fit(train.get_x(), train.get_y(), **kwargs.get('fit_params', {}))
         # [deprecated] dump not needed, no score evaluation
         # best_run_index = 0
         # runs = {'params': [self.estimator.get_params(),]}
 
-    def optimize(self, pipeline_id, data_id, cls, hp_grid, **kwargs):
-        data = self.data[data_id]
-        pipeline = self.pipeline[pipeline_id]
+    def optimize(self, pipeline_id, data_id, cls, **kwargs):
 
-        # need only for resolviong data-related hps
+        data = self.datasets[data_id]
+        pipeline = self.pipelines[pipeline_id]
+        # For pass_custom.
+        self.current_pipeline_id = pipeline_id
+        # Resolve and set hps.
+        pipeline = self._set_hps(pipeline, data, kwargs)
+        # Resolve hp_grid.
         hp_grid = kwargs['gs_params'].pop('hp_grid', {})
         if hp_grid:
             kwargs['gs_params']['hp_grid'] = self._resolve_hps(hp_grid,
+                                                               pipeline,
                                                                data,
                                                                kwargs)
+        # Resolve scoring.
+        # TODO: maybe on read_conf step or inside Optimizer
+        scoring = kwargs['gs_params'].pop('scoring', {})
+        if scoring:
+            kwargs['gs_params']['scoring'] = self._resolve_scoring(scoring, self.p['metric'])
 
-        # TODO: move out
-        # optional
-        self._print_steps(pipeline)
-        if kwargs.get('debug', False):
-            self.debug_pipeline_(pipeline, data)
+        train, test = data.split()
 
-        train, test = self.split_(data)
-
-        self.logger.info("\u25CF \u25B6 GRID SEARCH HYPERPARAMETERS")
+        self.logger.info("\u25CF \u25B6 OPTIMIZE HYPERPARAMETERS")
         optimizer = cls(pipeline, hp_grid, **kwargs.get('gs_params', {}))
-        optimizer.fit(*train, **kwargs.get('fit_params', {}))
+        optimizer.fit(train.get_x(), train.get_y(), **kwargs.get('fit_params', {}))
 
-        # TODO:
-        runs, best_run_index = self.optimize()
-        # dump results in csv
-        self.dump_runs(runs, best_run_index)
+        # Results logs/dump to disk in run dir.
+        dirpath = '{}/results/runs'.format(self.project_path)
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
+        filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
+        optimizer.dump(filepath)
+
+        # internall in fit
+        # optimizer.print()
+        # optimizer.dump_runs()
+
+        # optimizer object should contain:
+        # best_params_ (not available if refit is False and multi-metric)
+        # best_estimator if refit is not False
+        self.pipelines[pipeline_id] = optimizer.__dict__.get('best_estimator_', pipeline)
+        self.pipelines[pipeline_id]['best_params_'].updata(optimizer.__dict__.get('best_params_', {}))
+        self.cache_custom_kw_args[pipeline_id] = \
+            self.pipelines[pipeline_id]['best_params_']\
+                .get('pass_custom__kw_args', {})
+
+        return
 
     def _set_hps(self, pipeline, data, kwargs):
-        hps = pipeline.get_params().update(self._get_zero_position(kwargs))
-        hps = self._resolve_hps(hps, data, kwargs)
+        hps = pipeline.get_params()\
+            .update(pipeline.get('best_params_', {}))\
+            .update(kwargs.get(['hp'], {}))
+        hps = self._resolve_hps(hps, pipeline, data, kwargs)
+        hps = self._get_zero_position(hps)
         pipeline.set_params(**hps)
         return pipeline
 
-    def _get_zero_position(self, kwargs):
+    def _get_zero_position(self, hps):
         """
         Note:
             In case of generator/iterator change in hp_grid will be irreversible.
 
         """
         # get zero position params from hp
-        hps = {}
-        for name, vals in kwargs.get(['hp'], {}).items():
+        zero_hps = {}
+        for name, vals in hps.items():
             # check if not distribution in hp
             if hasattr(type(vals), '__iter__'):
                 # container type
                 iterator = iter(vals)
-                hps.update(**{name: iterator.__next__()})
+                zero_hps.update(**{name: iterator.__next__()})
+        return zero_hps
+
+    def _resolve_hps(self, hps, pipeline, data, kwargs):
+        for hp_name, val in hps.items():
+            if val == 'auto':
+                # hp
+                hps[hp_name] = pipeline.resolve(hp_name, data, kwargs)
+            elif val == ['auto']:
+                # hp_grid
+                hps[hp_name] = [].extend(pipeline.resolve(hp_name, data, kwargs))
         return hps
 
-    def _resolve_hps(self, hps, data, kwargs):
-        for hp_name in hps:
-            # step_name = step[0]
-            # step_hp = {key: p[key] for key in p.keys() if step_name + '__' in key}
-            val = hps[hp_name]
-            if self._is_data_hp(val):
-                key = val.split('__')[-1]
-                hps[hp_name] = self.get_from_data_(data, key)
-            elif isinstance(val, dict):
-                # dict case
-                for k,v in val.items():
-                    if self._is_data_hp(v):
-                        key = v.split('__')[-1]
-                        val[k] = self.get_from_data_(data, key)
-            elif hasattr(type(val), '__iter__') and\
-                    hasattr(type(val), '__getitem__'):
-                # sequence case
-                for k, v in enumerate(val):
-                    if self._is_data_hp(v):
-                        key = v.split('__')[-1]
-                        val[k] = self.get_from_data_(data, key)
-        return hps
+    # [deprecated] explicit param to resolve in hp_grid
+    # def _set_hps(self, pipeline, data, kwargs):
+    #     hps = pipeline.get_params().update(self._get_zero_position(kwargs))
+    #     hps = self._resolve_hps(hps, data, kwargs)
+    #     pipeline.set_params(**hps)
+    #     return pipeline
+
+    # def _resolve_hps(self, hps, data, kwargs):
+    #     for hp_name in hps:
+    #         # step_name = step[0]
+    #         # step_hp = {key: p[key] for key in p.keys() if step_name + '__' in key}
+    #         val = hps[hp_name]
+    #         if self._is_data_hp(val):
+    #             key = val.split('__')[-1]
+    #             hps[hp_name] = self.get_from_data_(data, key)
+    #         elif isinstance(val, dict):
+    #             # dict case
+    #             for k,v in val.items():
+    #                 if self._is_data_hp(v):
+    #                     key = v.split('__')[-1]
+    #                     val[k] = self.get_from_data_(data, key)
+    #         elif hasattr(type(val), '__iter__') and\
+    #                 hasattr(type(val), '__getitem__'):
+    #             # sequence case
+    #             for k, v in enumerate(val):
+    #                 if self._is_data_hp(v):
+    #                     key = v.split('__')[-1]
+    #                     val[k] = self.get_from_data_(data, key)
+    #     return hps
 
     def _is_data_hp(self, val):
         return isinstance(val, str) and val.startswith('data__')
@@ -495,26 +412,110 @@ class Workflow(object):
         self.logger.debug('+' * 100)
         return
 
+    def _resolve_scoring(self, names, user_metrics):
+        """Make scorers from user_metrics.
+
+        Args:
+            names (sequence of str): user_metrics names to use in gs.
+            user_metrics (dict): {'name': (sklearn metric object, bool greater_is_better), }
+
+        Returns:
+            scorers (dict): {'name': sklearn scorer object, }
+
+        Note:
+            if 'gs__metric_id' is None, estimator default will be used.
+
+        """
+        scorers = {}
+        self.custom_scorer[self.current_pipeline_id] = None
+
+        # deprecated
+        # if not names:
+        #     # need to set explicit, because always need not None 'refit' name
+        #     # can`t extract estimator built-in name, so use all from validation user_metrics
+        #     names = user_metrics.keys()
+        for name in names:
+            if name in user_metrics:
+                metric = user_metrics[name]
+                if isinstance(metric[0], str):
+                    # convert to callable
+                    # ignore kw_args (built-in `str` metrics has hard-coded kwargs)
+                    scorers[name] = sklearn.metrics.get_scorer(metric[0])
+                    continue
+                if len(metric) == 1:
+                    kw_args = {}
+                else:
+                    kw_args = copy.deepcopy(metric[1])
+                    if 'needs_custom_kw_args' in kw_args:
+                        if self.custom_scorer[self.current_pipeline_id]:
+                            raise ValueError("Only one custom metric can be set with 'needs_custom_kw_args'.")
+                        del kw_args['needs_custom_kw_args']
+                        self.custom_scorer[self.current_pipeline_id] = sklearn.metrics.make_scorer(metric[0], **kw_args)
+                        scorers[name] = self._custom_scorer_shell
+                        continue
+                scorers[name] = sklearn.metrics.make_scorer(metric[0], **kw_args)
+            else:
+                scorers[name] = sklearn.metrics.get_scorer(name)
+        return scorers
+
+    def _custom_scorer_shell(self, estimator, x, y):
+        """Read custom_kw_args from current pipeline, pass to scorer.
+
+        Note: in gs self object copy, we can dynamically get param only from estimator.
+        """
+        try:
+            if estimator.steps[0][0] == 'pass_custom':
+                if estimator.steps[0][1].kw_args:
+                    self.custom_scorer[self.current_pipeline_id]._kwargs.update(estimator.steps[0][1].kw_args)
+        except AttributeError:
+            # ThresholdClassifier object has no attribute 'steps'
+            self.custom_scorer[self.current_pipeline_id]._kwargs.update(self.cache_custom_kw_args[self.current_pipeline_id])
+
+        return self.custom_scorer[self.current_pipeline_id](estimator, x, y)
+
     # =============================================== validate =========================================================
     # @memory_profiler
     def validate(self, pipeline_id, data_id, **kwargs):
         """Predict and score on validation set."""
         self.logger.info("\u25CF VALIDATE ON HOLDOUT")
-        data = self.data[data_id]
-        pipeline = self.pipeline[pipeline_id]
-        train, test = self.split_(data)
+        data = self.datasets[data_id]
+        pipeline = self.pipelines[pipeline_id]
+        train, test = data.split()
 
         classes, pos_label, pos_label_ind = \
             self.get_classes_(data,
-                              self.is_classifier_(pipeline),
+                              pipeline.is_classifier,
                               kwargs.get('pos_label', None))
 
-        self._via_metrics(kwargs.get('metric', []), pipeline,
+        metrics = self._resolve_metric(kwargs.get('metric', []), self.p['metric'])
+
+        # TODO: move out to separate replacable class
+        self._via_metrics(metrics, pipeline,
                           train, test, pos_label_ind, classes)
         # [deprecated] not all metrics can be converted to scorers
         # self._via_scorers(self.metrics_to_scorers(self.p['metrics'], self.p['metrics']),
         # pipeline, train, test, pos_label_ind)
         return
+
+    def _resolve_metric(self, names, user_metrics):
+        res = {}
+        for name in names:
+            if name in user_metrics:
+                res.update({name:user_metrics[name]})
+            else:
+                # Sklearn built-in, resolve through scorer.
+                scorer = sklearn.metrics.get_scorer(name)
+                metric = (
+                    scorer._score_func,
+                    {'greater_is_better': scorer._sign > 0,
+                    'needs_proba':
+                        isinstance(scorer,
+                                   sklearn.metrics._scorer._ProbaScorer),
+                    'needs_threshold':
+                        isinstance(scorer,
+                                   sklearn.metrics._scorer._ThresholdScorer),})
+                res.update({name: metric})
+        return res
 
     def _via_metrics(self, metrics, pipeline,
                      train, test, pos_label_ind, classes):
@@ -534,6 +535,10 @@ class Workflow(object):
         #     y_pred_train = self.prob_to_pred(y_pred_proba_train, th_)
         #     y_pred_test = self.prob_to_pred(y_pred_proba_test, th_)
 
+        # prevent multiple prediction
+        temp = {'predict_proba': None,
+                'decision_function': None,
+                'predict': None}
         for name, metric in metrics.items():
             if metric[1].get('needs_proba', False):
                 if not hasattr(pipeline, 'predict_proba'):
@@ -541,18 +546,30 @@ class Workflow(object):
                                         "    ignore metric '{name}'")
                     continue
                 # [...,i] equal to [:,i]/[:,:,i]/.. (for multi-output target)
-                y_pred_train = pipeline.predict_proba(x_train)[..., pos_label_ind]
-                y_pred_test = pipeline.predict_proba(x_test)[..., pos_label_ind]
+                if not temp['predict_proba']:
+                    y_pred_train = pipeline.predict_proba(x_train)[..., pos_label_ind]
+                    y_pred_test = pipeline.predict_proba(x_test)[..., pos_label_ind]
+                    temp['predict_proba'] = (y_pred_train, y_pred_test)
+                else:
+                    y_pred_train, y_pred_test = temp['predict_proba']
             elif metric[1].get('needs_threshold', False):
                 if not hasattr(pipeline, 'decision_function'):
                     self.logger.warning(f"Warning: pipeline object has no method 'predict_proba':\n"
                                         "    ignore metric '{name}'")
                     continue
-                y_pred_train = pipeline.decision_function(x_train)
-                y_pred_test = pipeline.decision_function(x_test)
+                if not temp['decision_function']:
+                    y_pred_train = pipeline.decision_function(x_train)
+                    y_pred_test = pipeline.decision_function(x_test)
+                    temp['decision_function'] = (y_pred_train, y_pred_test)
+                else:
+                    y_pred_train, y_pred_test = temp['decision_function']
             else:
-                y_pred_train = pipeline.predict(x_train)
-                y_pred_test = pipeline.predict(x_test)
+                if not temp['predict']:
+                    y_pred_train = pipeline.predict(x_train)
+                    y_pred_test = pipeline.predict(x_test)
+                    temp['predict'] = (y_pred_train, y_pred_test)
+                else:
+                    y_pred_train, y_pred_test = temp['predict']
 
             # skip make_scorer params
             kw_args = {key: metric[1][key] for key in metric[1]
@@ -573,10 +590,10 @@ class Workflow(object):
 
             self.logger.log(25, f"{name}:")
             self.logger.log(5, f"{name}:")
-            self._score_prette_print(metric, score_train, score_test, classes)
+            self._score_pretty_print(metric, score_train, score_test, classes)
         return
 
-    def _score_prette_print(self, metric, score_train, score_test, classes):
+    def _score_pretty_print(self, metric, score_train, score_test, classes):
         if metric[0].__name__ == 'confusion_matrix':
             labels = metric[1].get('labels', classes)
             score_train = tabulate.tabulate(pd.DataFrame(data=score_train,
@@ -618,9 +635,9 @@ class Workflow(object):
             self.logger.log(25, f"{name}:")
             self.logger.log(5, f"{name}:")
             # result score on Train
-            score_train = scorer(pipeline, *train)
+            score_train = scorer(pipeline, train.get_x(), train.get_y())
             # result score on test
-            score_test = scorer(pipeline, *test)
+            score_test = scorer(pipeline, test.get_x(), test.get_y())
             self.logger.log(25, f"Train:\n    {score_train}\n"
                                 f"Test:\n    {score_test}")
             self.logger.log(5, f"Train:\n    {score_train}\n"
@@ -643,7 +660,7 @@ class Workflow(object):
 
         """
         self.logger.info("\u25CF DUMP MODEL")
-        pipeline = self.pipeline[pipeline_id]
+        pipeline = self.pipelines[pipeline_id]
         # dump to disk in models dir
         dirpath = '{}/results/models'.format(self.project_path)
         if not os.path.exists(dirpath):
@@ -651,7 +668,7 @@ class Workflow(object):
         file = f"{dirpath}/{self.p_hash}_{self.data_hash}_dump.model"
         if not os.path.exists(file):
             # prevent double dumping
-            self.dump_(pipeline, file)
+            pipeline.dump(file)
             self.logger.log(25, 'Save fitted model to file:\n  {}'.format(file))
         else:
             self.logger.warning('Warnning: skip dump: model file already exists\n    {}\n'.format(file))
@@ -680,7 +697,7 @@ class Workflow(object):
 
     # =============================================== predict ==========================================================
     # @memory_profiler
-    def predict(self, pipeline_id, data_id):
+    def predict(self, pipeline_id, data_id, filepath=None, template=None):
         """Predict on new data.
 
         Args:
@@ -692,11 +709,11 @@ class Workflow(object):
         """
         self.logger.info("\u25CF PREDICT ON TEST")
 
-        pipeline = self.pipeline[pipeline_id]
-        data = self.data[data_id]
-        train, test = self.split_(data)
+        pipeline = self.pipelines[pipeline_id]
+        data = self.datasets[data_id]
+        train, test = data.split()
         assert train == test
-        x, y = test
+        x = test.get_x()
 
         # [deprecated]
         # data_df, _, _ = self.unify_data(data)
@@ -704,303 +721,31 @@ class Workflow(object):
 
         y_pred = pipeline.predict(x)
 
-        # hash of data
-        workflow_hash = self._workflow_hash()
-        pipeline_hash = self.pipeline_hash_(pipeline)
-        data_hash = self.get_from_data_(data, 'hash')
-
         # dump to disk in predictions dir
-        dirpath = '{}/results/models'.format(self.project_path)
-        if not os.path.exists(dirpath):
-            os.makedirs(dirpath)
-        filepath = f"{dirpath}/{workflow_hash}_{pipeline_hash}_{data_hash}_predictions"
-
-        self.dump_predict_(filepath, y_pred, data)
+        if not template:
+            template = test.get_y()
+        if not filepath:
+            dirpath = '{}/results/models'.format(self.project_path)
+            if not os.path.exists(dirpath):
+                os.makedirs(dirpath)
+            filepath = f"{dirpath}/{hash(self)}_{hash(pipeline)}_{hash(data)}_predictions"
+        data.dump(filepath, y_pred, template)
         self.logger.log(25, "Save predictions for new data to file:\n    {}".format(filepath))
 
     # =============================================== gui param ========================================================
-    def gui(self, pipeline_id, data_id, cls,  **kwargs):
+    def gui(self, pipeline_id, data_id, hp_grid, optimizer_id, cls,  **kwargs):
         self.logger.info("\u25CF GUI")
 
-        pipeline = self.pipeline[pipeline_id]
-        data = self.data[data_id]
+        pipeline = self.pipelines[pipeline_id]
+        data = self.datasets[data_id]
+        optimizer = self.optimizer[optimizer_id]
 
-        gui = cls(pipeline, data, best_params_, hp_grid ,**kwargs)
-        threading.Thread(target=gui.plot(), args=(,), daemon=True).start()
+        # we need only hp_grid flat:
+        # either hp here in args
+        # either combine tested hps for all optimizers if hp = {}
+        gui = cls(pipeline, data, optimizer, hp_grid, **kwargs)
+        threading.Thread(target=gui.plot(), args=(), daemon=True).start()
         return
-
-    # TODO: move into GUI
-    def gen_gui_params(self):
-        """Prepare params for visualization."""
-        self.logger.info("\u25CF PREPARE GUI PARAMS")
-        # rearrange nested hp params
-        hp_grid_flat = {}
-        for key, val in self.p['gs__hp_grid'].items():
-            if key not in self.modifiers:  # only if multiple values
-                continue
-            if isinstance(val[0], dict):
-                # functiontransformer kw_args compliance (pass_custom)
-                # ('pass_custom__kw_args','param_a')
-                dic = {tuple([key, key_]): np.zeros(len(val), dtype=type(val[0]), order='C')
-                       for key_ in val[0].keys()}
-                # [deprecated] problem in inverse transform in gui (can`t understand if needed)
-                # 'pass_custom__kw_args__param_a'
-                # dic = {'__'.join([key, key_]): np.zeros(len(val), dtype=np.float64, order='C')
-                #        for key_ in val[0].keys()}
-                for i, item in enumerate(val):
-                    for key_ in dic:
-                        dic[key_][i] = item[key_[1]]
-                        # dic[key_][i] = item[key_.split('__')[-1]]
-                hp_grid_flat.update(dic)
-            else:
-                hp_grid_flat[key] = self.to_numpy(val)
-
-        # not necessary
-        best_params_flat = {}
-        dic_flatter(self.best_params_, best_params_flat, key_transform=tuple, val_transform=self.to_numpy)
-
-        self.gui_params = {
-            'pipeline__type': self.p['pipeline__type'],
-            'data': self.data_df,
-            'train_index': self.train_index,
-            'test_index': self.test_index,
-            'estimator': self.estimator,
-            'gs__hp_grid': self.p['gs__hp_grid'],       # {'param':range,}
-            'best_params_': self.best_params_,          # {'param':value,}
-            'hp_grid_flat': hp_grid_flat,               # {'param':range,}
-            'best_params_flat': best_params_flat,       # {'param':value,}
-            'metric': self.metric,
-        }
-
-    def to_numpy(self, val):
-        """Hp param to numpy.
-
-        Note:
-            object transform to np object
-            float force to np.float64
-            https://docs.scipy.org/doc/numpy/reference/arrays.scalars.html
-
-        """
-        if isinstance(val, list):
-            typ = type(val[0])
-            val = np.array(val, order='C', dtype=np.float64 if typ is float else typ)
-        #    if isinstance(val[0], (str, bool, int, np.number)):
-        #        val = np.array(val, order='C', dtype=type(val[0]))
-        #    else:
-        #        try:
-        #            # try cast to double
-        #            val = np.array(val, order='C', dtype=np.double)
-        #        except Exception as e:
-        #            # cast to string, otherwise would save as object, would be problem with sort further
-        #            val = np.array([str(i) for i in val], order='C')
-        # elif not isinstance(val, (str, bool, int, np.number)):
-        #     val = str(val)
-
-            # [deprecated] not work for non-built-in objects
-            # if isinstance(val[0], str):
-            #     val = np.array(val, order='C')
-            # elif isinstance(val[0], bool):
-            #     val = np.array(val, order='C', dtype=np.bool)
-            # elif isinstance(val[0], int):
-            #     val = np.array(val, order='C', dtype=int)
-            # else:
-            #     val = np.array(val, order='C', dtype=np.double)
-        return val
-
-    def custom_scorer(self, estimator, x, y_true, greater_is_better=True, needs_proba=False, needs_threshold=False):
-        """Custom scorer.
-
-        Args:
-            estimator: fitted estimator.
-            x (dataframe, np.ndarray): features test.
-            y_true (dataframe, np.ndarray): true targets test.
-
-        Returns:
-            score value
-
-        Note:
-            Alternative use built-in make_scorer
-                scorer = metrics.make_scorer(metrics.accuracy_score, greater_is_better=True)
-                score = scorer(estimator, x, y)
-
-        """
-        if isinstance(x, pd.DataFrame):
-            index = y_true.index
-            x = x.values
-            y_true = y_true.values
-
-        if needs_proba and needs_threshold:
-            raise ValueError("Set either needs_proba or needs_threshold to True,"
-                             " but not both.")
-
-        if needs_proba:
-            y_pred_proba = estimator.predict_proba(x)
-            score = self.metric(y_true, y_pred_proba[:, self.pos_label_ind], y_pred_type='proba')
-        elif needs_threshold:
-            y_pred_decision = estimator.decision_funcrion(x)
-            score = self.metric(y_true, y_pred_decision, y_pred_type='decision')
-        else:
-            y_pred = estimator.predict(x)
-            score = self.metric(y_true, y_pred, y_pred_type='targets')
-
-        if greater_is_better:
-            return score
-        else:
-            return -score
-
-    def metric(self, y_true, y_pred, y_pred_type='targets', meta=False):
-        """Evaluate custom metric.
-
-        Args:
-            y_true (np.ndarray): true targets.
-            y_pred (np.ndarray): predicted targets/pos_label probabilities/decision function.
-            meta (bool): if True calculate metadata for visualization.
-            y_pred_type: 'targets'/'proba'/'decision'
-
-        Returns:
-            score (float): metric score
-            meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
-
-        """
-        if self.p['pipeline__type'] == 'classifier':
-            return self.metric_classifier(y_true, y_pred, y_pred_type, meta)
-        else:
-            return self.metric_regressor(y_true, y_pred, meta)
-
-    def metric_classifier(self, y_true, y_pred, y_pred_type, meta=False):
-        """Evaluate classification metric.
-
-        Detailed meta for external use cases.
-
-        Args:
-            y_true (np.ndarray): true targets.
-            y_pred (np.ndarray): predicted targets/pos_label probabilities/decision function.
-            meta (bool): if True calculate metadata for visualization, support only `targets` in y_pred.
-            y_pred_type: 'targets'/'proba'/'decision'
-
-        Returns:
-            score (float): metric score
-            meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
-
-        Note:
-            Be carefull with y_pred type, there is no check in sklearn.
-            meta support only `targets` in y_pred.
-
-        TODO:
-            add y_pred_type argument (sklearn not support)
-            need to pass threshold from estimator
-            add roc_curve on plot
-
-        """
-        # score
-        scorer_kwargs = self.p['metrics'][self.main_score_name][1] if len(self.p['metrics'][self.main_score_name]) > 1 else {}
-        if scorer_kwargs.get('needs_proba') or scorer_kwargs.get('needs_threshold'):
-            # [deprecated] confusing
-            # self.logger.warning("Warning:  gui classification metric don`t suport predict_proba "
-            #                     "or decision_function based metrics\n    "
-            #                     "score set to None")
-            score = None  # sklearn.metrics.f1_score(y_true, y_pred, pos_label=self.pos_label)
-        else:
-            score = self.p['metrics'][self.main_score_name][0](y_true, y_pred)
-
-        if not meta:
-            return score
-
-        if y_pred_type is not 'targets':
-            raise ValueError("metric_classification meta don`t support non-target input for predictions")
-
-        precision_score = sklearn.metrics.precision_score(y_true, y_pred)
-        # metrics in dynamic
-        length = y_true.shape[0]
-        tp = 0
-        fp = 0
-        fn = 0
-        tp_fn = 0
-        precision_vector = np.zeros(length, dtype=np.float64)
-        tp_vector = np.zeros(length, dtype=np.bool)
-        fp_vector = np.zeros(length, dtype=np.bool)
-        fn_vector = np.zeros(length, dtype=np.bool)
-        for i in range(length):
-            if y_true[i] == 1 and y_pred[i] == 1:
-                tp += 1
-                tp_vector[i] = True
-            elif y_true[i] == 0 and y_pred[i] == 1:
-                fp += 1
-                fp_vector[i] = True
-            elif y_true[i] == 1 and y_pred[i] == 0:
-                fn += 1
-                fn_vector[i] = True
-            if y_true[i] == 1:
-                tp_fn += 1
-            precision_vector[i] = tp / (fp + tp) if tp + fp != 0 else 0
-
-        if precision_score != precision_vector[-1]:
-            assert False, 'MyError: score_check False'
-
-        meta = {'score': precision_vector, 'TP': tp_vector, 'FP': fp_vector, 'FN': fn_vector}
-
-        return score, meta
-
-    def metric_regressor(self, y_true, y_pred, meta=False):
-        """Evaluate regression metric.
-
-        Detailed meta for external use cases.
-
-        Args:
-            y_true (np.ndarray): true targets.
-            y_pred (np.ndarray): predicted targets. need for strategy=1 (auc-score)
-            meta (bool): if True calculate metadata for visualization
-
-        Returns:
-            score (float): metric score
-            meta (dict): cumulative score, mae,mse in dynamic; resid in points.
-
-        """
-        # check for Inf prediction (in case of overfitting), limit it
-        if np.isinf(y_pred).sum():
-            np.nan_to_num(y_pred, copy=False)
-
-        # score
-        score = self.p['metrics'][self.main_score_name][0](y_true, y_pred)
-        if not meta:
-            return score
-
-        # end value
-        r2_score = sklearn.metrics.r2_score(y_true, y_pred)
-        mae_loss = sklearn.metrics.mean_absolute_error(y_true, y_pred)
-        mse_loss = sklearn.metrics.mean_squared_error(y_true, y_pred)
-
-        # metrics in dynamic
-        length = y_true.shape[0]
-        mae_vector = np.zeros(length, dtype=np.float64)
-        mse_vector = np.zeros(length, dtype=np.float64)
-        resid_vector = np.zeros(length, dtype=np.float64)
-        r2_vector = np.zeros(length, dtype=np.float64)
-        mae = 0
-        mse = 0
-        mean = 0
-        # tss, rss, r2 (don`t need initialization)
-        for n in range(length):
-            # cumul
-            mae = (mae*n + abs(y_true[n]-y_pred[n]))/(n+1)
-            mse = (mse*n + (y_true[n]-y_pred[n])**2)/(n+1)
-            mean = (mean*n + y_true[n])/(n+1)
-            rss = mse*(n+1)
-            tss = np.sum((y_true[:n+1]-mean)**2)   # tss + (y_true[n]-mean)**2
-            r2 = 1 - rss/tss if tss != 0 else 0
-            r2_vector[n] = r2
-            mae_vector[n] = mae
-            mse_vector[n] = mse
-            # in points
-            resid_vector[n] = y_pred[n]-y_true[n]
-
-        for score_, score_vector_ in [(r2_score, r2_vector), (mae_loss, mae_vector), (mse_loss, mse_vector)]:
-            if not cmath.isclose(score_, score_vector_[-1], rel_tol=1e-8, abs_tol=0):  # slight difference
-                assert False, 'MyError: score_check False'
-
-        meta = {'score': r2_vector, 'MAE': mae_vector, 'MSE': mse_vector, 'RES': resid_vector}
-
-        return score, meta
 
 
 if __name__ == '__main__':

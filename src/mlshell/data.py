@@ -81,17 +81,19 @@ class DataPreprocessor(object):
         if categor_names is None:
             categor_names = []
         index = list(raw.index)  # otherwise not serializable for cache
-        targets, raw_targets_names, base_plot = self.make_targets(raw, target_name=target_name)
+        targets, raw_targets_names = self.make_targets(raw, target_name=target_name)
         features, raw_features_names = self.make_features(raw, target_name=target_name)
-        data = self.make_dataframe(index, targets, features, categor_names, raw_features_names)
         raw_names = {'index': index,
                      'targets': raw_targets_names,
-                     'features': raw_features_names}
-        var.update({'df': data, 'raw_names': raw_names, 'base_plot': base_plot})
+                     'features': raw_features_names,
+                     'categor_features': categor_names}
+        data = self.make_dataframe(index, targets, features, raw_names)
+        var.update({'df': data, 'raw_names': raw_names})  # [deprecated] , 'base_plot': base_plot
         del var['raw']
         return var
 
     def make_targets(self, raw, target_name=''):
+        """Targets preprocessing."""
         try:
             targets_df = raw[target_name]
             targets = targets_df.values.astype(int)  # cast to int
@@ -101,35 +103,123 @@ class DataPreprocessor(object):
             targets = np.zeros(raw.shape[0], dtype=int, order="C")
             raw[target_name] = targets
         raw_targets_names = [target_name]
+        # [deprecated] better df
         # base_plot = targets
         # preserve original index
         # base_plot = pd.Series(index=raw.index.values,
         #                       data=np.arange(1, targets.shape[0]+1)).rename_axis(raw.index.name)
 
-        base_plot = pd.DataFrame(index=raw.index.values,
-                                 data={target_name: np.arange(1, targets.shape[0]+1)}).rename_axis(raw.index.name)
+        # [deprecated] move to gui
+        # base_plot = pd.DataFrame(index=raw.index.values,
+        #                          data={target_name: np.arange(1, targets.shape[0]+1)}).rename_axis(raw.index.name)
 
-        return targets, raw_targets_names, base_plot
+        return targets, raw_targets_names  # , base_plot
 
     def make_features(self, raw, target_name=''):
+        """Features preprocessing."""
         features_df = raw.drop([target_name], axis=1)
-        # there is mistake with '-' test column names in input data
-        raw_features_names = [i.replace('-', '_') for i in features_df.columns]
+        raw_features_names = features_df.columns
         features = features_df.values.T
         return features, raw_features_names
 
-    def make_dataframe(self, index, targets, features, categor_names, raw_features_names):
-        columns = [f'feature_categor_{i}__{raw_name}' if raw_name in categor_names
-                   else f'feature_{i}__{raw_name}'
-                   for i, raw_name in enumerate(raw_features_names)]
+    def make_dataframe(self, index, targets, features, raw_names):
+        """Combine preprocessed columns."""
+        # [deprecated] preserve original
+        # columns = [f'feature_categor_{i}__{raw_name}' if raw_name in raw_names['categor_features']
+        #            else f'feature_{i}__{raw_name}'
+        #            for i, raw_name in enumerate(raw_names['features'])]
+        columns = raw_names['features']
         df = pd.DataFrame(
             data=features.T,
             index=index,
             columns=columns,
             copy=False,
-        )
+        ).rename(raw_names['index'])
         df.insert(loc=0, column='targets', value=targets)
         return df
+
+
+class Data(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __hash__(self):
+        return pd.util.hash_pandas_object(self.get('df')).sum()
+
+    # need for ram economy, we can make it as dict key
+    def get_x(self):
+        df = self.get('df', None)
+        raw_names = self.get('raw_names', None)
+        return df[[raw_names['features']]]
+
+    def get_y(self):
+        df = self.get('df', None)
+        raw_names = self.get('raw_names', None)
+        return df[raw_names['targets']]
+
+    def dump(self, filepath, obj, template=None):
+        # [deprecated]
+        # raw_names = self.get('raw_names')
+        if template:
+            # recover original index and names
+            obj = pd.DataFrame(index=template.index.values,
+                               data={zip(template.columns, obj)}).rename_axis(template.index.name)
+            # [deprecated] not enough abstract
+            # df = pd.DataFrame(index=self.get('df').index.values,
+            #                data={raw_names['targets'][0]: y_pred}).rename_axis(raw_names['index'])
+
+        with open(f"{filepath}.csv", 'w', newline='') as f:
+            obj.to_csv(f, mode='w', header=True, index=True, sep=',', line_terminator='\n')  # only LF
+        return
+
+    def split(self, data):
+        df = data.get('df', None)
+        train_index = data.get('train_index', None)
+        test_index = data.get('test_index', None)
+        if not train_index and not test_index:
+            train_index = test_index = df.index
+
+        # inherent keys, except 'df'
+        train = Data(dict(self, **{'df': df.loc[train_index]}))
+        test = Data(dict(self, **{'df': df.loc[test_index]}))
+
+        return train, test
+
+        # [deprecated] better create subobject
+        # columns = df.columns
+        # # deconcatenate without copy, better dataframe over numpy (provide index)
+        # train = df.loc[train_index]
+        # test = df.loc[test_index]
+        # x_train = train[[name for name in columns if 'feature' in name]]
+        # y_train = train['targets']
+        # x_test = test[[name for name in columns if 'feature' in name]]
+        # y_test = test['targets']
+        # return (x_train, y_train), (x_test, y_test)
+
+    # TODO: better check in workflow level
+    def get_classes(self, data, is_classifier, pos_label=None):
+        # TODO: multi-output target
+
+        if is_classifier:
+            classes = np.unique(data['targets'])
+            # [deprecated] easy to get from classes
+            # n_classes = classes_.shape[0]
+
+            if not pos_label:
+                pos_label = classes[-1]  # self.p['th__pos_label']
+                pos_label_ind = -1
+            else:
+                pos_label_ind = np.where(classes == pos_label)[0][0]
+            # [deprecated] multiclass
+            # neg_label = classes[0]
+            self.logger.info(f"Label {pos_label} identified as positive np.unique(targets)[-1]:\n"
+                             f"    for classifiers provided predict_proba:"
+                             f" if P(pos_label)>threshold, prediction=pos_label on sample.")
+        else:
+            classes = None
+            pos_label = None
+            pos_label_ind = None
+        return classes, pos_label, pos_label_ind
 
 
 class DataFactory(DataExtractor, DataPreprocessor):
@@ -152,7 +242,7 @@ class DataFactory(DataExtractor, DataPreprocessor):
         """
         self.logger.info("\u25CF HANDLE DATA")
         self.logger.info(f"Data configuration:\n    {data_id}")
-        res_ = {}
+        res_ = Data()
         for key, val in p.items():
             if not isinstance(val, dict):
                 continue

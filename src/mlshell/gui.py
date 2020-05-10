@@ -166,6 +166,240 @@ class Draw(object):
     def fig_element_replace(self):
         pass
 
+class Prepare(object):
+    # TODO: move into GUI
+    def gen_gui_params(self):
+        """Prepare params for visualization."""
+        self.logger.info("\u25CF PREPARE GUI PARAMS")
+        # rearrange nested hp params
+        hp_grid_flat = {}
+        for key, val in self.p['gs__hp_grid'].items():
+            if key not in self.modifiers:  # only if multiple values
+                continue
+            if isinstance(val[0], dict):
+                # functiontransformer kw_args compliance (pass_custom)
+                # ('pass_custom__kw_args','param_a')
+                dic = {tuple([key, key_]): np.zeros(len(val), dtype=type(val[0]), order='C')
+                       for key_ in val[0].keys()}
+                # [deprecated] problem in inverse transform in gui (can`t understand if needed)
+                # 'pass_custom__kw_args__param_a'
+                # dic = {'__'.join([key, key_]): np.zeros(len(val), dtype=np.float64, order='C')
+                #        for key_ in val[0].keys()}
+                for i, item in enumerate(val):
+                    for key_ in dic:
+                        dic[key_][i] = item[key_[1]]
+                        # dic[key_][i] = item[key_.split('__')[-1]]
+                hp_grid_flat.update(dic)
+            else:
+                hp_grid_flat[key] = self.to_numpy(val)
+
+        # not necessary
+        best_params_flat = {}
+        dic_flatter(self.best_params_, best_params_flat, key_transform=tuple, val_transform=self.to_numpy)
+
+        self.gui_params = {
+            'pipeline__type': self.p['pipeline__type'],
+            'data': self.data_df,
+            'train_index': self.train_index,
+            'test_index': self.test_index,
+            'estimator': self.estimator,
+            'gs__hp_grid': self.p['gs__hp_grid'],       # {'param':range,}
+            'best_params_': self.best_params_,          # {'param':value,}
+            'hp_grid_flat': hp_grid_flat,               # {'param':range,}
+            'best_params_flat': best_params_flat,       # {'param':value,}
+            'metric': self.metric,
+        }
+
+    def to_numpy(self, val):
+        """Hp param to numpy.
+
+        Note:
+            object transform to np object
+            float force to np.float64
+            https://docs.scipy.org/doc/numpy/reference/arrays.scalars.html
+
+        """
+        if isinstance(val, list):
+            typ = type(val[0])
+            val = np.array(val, order='C', dtype=np.float64 if typ is float else typ)
+        #    if isinstance(val[0], (str, bool, int, np.number)):
+        #        val = np.array(val, order='C', dtype=type(val[0]))
+        #    else:
+        #        try:
+        #            # try cast to double
+        #            val = np.array(val, order='C', dtype=np.double)
+        #        except Exception as e:
+        #            # cast to string, otherwise would save as object, would be problem with sort further
+        #            val = np.array([str(i) for i in val], order='C')
+        # elif not isinstance(val, (str, bool, int, np.number)):
+        #     val = str(val)
+
+            # [deprecated] not work for non-built-in objects
+            # if isinstance(val[0], str):
+            #     val = np.array(val, order='C')
+            # elif isinstance(val[0], bool):
+            #     val = np.array(val, order='C', dtype=np.bool)
+            # elif isinstance(val[0], int):
+            #     val = np.array(val, order='C', dtype=int)
+            # else:
+            #     val = np.array(val, order='C', dtype=np.double)
+        return val
+
+    def metric(self, y_true, y_pred, y_pred_type='targets', meta=False):
+        """Evaluate custom metric.
+
+        Args:
+            y_true (np.ndarray): true targets.
+            y_pred (np.ndarray): predicted targets/pos_label probabilities/decision function.
+            meta (bool): if True calculate metadata for visualization.
+            y_pred_type: 'targets'/'proba'/'decision'
+
+        Returns:
+            score (float): metric score
+            meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
+
+        """
+        if self.p['pipeline__type'] == 'classifier':
+            return self.metric_classifier(y_true, y_pred, y_pred_type, meta)
+        else:
+            return self.metric_regressor(y_true, y_pred, meta)
+
+    def metric_classifier(self, y_true, y_pred, y_pred_type, meta=False):
+        """Evaluate classification metric.
+
+        Detailed meta for external use cases.
+
+        Args:
+            y_true (np.ndarray): true targets.
+            y_pred (np.ndarray): predicted targets/pos_label probabilities/decision function.
+            meta (bool): if True calculate metadata for visualization, support only `targets` in y_pred.
+            y_pred_type: 'targets'/'proba'/'decision'
+
+        Returns:
+            score (float): metric score
+            meta (dict): cumulative score in dynamic; TP,FP,FN in points for classification.
+
+        Note:
+            Be carefull with y_pred type, there is no check in sklearn.
+            meta support only `targets` in y_pred.
+
+        TODO:
+            add y_pred_type argument (sklearn not support)
+            need to pass threshold from estimator
+            add roc_curve on plot
+
+        """
+        # score
+        scorer_kwargs = self.p['metrics'][self.main_score_name][1] if len(self.p['metrics'][self.main_score_name]) > 1 else {}
+        if scorer_kwargs.get('needs_proba') or scorer_kwargs.get('needs_threshold'):
+            # [deprecated] confusing
+            # self.logger.warning("Warning:  gui classification metric don`t suport predict_proba "
+            #                     "or decision_function based metrics\n    "
+            #                     "score set to None")
+            score = None  # sklearn.metrics.f1_score(y_true, y_pred, pos_label=self.pos_label)
+        else:
+            score = self.p['metrics'][self.main_score_name][0](y_true, y_pred)
+
+        if not meta:
+            return score
+
+        if y_pred_type is not 'targets':
+            raise ValueError("metric_classification meta don`t support non-target input for predictions")
+
+        precision_score = sklearn.metrics.precision_score(y_true, y_pred)
+        # metrics in dynamic
+        length = y_true.shape[0]
+        tp = 0
+        fp = 0
+        fn = 0
+        tp_fn = 0
+        precision_vector = np.zeros(length, dtype=np.float64)
+        tp_vector = np.zeros(length, dtype=np.bool)
+        fp_vector = np.zeros(length, dtype=np.bool)
+        fn_vector = np.zeros(length, dtype=np.bool)
+        for i in range(length):
+            if y_true[i] == 1 and y_pred[i] == 1:
+                tp += 1
+                tp_vector[i] = True
+            elif y_true[i] == 0 and y_pred[i] == 1:
+                fp += 1
+                fp_vector[i] = True
+            elif y_true[i] == 1 and y_pred[i] == 0:
+                fn += 1
+                fn_vector[i] = True
+            if y_true[i] == 1:
+                tp_fn += 1
+            precision_vector[i] = tp / (fp + tp) if tp + fp != 0 else 0
+
+        if precision_score != precision_vector[-1]:
+            assert False, 'MyError: score_check False'
+
+        meta = {'score': precision_vector, 'TP': tp_vector, 'FP': fp_vector, 'FN': fn_vector}
+
+        return score, meta
+
+    def metric_regressor(self, y_true, y_pred, meta=False):
+        """Evaluate regression metric.
+
+        Detailed meta for external use cases.
+
+        Args:
+            y_true (np.ndarray): true targets.
+            y_pred (np.ndarray): predicted targets. need for strategy=1 (auc-score)
+            meta (bool): if True calculate metadata for visualization
+
+        Returns:
+            score (float): metric score
+            meta (dict): cumulative score, mae,mse in dynamic; resid in points.
+
+        """
+        # check for Inf prediction (in case of overfitting), limit it
+        if np.isinf(y_pred).sum():
+            np.nan_to_num(y_pred, copy=False)
+
+        # score
+        score = self.p['metrics'][self.main_score_name][0](y_true, y_pred)
+        if not meta:
+            return score
+
+        # end value
+        r2_score = sklearn.metrics.r2_score(y_true, y_pred)
+        mae_loss = sklearn.metrics.mean_absolute_error(y_true, y_pred)
+        mse_loss = sklearn.metrics.mean_squared_error(y_true, y_pred)
+
+        # metrics in dynamic
+        length = y_true.shape[0]
+        mae_vector = np.zeros(length, dtype=np.float64)
+        mse_vector = np.zeros(length, dtype=np.float64)
+        resid_vector = np.zeros(length, dtype=np.float64)
+        r2_vector = np.zeros(length, dtype=np.float64)
+        mae = 0
+        mse = 0
+        mean = 0
+        # tss, rss, r2 (don`t need initialization)
+        for n in range(length):
+            # cumul
+            mae = (mae*n + abs(y_true[n]-y_pred[n]))/(n+1)
+            mse = (mse*n + (y_true[n]-y_pred[n])**2)/(n+1)
+            mean = (mean*n + y_true[n])/(n+1)
+            rss = mse*(n+1)
+            tss = np.sum((y_true[:n+1]-mean)**2)   # tss + (y_true[n]-mean)**2
+            r2 = 1 - rss/tss if tss != 0 else 0
+            r2_vector[n] = r2
+            mae_vector[n] = mae
+            mse_vector[n] = mse
+            # in points
+            resid_vector[n] = y_pred[n]-y_true[n]
+
+        for score_, score_vector_ in [(r2_score, r2_vector), (mae_loss, mae_vector), (mse_loss, mse_vector)]:
+            if not cmath.isclose(score_, score_vector_[-1], rel_tol=1e-8, abs_tol=0):  # slight difference
+                assert False, 'MyError: score_check False'
+
+        meta = {'score': r2_vector, 'MAE': mae_vector, 'MSE': mse_vector, 'RES': resid_vector}
+
+        return score, meta
+
+
 
 class GUI(Draw):
     def __init__(self, base_plot, params, logger):

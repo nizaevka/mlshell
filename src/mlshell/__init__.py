@@ -8,6 +8,7 @@ from .logger import CreateLogger
 from .read_conf import GetParams
 from .data import DataFactory
 from .pipeline import PipeFactory
+from .resolver import CustomResolver
 from .general import Workflow
 from .default import CreateDefaultPipeline, DEFAULT_PARAMS
 from .gui import GUI
@@ -15,7 +16,8 @@ from .eda import EDA
 from .run import run
 
 
-__all__ = ['run', 'find_path', 'CreateLogger', 'GetParams', 'DataFactory', 'PipeFactory',
+__all__ = ['run', 'find_path', 'CreateLogger', 'GetParams',
+           'DataFactory', 'PipeFactory', 'CustomResolver',
            'Workflow', 'CreateDefaultPipeline', 'DEFAULT_PARAMS', 'GUI', 'EDA']
 
 # import platform

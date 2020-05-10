@@ -15,9 +15,10 @@ DEFAULT_PARAMS = {
     'workflow': {
         'endpoint_id': None,
         'steps': [
-            ('fit', 0),
-            ('fit', 0, {'pipeline':'pipeline_2'}),
-            ('optimize', 1)
+            ('fit', 1),
+            # ('fit', 0, {'pipeline':'pipeline_2'}),
+            ('optimize', 1),
+            # ('optimize', 1, {'optimizer': None, 'gs_params':'gs_2', 'th_name': 'estimate__apply_threshold__threshold'})
             ('dump', 0),
             ('validate', 0),
             ('gui', 0),
@@ -59,26 +60,23 @@ DEFAULT_PARAMS = {
             'dump': {'func': None,
                      'pipeline': None,
                      'seed': None},
+            'dump2': {'func': 'dump',
+                      'pipeline': None,
+                      'seed': None},
             # both
             'optimize': {'func': None,
-                         'cls':None, # optimizer
+                         'optimizer': None, # optimizer
                          'pipeline': None,  # multiple pipeline? no, user can defined separately if really needed
                          'data': 'train',
-                         'gs_params':None,
+                         'gs_params': None,
                          'fit_params': {},
                          },
             'fit': {'func': None,
                     'pipeline': None,
                     'data': 'train',
-                    # [deprecated] separate
-                    # 'optimize': {'flag': False,
-                    #              'class': None, # TODO: need to fullfill somewhere
-                    #              'optimize_params': None,},  # second level, how to conf?
                     'fit_params': {},
                     'hp': {},
-                    'debug': False,
-                    'seed': None,
-                    },
+                    'seed': None,},
             'validate': {'func': None,
                          'data': 'train',
                          'metric': None,
@@ -89,8 +87,9 @@ DEFAULT_PARAMS = {
                         'data': 'test',
                         'pipeline': None,
                         'seed': None},
-            'gui': {'cls': None, # gui
+            'gui': {'plotter': None, # gui
                     'pipeline': None,
+                    'hp_grid': {},
                     'data': 'train',
                     'base_sort': False,
                     # 'metric': False,  beta
@@ -115,16 +114,18 @@ DEFAULT_PARAMS = {
                        'steps': None,
                        'estimator': sklearn.linear_model.LinearRegression(),
                        'estimator_type': 'regressor',
-                       'th_strategy': None,
+                       # 'th_strategy': None,
                        },
-            # endpoint inherent from workflow
-            #'add': {
-            #     # it`s workflow or pipeline method, not factory
-            #     'dump': {'func': None,
-            #              'filepath': None},
-            #     'validate': {},
-            #     #  ...
-            # },
+            'resolve': {
+                {'func': None,
+                 # [deprecated]  should be setted 'auto'/['auto'], by default only for index
+                 #  only if not setted
+                 # 'hp': {
+                 #     'process_parallel__pipeline_categoric__select_columns__kw_args',
+                 #     'process_parallel__pipeline_numeric__select_columns__kw_args',
+                 #     'estimate__apply_threshold__threshold'}
+                 # },
+            },
         },
     },
     'metric': {
@@ -133,20 +134,20 @@ DEFAULT_PARAMS = {
         'regressor': (sklearn.metrics.r2_score, {'greater_is_better': True}),
     },
     # can be, but not necessary
-    'optimizer': {
-        'default': {
-            'class': None,
+    # 'optimizer': {
+    #     'default': {
+    #         'class': None,
 
-        }
-    },
+    #     }
+    # },
     'gs_params': {
         'default': {
             # 'flag': True,
             'hp_grid': {},
-            'n_iter': None,
-            'scoring': None,
+            'n_iter': None, # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
+            'scoring': None, # no resolving (default estimator scoring)
             'n_jobs': 1,
-            'refit': None,
+            'refit': None, # no resolving
             'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
             'verbose': 1,
             'pre_dispatch': 'n_jobs',
@@ -154,29 +155,35 @@ DEFAULT_PARAMS = {
             #'random_state': None,
             #'error_score': np.nan,
             #'return_train_score': True,
-            'th': {
-                # 'pos_label': 1,  # [deprecated] get from data with info.
-                'strategy': 0,
-                'samples': 10,
-                'plot_flag': False,
+            'resolve': {
+                'name': {
+                    # 'pos_label': 1,  # [deprecated] get from data with info.
+                    'func': None,
+                    'samples': 10,
+                    'plot_flag': False,
+                },
+
             },
+        },
+        'gs_2': {
+            'hp_grid': {'threshold': [0.5]},
         },
     },
     'data': {
         'default': {
             'class': None,  # Factory
-            # 'steps': [
-                ('load_cache', 0, {'flag': 0, 'func': None, 'prefix': None},)
-                ('get', 1, {'func': None},)
-                ('preprocess': {'func': None},)
-                ('info': {'func': None},)
-                ('unify': {'func': None},)
-                ('split': False,),
-                ('dump_cache': {'flag': 0, 'func': None, 'prefix': None},),
-            # ],
+            'steps': [
+                ('load_cache', {'flag': 0, 'func': None, 'prefix': None},),
+                ('get', {'func': None},),
+                ('preprocess', {'func': None},),
+                ('info', {'func': None},),
+                ('unify', {'func': None},),
+                ('split', False,),
+                ('dump_cache', {'flag': 0, 'func': None, 'prefix': None},),
+            ],
         },
     },
-},
+}
 
 # [deprecated]
 # DEFAULT_PARAMS = {
@@ -329,11 +336,11 @@ class CreateDefaultPipeline(object):
             ('select_rows',      sklearn.preprocessing.FunctionTransformer(func=self.subrows, validate=False)),
             ('process_parallel', sklearn.pipeline.FeatureUnion(transformer_list=[
                 ('pipeline_categoric', sklearn.pipeline.Pipeline(steps=[
-                   ('select_columns',      sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices': 'data__categoric_ind_name'})),
+                   ('select_columns',      sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args='auto')),  # {'indices': 'data__categoric_ind_name'}
                    ('encode_onehot',       mlshell.custom.SkippableOneHotEncoder(handle_unknown='ignore', categories='auto', sparse=False, drop=None, skip=False)),
                 ])),
                 ('pipeline_numeric',   sklearn.pipeline.Pipeline(steps=[
-                    ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args={'indices':  'data__numeric_ind_name'})),
+                    ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args='auto')),  # {'indices':  'data__numeric_ind_name'}
                     ('impute',             sklearn.pipeline.FeatureUnion([
                         ('indicators',         sklearn.impute.MissingIndicator(missing_values=np.nan, error_on_new=False)),
                         ('gaps',               sklearn.impute.SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0, copy=True)),
@@ -393,8 +400,10 @@ class CreateDefaultPipeline(object):
         Returns:
             result (np.ndarray or xframe): Subcolumns of x.
         """
-        feat_ind_name = kwargs['indices']
-        indices = list(feat_ind_name.keys())
+        indices = kwargs['indices']
+        # [deprecated]
+        # feat_ind_name = kwargs['indices']
+        # indices = list(feat_ind_name.keys())
         # names = [i[0] for i in feat_ind_name.values()]
         if isinstance(x, pd.DataFrame):
             return x.iloc[:, indices]  # x.loc[:, names]

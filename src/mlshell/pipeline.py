@@ -22,39 +22,50 @@ import mlshell
 
 def set_base(pipeline):
     class Pipeline(pipeline):
-        def fit(self):
-            self.pipeline.fit()
-            return self
+        def __init__(self):
+            self.pipeline = pipeline
+            self.best_params_ = {}
 
-        def optimize(self):
-            pass
+        def __hash__(self):
+            return str(self.pipeline.get_params())
 
-        def validate(self):
-            pass
+        def is_classifier(self):
+            return sklearn.base.is_classifier(self.pipeline)
 
-        def predict(self):
-            pass
+        def is_regressor(self):
+            return sklearn.base.is_regressor(self.pipeline)
 
-        def dump(self):
-            pass
+        def resolve(self, hp_name, dataset,  kwargs):
+            return mlshell.HpResolver().resolve(self.pipeline, dataset, hp_name, kwargs)
+
+        def dump(self, file):
+            joblib.dump(self.pipeline, file)
+            return
+
+        # [deprecated] need to use in fit(), predict() ..
+        # def ckeck_data_format(self, data):
+        #     """additional check for data when pass to pipeline."""
+        #     if not isinstance(data, pd.DataFrame):
+        #         raise TypeError("input data should be pandas.DataFrame object")
+        #     return
 
     return Pipeline
 
 
 class PipeFactory(object):
     def __init__(self, project_path, logger=None):
-        super().__init__(project_path, logger)
+        # super().__init__(project_path, logger)
         if logger is None:
             self.logger = logging.Logger('PipeFactory')
         else:
             self.logger = logger
         self.project_path = project_path
+        self.pipeline = None
 
     def produce(self, pipeline_id, p):
         """ Create/load pipeline in compliance to workflow class.
 
         Arg:
-            p():
         Note:
 
         """
@@ -66,7 +77,7 @@ class PipeFactory(object):
         else:
             pipeline = self.create(**p['create'])
 
-        return pipeline  # [deprecated] set_base(pipeline)
+        return set_base(pipeline)()
 
     def load(self, filepath=None, **kwargs):
         """Load fitted model on disk/string.
@@ -113,40 +124,18 @@ class PipeFactory(object):
             cachedir = None
 
         # assemble several steps that can be cross-validated together
-        pipeline_ = self._pipeline_steps(**kwargs)
+        steps = self._pipeline_steps(**kwargs)
 
-        last_step = self._create_last(kwargs['estimator'], pipeline_, kwargs['type'])
-        self.logger.info(f"Estimator step:\n    {last_step}")
-        pipeline_.append(('estimate', last_step))
-        pipeline = sklearn.pipeline.Pipeline(pipeline_, memory=cachedir)
+        # [deprecated]
+        # last_step = self._create_last(kwargs['estimator'], pipeline_, kwargs['estimator_type'])
+        # self.logger.info(f"Estimator step:\n    {last_step}")
+        # pipeline_.append(('estimate', last_step))
+
+        pipeline = sklearn.pipeline.Pipeline(steps, memory=cachedir)
         # run tests
-        sklearn.utils.estimator_checks.check_estimator(pipeline, generate_only=False)
+        # sklearn.utils.estimator_checks.check_estimator(pipeline, generate_only=False)
 
         return pipeline
-
-    def _create_last(self, estimator, pipeline, estimator_type):
-        """Create last step of pipeline
-
-        Args:
-            estimator (sklearn estimator object): to use in last step
-            pipeline_ (list of pipeline steps):will use repack 'estimate' for regression
-            estimator_type: (str): 'regressor' or 'classifier'
-            input: {dict}: storage to dynamically pass dataset`s attributes in pipeline .
-
-        Returns:
-            last_step (pipeline object): last_step
-
-        Note:
-            if regression: will use 'estimate' if provided
-            if classification: will raise error 'estimate', add custom threshold tuner
-
-        TODO:
-            should be user defined, self.classes user-defined or auto
-        """
-
-
-
-        return last_step
 
     def _pipeline_steps(self, steps=None, **kwargs):
         """Configure pipeline steps.
@@ -181,5 +170,3 @@ class PipeFactory(object):
                 self.logger.warning('Warning: user-defined pipeline is used instead of default.')
             steps = clss(**kwargs).get_steps()
         return steps
-
-
