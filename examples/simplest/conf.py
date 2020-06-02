@@ -38,11 +38,11 @@ hp_grid = {
 # set workflow params
 params = {
     'workflow': {
-        'endpoint_id': ['endpint_1', 'endpint_2']
+        'endpoint_id': ['endpoint_1', 'endpoint_2']
     },
     'endpoint': {
-        'endpint_1': {'global': {'gs': 'my_gs', 'pipeline': 'pipeline_1'}},
-        'endpint_2': {'global': {'gs': 'my_gs_2', 'pipeline': 'pipeline_2'}},
+        'endpoint_1': {'global': {'gs_params': 'my_gs', 'pipeline': 'pipeline_1'}},
+        'endpoint_2': {'global': {'gs_params': 'my_gs_2', 'pipeline': 'pipeline_2'}},
     },
     'pipeline': {
         'pipeline_1': {'estimator': estimator, 'type': 'regressor'},
@@ -53,8 +53,8 @@ params = {
         'mae': (sklearn.metrics.mean_absolute_error, {'greater_is_better': False}),
         'mse': (sklearn.metrics.mean_squared_error, {'greater_is_better': False, 'squared': False}),
     },
-    'gs': {
-        'my_gs':{
+    'gs_params': {
+        'my_gs': {
             'flag': True,
             'hp_grid': hp_grid,
             'n_iter': None,  # 'gs__runs'
@@ -72,27 +72,31 @@ params = {
             'flag': False,
         }
     },
-    'data': {
+    'dataset': {
         'train': {
             'class': None,
-            'load_cache': {'flag': 1, 'func': None, 'prefix': None},
-            'get': {'func': None, 'filename': 'data/train.csv'},
-            'preprocess': {'func': None, 'categor_names': [], 'target_name': 'target'},
-            'info': {'func': None},
-            'unify': {'func': None},
-            'split': {'func': None,
-                      'train_size': 0.7,  # 'split_train_size': 0.75,
-                      'test_size': None,
-                      'shuffle': False,
-                      'stratify': None,
-                      'random_state': None,},
-            'dump_cache': {'flag': 0, 'func': None, 'prefix': None},
+            'steps': [
+                # ('load_cache', {'func': None, 'prefix': None}),
+                ('get', {'func': None, 'filename': 'data/train.csv'}),
+                ('preprocess', {'func': None, 'categor_names': [], 'target_names': ['targets']}),
+                ('info', {'func': None}),
+                ('unify', {'func': None}),
+                ('split', {'func': None,
+                           'train_size': 0.7,  # 'split_train_size': 0.75,
+                           'test_size': None,
+                           'shuffle': False,
+                           'stratify': None,
+                           'random_state': None,}),
+                ('dump_cache', {'func': None, 'prefix': None}),
+            ],
         },
         'test': {
             'class': None,
-            'get': {'func': None, 'filename': 'data/test.csv'},
-            'preprocess': {'func': None, 'categor_columns': [], 'target_column': 'target'},
-            'unify': {'func': None},
+            'steps': [
+                ('get', {'func': None, 'filename': 'data/test.csv'}),
+                ('preprocess', {'func': None, 'categor_names': [], 'target_names': ['targets']}),
+                ('unify', {'func': None}),
+            ],
         },
     },
 }

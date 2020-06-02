@@ -13,14 +13,51 @@ class SklearnOptimizerMixin(object):
     def __init__(self, logger):
         self.logger = logger
         self.optimizer = None
+
+        # TODO: Maybe move out self.pipeline and logger?
+        # not sure actually
         self.pipeline = None
 
-    def dump(self, filepath):
+    def update_best(self, prev):
+        """
+            prev (dict): output from previous optimizers runs for this pipeline and data.
+                Initially set to {}
+        Note:
+            Workflow need 'best_estimator_' key to update pipeline.
+            Gui need list of params dict for each run.
+            Dump predict/model need best_score_.
+            More complicated logic on best_score_ or
+        """
+        curr = self.__dict__
+
+        best_index_ = curr.get('best_index_', None)
+        if not best_index_:
+            return prev
+
+        cv_results_ = curr.get('cv_results_')
+        params = cv_results_['params']
+        best_params_ = params[best_index_]
+        best_estimator_ = curr.get('best_estimator_', None)
+        if not best_estimator_:
+            best_estimator_ = self.estimator.set_params(**best_params_)
+
+        best_score_ = curr.get('best_score_', float('-inf'))
+        refit = curr.get('refit','')
+        score_name = refit if isinstance(refit, str) else ''
+        next = {
+            'best_estimator_': best_estimator_,
+            'best_params_': best_params_,
+            'params': prev['params'].extend(params),
+            'best_score_': (score_name, best_score_),
+        }
+        return next
+
+    def dump_runs(self, filepath):
         self._pretty_print(self.optimizer)
         pipeline = self.pipeline
         runs = copy.deepcopy(self.optimizer.cv_results_)
         best_run_index = self.optimizer.best_index_
-        # TODO: runs_comliance needed? debug
+        # TODO: runs_comppliance needed? test _dump_runs
         self._dump_runs(filepath, pipeline, runs, best_run_index)
 
     def _dump_runs(self, filepath, pipeline, runs, best_run_index):
@@ -191,6 +228,8 @@ class RandomizedSearchOptimizer(SklearnOptimizerMixin):
         self.logger = logger
         self.pipeline = pipeline
 
+        # TODO: move out __init__ and inherent from RandomizedSearchCV directly
+        # but then user can`t change this behavior
         hp_grid = kwargs.get('hp_grid', {})
         if kwargs.get('n_iter', False) is None:
             kwargs['n_iter'] = self._get_n_iter(kwargs['n_iter'], kwargs.get('hp_grid', {}))
@@ -220,12 +259,13 @@ class ThresholdOptimizer(SklearnOptimizerMixin):
         if kwargs.get('n_iter', False) is None:
             kwargs['n_iter'] = self._get_n_iter(kwargs['n_iter'], kwargs.get('hp_grid', {}))
 
-        th_name = kwargs.get('th_name')
+        self.th_name = kwargs.get('th_name')
         # reproduce pipeline hp name structure
+        # TODO: extract from pipeline
         mock_pipeline = mlshell.custom.ThresholdClassifier(self.classes_, self.pos_label_ind,
                                                            self.pos_label, self.neg_label),
         # envelop all except last
-        for subname in th_name.split('__')[-2::-1]:
+        for subname in self.th_name.split('__')[-2::-1]:
             mock_pipeline = sklearn.pipeline.Pipeline(steps=[(subname, mock_pipeline)])
 
         self.optimizer_th_ = sklearn.model_selection.RandomizedSearchCV(
@@ -234,12 +274,22 @@ class ThresholdOptimizer(SklearnOptimizerMixin):
     def fit(self, x, y, **fit_params):
         optimizer = self.optimizer
 
-        y_pred_proba = self.cross_val_predict(optimizer.estimator,
+        # First do it simple, test, then complicate.
+        # TODO: maybe move out in workflow, so unify with brut custom_score
+        #     method = x, predict_proba(for threshold), predict(for scorer)
+        #     Invokes the passed method name of the passed estimator.
+        #     but i not sure that it is possible: in some case mean score, in some OOF
+        #     If so i can not even redefine fit
+        # TODO: Everything with data+pipeline should separate from data and pipeline
+        #    resolver also should be in utils.sklearn. Workflow get as params this utils
+        #    pipeline.resolve should be in pipeline, but resolver in utils.sklearn with validator
+
+        y_pred_proba, _, y_true = mlshell.custom.cross_val_predict(
+            optimizer.estimator,
             x, y=y, fit_params=fit_params,
             groups=None, cv=optimizer.cv, method='predict_proba')
 
-        optimizer.fit(y_pred_proba, y, **fit_params)
-
+        optimizer.fit(y_pred_proba, y_true, **fit_params)
 
         # [deprecated]
         # best_th_ = optimizer.best_params_['threshold']
@@ -254,82 +304,14 @@ class ThresholdOptimizer(SklearnOptimizerMixin):
         # self.p['gs__hp_grid']['estimate__apply_threshold__threshold'] = th_range
 
         if optimizer.refit:
-            self.pipeline.set_params(**{'estimate__apply_threshold__threshold': best_th_})
+            best_th_ = optimizer.best_params_[self.th_name]
+            self.pipeline.set_params(**{self.th_name: best_th_})
             #  need refit, otherwise not reproduce results
             self.pipeline.fit(x, y, **fit_params)
 
         # recover sklearn optimizer structure
         self.__dict__.update(self.optimizer.__dict__)
         return self
-
-    def cross_val_predict(self, *args, **kwargs):
-        """Function to make bind OOF prediction/predict_proba.
-
-        Args:
-            args
-            kwargs
-
-        Returns:
-            folds_predict_proba (2d np.ndarray): OOF probability predictions [n_test_samples x n_classes].
-            folds_test_index (1d np.ndarray): test indices for OOF subset (reseted, not raw).
-            y_true (1d np.ndarray): test for OOF subset (for Kfold whole dataset).
-
-        TODO:
-            in some fold could be not all classes, need to check.
-        """
-        # dev check for custom OOF
-        debug = False
-        estimator = args[0]
-        x = args[1]
-        y = kwargs['y']
-        cv = kwargs['cv']
-        temp_pp = None
-        temp_ind = None
-        try:
-            folds_predict_proba = sklearn.model_selection.cross_val_predict(*args, **kwargs)
-            folds_test_index = np.arange(0, folds_predict_proba.shape[0])
-            if debug:
-                temp_pp = folds_predict_proba
-                temp_ind = folds_test_index
-                raise ValueError('debug')
-        except ValueError as e:
-            # custom OOF
-            # for TimeSplitter no prediction at first fold
-            # self.logger.warning('Warning: {}'.format(e))
-            folds_predict_proba = []  # list(range(self.cv_n_splits))
-            folds_test_index = []  # list(range(self.cv_n_splits))
-            # th_ = [[2, 1. / self.n_classes] for i in self.classes_]  # init list for th_ for every class
-            ind = 0
-            for fold_train_index, fold_test_index in cv.split(x):
-                # stackingestimator__sample_weight=train_weights[fold_train_subindex]
-                if hasattr(x, 'loc'):
-                    estimator.fit(x.loc[x.index[fold_train_index]],
-                                  y.loc[y.index[fold_train_index]],
-                                  **self.p['pipeline__fit_params'])
-                    # in order of pipeline.classes_
-                    fold_predict_proba = estimator.predict_proba(x.loc[x.index[fold_test_index]])
-                else:
-                    estimator.fit(x[fold_train_index], y[fold_train_index], **self.p['pipeline__fit_params'])
-                    # in order of pipeline.classes_
-                    fold_predict_proba = estimator.predict_proba(x[fold_test_index])
-                # merge th_ for class
-                # metrics.roc_curve(y[fold_test_index], y_test_prob, pos_label=self.pos_label)
-                # th_[self.pos_label].extend(fold_th_)
-                folds_test_index.extend(fold_test_index)
-                folds_predict_proba.extend(fold_predict_proba)
-                ind += 1
-            folds_predict_proba = np.array(folds_predict_proba)
-            folds_test_index = np.array(folds_test_index)
-            # delete duplicates
-            # for i in range(self.n_classes):
-            #    th_[i] = sorted(list(set(th_[i])), reverse=True)
-        if debug:
-            assert np.array_equal(temp_pp, folds_predict_proba)
-            assert np.array_equal(temp_ind, folds_test_index)
-
-        # y_true = y.values[folds_test_index] if hasattr(y, 'loc') else y[folds_test_index]
-        # assert y == y_true
-        return folds_predict_proba  # , folds_test_index, y_true
 
     def runs_compliance(self, runs, runs_th_, best_index):
         """"Combine GS results to csv dump."""

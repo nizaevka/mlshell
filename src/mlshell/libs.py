@@ -24,6 +24,7 @@ import io
 import functools
 import glob
 import threading
+import operator
 from typing import List, Optional
 
 # third-party module or package

@@ -1,4 +1,7 @@
 ﻿"""ML workflow class.
+TODO: in fit, optimize maybe want use only part of dataset => allow kwargs in split
+    also get_X() get_y()  mayve change to data, target attributes with generation.
+
 TODO: All API check
     https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
     multiclass, multioutput
@@ -14,12 +17,20 @@ TODO:
     https://scikit-learn.org/stable/developers/develop.html#rolling-your-own-estimator
 TODO:
     resolve scoring more beautiful
+TODO:
+    think about replace get_x, get_y with cycled generators
 
 TEST:
     multioutput, better under targets column.
+        not sure if th_resolve would work
+        maybe need to move in dataset or sklearn utils (predict_proba to pos_labels_pp, prob_to_pred)
+        this is not dataset quality, it-is sklearn quality => utills.sklearn dir
+        code hould not repete!
     multiclass, should work for all except th_strategy.
     not dataframe format for data.
     pass_csutom, n_jobs save?
+    result reproducible
+    extract categor_ind_name/numeric_ind_name
 """
 
 
@@ -50,8 +61,11 @@ def checker(function_to_decorate, options=None):
 
 class Workflow(object):
     """Class for ml workflow."""
+    # TODO:
+    # _required_parameters = [,]
 
-    def __init__(self, project_path, logger=None, params=None, datasets=None, pipelines=None):
+    def __init__(self, project_path, logger=None, endpoint_id='default_workflow',
+                 datasets=None, pipelines=None, metrics=None, params=None):
         """Initialize workflow object
 
         Args:
@@ -88,6 +102,7 @@ class Workflow(object):
 
         """
         self.project_path = project_path
+        self.endpoint_id = endpoint_id
         if logger is None:
             self.logger = logging.Logger('Workflow')
         else:
@@ -95,9 +110,13 @@ class Workflow(object):
         self.logger.info("\u25CF INITITALIZE WORKFLOW")
         self.datasets = datasets if datasets else {}
         self.pipelines = pipelines if pipelines else {}
+        self.metrics = metrics if metrics else {}
+        self.params = params if params else {}
 
         self.check_results_size(project_path)
 
+        # depends on pipeline_id and dataset_id
+        self._runs = {}
 
         # [deprecated]
         # merge in read conf
@@ -110,8 +129,7 @@ class Workflow(object):
         # self.check_params_vals(temp)
         # self.p = temp
 
-        self.p = params
-        self.logger.info('Used params:\n    {}'.format(jsbeautifier.beautify(str(self.p))))
+        self.logger.info('Used params:\n    {}'.format(jsbeautifier.beautify(str(self.params))))
 
         # [not full before init()]
         # self.logger.info('Workflow metods:\n    {}'.format(jsbeautifier.beautify(str(self.__dict__))))
@@ -124,8 +142,8 @@ class Workflow(object):
         self.classes_ = None
         self.n_classes = None
         self.neg_label = None
-        self.pos_label = None
-        self.pos_label_ind = None
+        self.pos_labels = None
+        self.pos_labels_ind = None
         self.categoric_ind_name = None
         self.numeric_ind_name = None
         self.data_hash = None
@@ -152,12 +170,10 @@ class Workflow(object):
         self.modifiers = []
         # fulfill in self.gen_gui_params()
         self.gui_params = {}
-        # TODO: Decide use self.metrics or self.p['metrics'] ?
-        #       We extent sklearn metrics namespace, in optimize/validate pass only names
 
     def __hash__(self):
         # TODO: hash of it`s self
-        return md5(str(self.p).encode('utf-8')).hexdigest()
+        return md5(str(self.params).encode('utf-8')).hexdigest()
 
     def check_results_size(self, project_path):
         root_directory = pathlib.Path(f"{project_path}/results")
@@ -175,10 +191,9 @@ class Workflow(object):
         else:
             self.np_error_stat[args[0]] = 1
 
+    # TODO: NOT SURE YET
     def check_data_format(self, data, params):
         """check data format"""
-
-        # TODO: NOT SURE YET
 
         # TODO: move to data check
         if 'targets' not in data.columns:
@@ -193,39 +208,41 @@ class Workflow(object):
                 raise ValueError('Currently only binary classification supported.')
 
     # =============================================== add/pop ============================================================
-    def add_data(self, data):
-        """Add data to workflow data storage.
+    def add_dataset(self, dataset, dataset_id):
+        """Add dataset to workflow internal storage.
 
         Args:
-            data (dict): {'data_id': val,}.
+            dataset (): .
+            dataset_id (str): .
 
         """
         # [alternative]
-        # data = self.data_check(data)
-        self.datasets.update(data)
+        # dataset = self.data_check(dataset)
+        self.datasets.update({dataset_id: dataset})
         return
 
-    def pop_data(self, data_ids):
+    def pop_dataset(self, dataset_ids):
         """Pop data from wotkflow data storage.
 
         Args:
-            data_ids (str, iterable): ids to pop.
+            dataset_ids (str, iterable): ids to pop.
         Return:
             popped data dict.
         """
-        if isinstance(data_ids, str):
-            data_ids = [data_ids]
-        return {data_id: self.datasets.pop(data_id, None)
-                for data_id in data_ids}
+        if isinstance(dataset_ids, str):
+            dataset_ids = [dataset_ids]
+        return {dataset_id: self.datasets.pop(dataset_id, None)
+                for dataset_id in dataset_ids}
 
-    def add_pipeline(self, pipeline):
-        """Add data to workflow pipelines storage.
+    def add_pipeline(self, pipeline, pipeline_id):
+        """Add pipeline to workflow internal storage.
 
         Args:
-            pipeline(dict): {'pipeline_id': val,}.
+            pipeline (): .
+            pipeline_id (str): .
 
         """
-        self.pipelines.update(pipeline)
+        self.pipelines.update({pipeline_id: pipeline})
         return
 
     def pop_pipeline(self, pipe_ids):
@@ -242,9 +259,29 @@ class Workflow(object):
                 for pipe_id in pipe_ids}
 
     # =============================================== gridsearch =======================================================
+    def _check_arg(self, arg, func=None):
+        """Check if argument is id or object."""
+        if isinstance(arg, str):
+            return arg
+        else:
+            assert False, 'Argument should be str'
+            # TODO[beta]: пока оставлю так,пусть дата и пайплайн всегда через config задаются, потом можно расширить
+            # fit() принимает pipeline_id вместо  pipeline, но read_conf резолвит pipeline
+            # вообще у даты и пайплайн особый статус, но с другими параметрами должна быть синхронность
+            # Лучше так: можно и id  и напрямую пайплайн, дату, это будет логично.
+            # тогда не будет отличатся от других. Только там внутри есть хранилища зависимые от айдишников.
+            # надо дефолтный айди тогда создавать!
+            # pipeline should contain pipeline.pipeine
+
+            # Generate arbitrary.
+            # id = str(int(time.time()))
+            # Add to storage under id.
+            # func(arg, id)
+            # return id
+
     @checker
     # @memory_profiler
-    def fit(self, pipeline_id, data_id=None, **kwargs):
+    def fit(self, pipeline, dataset, **kwargs):
         """Tune hp, fit best.
             https://scikit-learn.org/stable/modules/grid_search.html#grid-search
 
@@ -261,19 +298,22 @@ class Workflow(object):
 
             If gs_flag is True run grid search else just fit estimator
         """
-        data = self.datasets[data_id]
+        pipeline_id = self._check_arg(pipeline)
+        dataset_id = self._check_arg(dataset)
+
+        dataset = self.datasets[dataset_id]
         pipeline = self.pipelines[pipeline_id]
         # resolve and set hps
-        pipeline = self._set_hps(pipeline, data, kwargs)
+        pipeline = self._set_hps(pipeline, dataset, **kwargs)
         # optional
         self._print_steps(pipeline)
         # [deprecated] excessive
         # if kwargs.get('debug', False):
-        #     self.debug_pipeline_(pipeline, data)
+        #     self.debug_pipeline_(pipeline, dataset)
 
-        train, test = data.split()
+        train, test = dataset.split()
         # [deprecated] now more abstract
-        # x_train, y_train, _, _ = data.split()
+        # x_train, y_train, _, _ = dataset.split()
 
         self.logger.info("\u25CF FIT PIPELINE")
         # [deprecated] separate fit and optimize
@@ -282,32 +322,34 @@ class Workflow(object):
         # [deprecated] dump not needed, no score evaluation
         # best_run_index = 0
         # runs = {'params': [self.estimator.get_params(),]}
+        self.pipelines[pipeline_id] = pipeline
 
-    def optimize(self, pipeline_id, data_id, cls, **kwargs):
+    def optimize(self, pipeline, dataset, optimizer, validator, **kwargs):
+        pipeline_id = self._check_arg(pipeline)
+        dataset_id = self._check_arg(dataset)
 
-        data = self.datasets[data_id]
+        dataset = self.datasets[dataset_id]
         pipeline = self.pipelines[pipeline_id]
         # For pass_custom.
         self.current_pipeline_id = pipeline_id
         # Resolve and set hps.
-        pipeline = self._set_hps(pipeline, data, kwargs)
+        pipeline = self._set_hps(pipeline, dataset, **kwargs)
         # Resolve hp_grid.
         hp_grid = kwargs['gs_params'].pop('hp_grid', {})
         if hp_grid:
             kwargs['gs_params']['hp_grid'] = self._resolve_hps(hp_grid,
                                                                pipeline,
-                                                               data,
-                                                               kwargs)
+                                                               dataset,
+                                                               **kwargs)
         # Resolve scoring.
-        # TODO: maybe on read_conf step or inside Optimizer
         scoring = kwargs['gs_params'].pop('scoring', {})
         if scoring:
-            kwargs['gs_params']['scoring'] = self._resolve_scoring(scoring, self.p['metric'])
-
-        train, test = data.split()
+            kwargs['gs_params']['scoring'] = validator(logger=self.logger).resolve_scoring(scoring, self.metrics,
+                                                                                           **pipeline.pipeline.get_params())
+        train, test = dataset.split()
 
         self.logger.info("\u25CF \u25B6 OPTIMIZE HYPERPARAMETERS")
-        optimizer = cls(pipeline, hp_grid, **kwargs.get('gs_params', {}))
+        optimizer = optimizer(pipeline, hp_grid, **kwargs.get('gs_params', {}))
         optimizer.fit(train.get_x(), train.get_y(), **kwargs.get('fit_params', {}))
 
         # Results logs/dump to disk in run dir.
@@ -315,30 +357,25 @@ class Workflow(object):
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
         filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
-        optimizer.dump(filepath)
+        optimizer.dump_runs(filepath)
 
-        # internall in fit
-        # optimizer.print()
-        # optimizer.dump_runs()
+        self._runs[(pipeline_id, dataset_id)] = optimizer.update_best(self._runs.get((pipeline_id, dataset_id), {}))
+        # [deprecated] for one pipeline could be different optimizer`s interface
+        # pipeline.update_params(optimizer)
+        if 'best_estimator_' in self._runs[(pipeline_id, dataset_id)]:
+            self.pipelines[pipeline_id] = self._runs[(pipeline_id, dataset_id)].get('best_estimator_')
+        # [deprecated] not informative
+        # else:
+        #     self.logger.warning("Warning: optimizer.update_best don`t contain 'best_estimator_':\n"
+        #                         "    optimizer results will not be used for pipeline.")
 
-        # optimizer object should contain:
-        # best_params_ (not available if refit is False and multi-metric)
-        # best_estimator if refit is not False
-        self.pipelines[pipeline_id] = optimizer.__dict__.get('best_estimator_', pipeline)
-        self.pipelines[pipeline_id]['best_params_'].updata(optimizer.__dict__.get('best_params_', {}))
-        self.cache_custom_kw_args[pipeline_id] = \
-            self.pipelines[pipeline_id]['best_params_']\
-                .get('pass_custom__kw_args', {})
-
-        return
-
-    def _set_hps(self, pipeline, data, kwargs):
-        hps = pipeline.get_params()\
-            .update(pipeline.get('best_params_', {}))\
-            .update(kwargs.get(['hp'], {}))
-        hps = self._resolve_hps(hps, pipeline, data, kwargs)
-        hps = self._get_zero_position(hps)
-        pipeline.set_params(**hps)
+    def _set_hps(self, pipeline, dataset, **kwargs):
+        hps = pipeline.pipeline.get_params()
+        # [deprecated] currently pipeline change inplace
+        # hps.update(pipeline.get('best_params_', {}))
+        hps.update(self._get_zero_position(kwargs.get('hp', {})))
+        hps = self._resolve_hps(hps, pipeline, dataset, **kwargs)
+        pipeline.pipeline.set_params(**hps)
         return pipeline
 
     def _get_zero_position(self, hps):
@@ -357,14 +394,14 @@ class Workflow(object):
                 zero_hps.update(**{name: iterator.__next__()})
         return zero_hps
 
-    def _resolve_hps(self, hps, pipeline, data, kwargs):
+    def _resolve_hps(self, hps, pipeline, dataset, **kwargs):
         for hp_name, val in hps.items():
             if val == 'auto':
                 # hp
-                hps[hp_name] = pipeline.resolve(hp_name, data, kwargs)
+                hps[hp_name] = pipeline.resolve(hp_name, dataset, **kwargs)
             elif val == ['auto']:
                 # hp_grid
-                hps[hp_name] = [].extend(pipeline.resolve(hp_name, data, kwargs))
+                hps[hp_name] = [].extend(pipeline.resolve(hp_name, dataset, **kwargs))
         return hps
 
     # [deprecated] explicit param to resolve in hp_grid
@@ -396,13 +433,12 @@ class Workflow(object):
     #                     key = v.split('__')[-1]
     #                     val[k] = self.get_from_data_(data, key)
     #     return hps
-
-    def _is_data_hp(self, val):
-        return isinstance(val, str) and val.startswith('data__')
+    # def _is_data_hp(self, val):
+    #     return isinstance(val, str) and val.startswith('data__')
 
     def _print_steps(self, pipeline):
         # nice print of pipeline
-        params = pipeline.get_params()
+        params = pipeline.pipeline.get_params()
         self.logger.debug('Pipeline steps:')
         for i, step in enumerate(params['steps']):
             step_name = step[0]
@@ -412,242 +448,25 @@ class Workflow(object):
         self.logger.debug('+' * 100)
         return
 
-    def _resolve_scoring(self, names, user_metrics):
-        """Make scorers from user_metrics.
-
-        Args:
-            names (sequence of str): user_metrics names to use in gs.
-            user_metrics (dict): {'name': (sklearn metric object, bool greater_is_better), }
-
-        Returns:
-            scorers (dict): {'name': sklearn scorer object, }
-
-        Note:
-            if 'gs__metric_id' is None, estimator default will be used.
-
-        """
-        scorers = {}
-        self.custom_scorer[self.current_pipeline_id] = None
-
-        # deprecated
-        # if not names:
-        #     # need to set explicit, because always need not None 'refit' name
-        #     # can`t extract estimator built-in name, so use all from validation user_metrics
-        #     names = user_metrics.keys()
-        for name in names:
-            if name in user_metrics:
-                metric = user_metrics[name]
-                if isinstance(metric[0], str):
-                    # convert to callable
-                    # ignore kw_args (built-in `str` metrics has hard-coded kwargs)
-                    scorers[name] = sklearn.metrics.get_scorer(metric[0])
-                    continue
-                if len(metric) == 1:
-                    kw_args = {}
-                else:
-                    kw_args = copy.deepcopy(metric[1])
-                    if 'needs_custom_kw_args' in kw_args:
-                        if self.custom_scorer[self.current_pipeline_id]:
-                            raise ValueError("Only one custom metric can be set with 'needs_custom_kw_args'.")
-                        del kw_args['needs_custom_kw_args']
-                        self.custom_scorer[self.current_pipeline_id] = sklearn.metrics.make_scorer(metric[0], **kw_args)
-                        scorers[name] = self._custom_scorer_shell
-                        continue
-                scorers[name] = sklearn.metrics.make_scorer(metric[0], **kw_args)
-            else:
-                scorers[name] = sklearn.metrics.get_scorer(name)
-        return scorers
-
-    def _custom_scorer_shell(self, estimator, x, y):
-        """Read custom_kw_args from current pipeline, pass to scorer.
-
-        Note: in gs self object copy, we can dynamically get param only from estimator.
-        """
-        try:
-            if estimator.steps[0][0] == 'pass_custom':
-                if estimator.steps[0][1].kw_args:
-                    self.custom_scorer[self.current_pipeline_id]._kwargs.update(estimator.steps[0][1].kw_args)
-        except AttributeError:
-            # ThresholdClassifier object has no attribute 'steps'
-            self.custom_scorer[self.current_pipeline_id]._kwargs.update(self.cache_custom_kw_args[self.current_pipeline_id])
-
-        return self.custom_scorer[self.current_pipeline_id](estimator, x, y)
-
     # =============================================== validate =========================================================
     # @memory_profiler
-    def validate(self, pipeline_id, data_id, **kwargs):
+    def validate(self, pipeline_id, dataset_id, validator, **kwargs):
         """Predict and score on validation set."""
         self.logger.info("\u25CF VALIDATE ON HOLDOUT")
-        data = self.datasets[data_id]
+        dataset = self.datasets[dataset_id]
         pipeline = self.pipelines[pipeline_id]
-        train, test = data.split()
+        train, test = dataset.split()
 
-        classes, pos_label, pos_label_ind = \
-            self.get_classes_(data,
-                              pipeline.is_classifier,
-                              kwargs.get('pos_label', None))
-
-        metrics = self._resolve_metric(kwargs.get('metric', []), self.p['metric'])
-
-        # TODO: move out to separate replacable class
-        self._via_metrics(metrics, pipeline,
-                          train, test, pos_label_ind, classes)
+        validator = validator(logger=self.logger)
+        metrics = validator.resolve_metric(kwargs.get('metric', []), self.metrics)
+        validator.via_metrics(metrics, pipeline, train, test, **kwargs)
         # [deprecated] not all metrics can be converted to scorers
-        # self._via_scorers(self.metrics_to_scorers(self.p['metrics'], self.p['metrics']),
-        # pipeline, train, test, pos_label_ind)
+        # validator.via_scorers(self.metrics_to_scorers(self.metrics, self.metrics),
+        # pipeline, train, test)
         return
-
-    def _resolve_metric(self, names, user_metrics):
-        res = {}
-        for name in names:
-            if name in user_metrics:
-                res.update({name:user_metrics[name]})
-            else:
-                # Sklearn built-in, resolve through scorer.
-                scorer = sklearn.metrics.get_scorer(name)
-                metric = (
-                    scorer._score_func,
-                    {'greater_is_better': scorer._sign > 0,
-                    'needs_proba':
-                        isinstance(scorer,
-                                   sklearn.metrics._scorer._ProbaScorer),
-                    'needs_threshold':
-                        isinstance(scorer,
-                                   sklearn.metrics._scorer._ThresholdScorer),})
-                res.update({name: metric})
-        return res
-
-    def _via_metrics(self, metrics, pipeline,
-                     train, test, pos_label_ind, classes):
-        # via metrics
-        #   upside: only one inference
-        #   donwside: errpr-prone
-        #   strange: xgboost lib contain auto detection y_type logic.
-        if not metrics:
-            self.logger.warning("Warning: no metrics to evaluate.")
-            return
-        x_train, y_train = train
-        x_test, y_test = test
-
-        # [deprecated] not need anymore
-        # if hasattr(pipeline, 'predict_proba'):
-        #     th_ = pipeline.get_params().get('estimate__apply_threshold__threshold', 0.5)
-        #     y_pred_train = self.prob_to_pred(y_pred_proba_train, th_)
-        #     y_pred_test = self.prob_to_pred(y_pred_proba_test, th_)
-
-        # prevent multiple prediction
-        temp = {'predict_proba': None,
-                'decision_function': None,
-                'predict': None}
-        for name, metric in metrics.items():
-            if metric[1].get('needs_proba', False):
-                if not hasattr(pipeline, 'predict_proba'):
-                    self.logger.warning(f"Warning: pipeline object has no method 'predict_proba':\n"
-                                        "    ignore metric '{name}'")
-                    continue
-                # [...,i] equal to [:,i]/[:,:,i]/.. (for multi-output target)
-                if not temp['predict_proba']:
-                    y_pred_train = pipeline.predict_proba(x_train)[..., pos_label_ind]
-                    y_pred_test = pipeline.predict_proba(x_test)[..., pos_label_ind]
-                    temp['predict_proba'] = (y_pred_train, y_pred_test)
-                else:
-                    y_pred_train, y_pred_test = temp['predict_proba']
-            elif metric[1].get('needs_threshold', False):
-                if not hasattr(pipeline, 'decision_function'):
-                    self.logger.warning(f"Warning: pipeline object has no method 'predict_proba':\n"
-                                        "    ignore metric '{name}'")
-                    continue
-                if not temp['decision_function']:
-                    y_pred_train = pipeline.decision_function(x_train)
-                    y_pred_test = pipeline.decision_function(x_test)
-                    temp['decision_function'] = (y_pred_train, y_pred_test)
-                else:
-                    y_pred_train, y_pred_test = temp['decision_function']
-            else:
-                if not temp['predict']:
-                    y_pred_train = pipeline.predict(x_train)
-                    y_pred_test = pipeline.predict(x_test)
-                    temp['predict'] = (y_pred_train, y_pred_test)
-                else:
-                    y_pred_train, y_pred_test = temp['predict']
-
-            # skip make_scorer params
-            kw_args = {key: metric[1][key] for key in metric[1]
-                       if key not in ['greater_is_better', 'needs_proba',
-                                      'needs_threshold', 'needs_custom_kw_args']}
-
-            # pass_custom steo inly
-            if metric[1].get('needs_custom_kw_args', False):
-                if (hasattr(pipeline, 'steps') and
-                    pipeline.steps[0][0] == 'pass_custom' and
-                    pipeline.steps[0][1].kw_args):
-                    kw_args.update(pipeline.steps[0][1].kw_args)
-
-            # result score on Train
-            score_train = metric[0](y_train, y_pred_train, **kw_args)
-            # result score on test
-            score_test = metric[0](y_test, y_pred_test, **kw_args)
-
-            self.logger.log(25, f"{name}:")
-            self.logger.log(5, f"{name}:")
-            self._score_pretty_print(metric, score_train, score_test, classes)
-        return
-
-    def _score_pretty_print(self, metric, score_train, score_test, classes):
-        if metric[0].__name__ == 'confusion_matrix':
-            labels = metric[1].get('labels', classes)
-            score_train = tabulate.tabulate(pd.DataFrame(data=score_train,
-                                                         columns=labels,
-                                                         index=labels),
-                                            headers='keys', tablefmt='psql').replace('\n', '\n    ')
-            score_test = tabulate.tabulate(pd.DataFrame(data=score_test,
-                                                        columns=labels,
-                                                        index=labels),
-                                           headers='keys', tablefmt='psql').replace('\n', '\n    ')
-        elif metric[0].__name__ == 'classification_report':
-            if isinstance(score_train, dict):
-                score_train = tabulate.tabulate(pd.DataFrame(score_train),
-                                                headers='keys', tablefmt='psql').replace('\n', '\n    ')
-                score_test = tabulate.tabulate(pd.DataFrame(score_test),
-                                               headers='keys', tablefmt='psql').replace('\n', '\n    ')
-            else:
-                score_train = score_train.replace('\n', '\n    ')
-                score_test = score_test.replace('\n', '\n    ')
-        elif isinstance(score_train, np.ndarray):
-            # pretty printing numpy arrays
-            score_train = np.array2string(score_train, prefix='    ')
-            score_test = np.array2string(score_test, prefix='    ')
-        self.logger.log(25, f"Train:\n    {score_train}\n"
-                            f"Test:\n    {score_test}")
-        self.logger.log(5, f"Train:\n    {score_train}\n"
-                           f"Test:\n    {score_test}")
-        return
-
-    def _via_scorers(self, scorers, pipeline,
-                     train, test, pos_label_ind, classes):
-        # via scorers
-        # upside: sklearn consistent
-        # downside:
-        #   requires multiple inference
-        #   non-score metric not possible (confusion_matrix)
-
-        for name, scorer in scorers.items():
-            self.logger.log(25, f"{name}:")
-            self.logger.log(5, f"{name}:")
-            # result score on Train
-            score_train = scorer(pipeline, train.get_x(), train.get_y())
-            # result score on test
-            score_test = scorer(pipeline, test.get_x(), test.get_y())
-            self.logger.log(25, f"Train:\n    {score_train}\n"
-                                f"Test:\n    {score_test}")
-            self.logger.log(5, f"Train:\n    {score_train}\n"
-                               f"Test:\n    {score_test}")
-        # non-score metrics
-        add_metrics = {name: self.p['metrics'][name] for name in self.p['metrics'] if name not in scorers}
-        self._via_metrics(add_metrics, pipeline, train, test, pos_label_ind, classes)
 
     # =============================================== dump ==========================================================
-    def dump(self, pipeline_id):
+    def dump(self, pipeline_id, dirpath=None):
         """Dump fitted model on disk/string.
 
         Note:
@@ -662,21 +481,27 @@ class Workflow(object):
         self.logger.info("\u25CF DUMP MODEL")
         pipeline = self.pipelines[pipeline_id]
         # dump to disk in models dir
-        dirpath = '{}/results/models'.format(self.project_path)
+        if not dirpath:
+            dirpath = '{}/results/models'.format(self.project_path)
+
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
-        file = f"{dirpath}/{self.p_hash}_{self.data_hash}_dump.model"
-        if not os.path.exists(file):
+
+        fit_dataset_id = getattr(pipeline, 'dataset_id', None)
+        best_score = str(self._runs.get((pipeline_id, fit_dataset_id), {}).get('best_score_', '')).lower()
+        filepath = f"{dirpath}/{self.endpoint_id}_{pipeline_id}_{fit_dataset_id}_" \
+                   f"{best_score}_{hash(self)}_{hash(pipeline)}_{hash(self.datasets[fit_dataset_id])}_dump.model"
+        if not os.path.exists(filepath):
             # prevent double dumping
-            pipeline.dump(file)
-            self.logger.log(25, 'Save fitted model to file:\n  {}'.format(file))
+            pipeline.dump(filepath)
+            self.logger.log(25, 'Save fitted model to file:\n  {}'.format(filepath))
         else:
-            self.logger.warning('Warnning: skip dump: model file already exists\n    {}\n'.format(file))
+            self.logger.warning('Warnning: skip dump: model file already exists\n    {}\n'.format(filepath))
 
         # alternative:
         # with open(file, 'wb') as f:
         #     pickle.dump(self.estimator, f)
-        return file
+        return filepath
 
     # =============================================== load ==========================================================
     # [deprecated] there special class to load pipeline and set
@@ -697,8 +522,8 @@ class Workflow(object):
 
     # =============================================== predict ==========================================================
     # @memory_profiler
-    def predict(self, pipeline_id, data_id, filepath=None, template=None):
-        """Predict on new data.
+    def predict(self, pipeline_id, dataset_id, dirpath=None, template=None):
+        """Predict on new dataset.
 
         Args:
             data (pd.DataFrame): data ready for workflow unification.
@@ -710,8 +535,8 @@ class Workflow(object):
         self.logger.info("\u25CF PREDICT ON TEST")
 
         pipeline = self.pipelines[pipeline_id]
-        data = self.datasets[data_id]
-        train, test = data.split()
+        dataset = self.datasets[dataset_id]
+        train, test = dataset.split()
         assert train == test
         x = test.get_x()
 
@@ -724,26 +549,32 @@ class Workflow(object):
         # dump to disk in predictions dir
         if not template:
             template = test.get_y()
-        if not filepath:
+        if not dirpath:
             dirpath = '{}/results/models'.format(self.project_path)
-            if not os.path.exists(dirpath):
-                os.makedirs(dirpath)
-            filepath = f"{dirpath}/{hash(self)}_{hash(pipeline)}_{hash(data)}_predictions"
-        data.dump(filepath, y_pred, template)
-        self.logger.log(25, "Save predictions for new data to file:\n    {}".format(filepath))
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
+
+        fit_dataset_id = pipeline.__dict__.get('dataset_id', None)
+        best_score = str(self._runs.get((pipeline_id, fit_dataset_id), {}).get('best_score_', '')).lower()
+        filepath = f"{dirpath}/{self.endpoint_id}_{pipeline_id}_{fit_dataset_id}_" \
+                   f"{best_score}_{hash(self)}_{hash(pipeline)}_{hash(self.datasets[fit_dataset_id])}_" \
+                   f"{dataset_id}_{hash(self.datasets[dataset_id])}_predictions"
+
+        dataset.dump(filepath, y_pred, template)
+        self.logger.log(25, f"Save predictions dataset {dataset_id} to file:\n    {filepath}")
 
     # =============================================== gui param ========================================================
-    def gui(self, pipeline_id, data_id, hp_grid, optimizer_id, cls,  **kwargs):
+    def gui(self, pipeline_id, dataset_id, hp_grid, optimizer_id, cls,  **kwargs):
         self.logger.info("\u25CF GUI")
 
         pipeline = self.pipelines[pipeline_id]
-        data = self.datasets[data_id]
-        optimizer = self.optimizer[optimizer_id]
+        dataset = self.datasets[dataset_id]
 
         # we need only hp_grid flat:
         # either hp here in args
         # either combine tested hps for all optimizers if hp = {}
-        gui = cls(pipeline, data, optimizer, hp_grid, **kwargs)
+        runs = self._runs.get((pipeline_id, dataset_id), {})
+        gui = cls(pipeline, dataset, runs, **kwargs)
         threading.Thread(target=gui.plot(), args=(), daemon=True).start()
         return
 

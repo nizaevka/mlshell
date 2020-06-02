@@ -8,7 +8,9 @@ from .logger import CreateLogger
 from .read_conf import GetParams
 from .data import DataFactory
 from .pipeline import PipeFactory
-from .resolver import CustomResolver
+from .resolve import HpResolver
+from .optimize import RandomizedSearchOptimizer, ThresholdOptimizer
+from .validate import Validator
 from .general import Workflow
 from .default import CreateDefaultPipeline, DEFAULT_PARAMS
 from .gui import GUI
@@ -17,8 +19,10 @@ from .run import run
 
 
 __all__ = ['run', 'find_path', 'CreateLogger', 'GetParams',
-           'DataFactory', 'PipeFactory', 'CustomResolver',
-           'Workflow', 'CreateDefaultPipeline', 'DEFAULT_PARAMS', 'GUI', 'EDA']
+           'DataFactory', 'PipeFactory', 'HpResolver',
+           'Workflow', 'CreateDefaultPipeline', 'DEFAULT_PARAMS', 'GUI', 'EDA',
+           'RandomizedSearchOptimizer', 'ThresholdOptimizer',
+           'Validator']
 
 # import platform
 # import warnings

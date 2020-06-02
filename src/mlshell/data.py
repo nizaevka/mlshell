@@ -17,10 +17,10 @@ class DataExtractor(object):
         else:
             self.logger = logger
         self.project_path = project_path
-        # self.raw = None  # data attribute, fullfill in self.get_data()
+        # [deprecated] self.raw = None  # data attribute, fullfill in self.get_data()
 
     # @memory_profiler
-    def get(self, var, filename=None, rows_limit=None, random_skip=False, index_col=None, **kwargs):
+    def get(self, dataset, filename=None, rows_limit=None, random_skip=False, index_col=None, **kwargs):
         """ Get data from csv-file.
 
         Args:
@@ -50,7 +50,11 @@ class DataExtractor(object):
                 rows_limit = None
                 skip_list = None
             elif random_skip:
-                skip_list = rd.sample(range(1, lines), lines - rows_limit - 1)
+                random_state = sklearn.utils.check_random_state(kwargs.get('random_state', None))
+                skip_list = random_state.choice(range(1, lines), size=lines - rows_limit - 1, replace=False, p=None)
+                # [deprecated] bad practice to use global seed
+                # rd.seed(42)
+                # skip_list = rd.sample(range(1, lines), lines - rows_limit - 1)
             else:
                 skip_list = None
         else:
@@ -59,8 +63,8 @@ class DataExtractor(object):
             raw = pd.read_csv(f, sep=",", index_col=index_col, skiprows=skip_list, nrows=rows_limit)
         self.logger.info("Data loaded from:\n    {}".format(filename))
 
-        var['raw'] = raw
-        return var
+        dataset['raw'] = raw
+        return dataset
 
 
 class DataPreprocessor(object):
@@ -75,34 +79,41 @@ class DataPreprocessor(object):
         self.logger = logger
         self.project_path = project_path
 
-    def preprocess(self, var, target_name='', categor_names=None, **kwargs):
+    def preprocess(self, dataset, target_names=None, categor_names=None, pos_labels=None, **kwargs):
         self.logger.info("\u25CF \u25B6 PREPROCESS DATA")
-        raw = var['raw']
+        raw = dataset['raw']
         if categor_names is None:
             categor_names = []
-        index = list(raw.index)  # otherwise not serializable for cache
-        targets, raw_targets_names = self.make_targets(raw, target_name=target_name)
-        features, raw_features_names = self.make_features(raw, target_name=target_name)
-        raw_names = {'index': index,
-                     'targets': raw_targets_names,
-                     'features': raw_features_names,
-                     'categor_features': categor_names}
+        if target_names is None:
+            target_names = []
+        if pos_labels is None:
+            pos_labels = []
+        index = raw.index
+        targets = self.make_targets(raw, target_names)
+        features, features_names = self.make_features(raw, target_names)
+        # TODO: pickle
+        #     better add names postfix
+        raw_names = {'index': list(index),  # otherwise not serializable for cache
+                     'index_name': index.name,
+                     'targets': target_names,
+                     'features': list(features_names),  # otherwise not serializable for cache
+                     'categor_features': categor_names,
+                     'pos_labels': pos_labels}
         data = self.make_dataframe(index, targets, features, raw_names)
-        var.update({'df': data, 'raw_names': raw_names})  # [deprecated] , 'base_plot': base_plot
-        del var['raw']
-        return var
+        dataset.update({'data': data, 'raw_names': raw_names})  # [deprecated] , 'base_plot': base_plot
+        del dataset['raw']
+        return dataset
 
-    def make_targets(self, raw, target_name=''):
+    def make_targets(self, raw, target_names):
         """Targets preprocessing."""
         try:
-            targets_df = raw[target_name]
+            targets_df = raw[target_names]
             targets = targets_df.values.astype(int)  # cast to int
         except KeyError as e:
             # handle test data without targets
-            self.logger.warning("Warning: no target column '{}' in df, use 0 values.".format(target_name))
-            targets = np.zeros(raw.shape[0], dtype=int, order="C")
-            raw[target_name] = targets
-        raw_targets_names = [target_name]
+            self.logger.warning("Warning: no target column(s) '{}' in df, use 0 values.".format(target_names))
+            targets = np.zeros((raw.shape[0], len(target_names)), dtype=int, order="C")
+            raw[target_names] = pd.DataFrame(targets)
         # [deprecated] better df
         # base_plot = targets
         # preserve original index
@@ -113,11 +124,11 @@ class DataPreprocessor(object):
         # base_plot = pd.DataFrame(index=raw.index.values,
         #                          data={target_name: np.arange(1, targets.shape[0]+1)}).rename_axis(raw.index.name)
 
-        return targets, raw_targets_names  # , base_plot
+        return targets # , base_plot
 
-    def make_features(self, raw, target_name=''):
+    def make_features(self, raw, target_names):
         """Features preprocessing."""
-        features_df = raw.drop([target_name], axis=1)
+        features_df = raw.drop(target_names, axis=1)
         raw_features_names = features_df.columns
         features = features_df.values.T
         return features, raw_features_names
@@ -134,28 +145,60 @@ class DataPreprocessor(object):
             index=index,
             columns=columns,
             copy=False,
-        ).rename(raw_names['index'])
+        ).rename_axis(raw_names['index_name'])
         df.insert(loc=0, column='targets', value=targets)
         return df
 
 
-class Data(dict):
+class Dataset(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def __hash__(self):
-        return pd.util.hash_pandas_object(self.get('df')).sum()
+        return pd.util.hash_pandas_object(self.get('data')).sum()
 
+    # good choice, cause for train,
+    # otherwise if attribute, for train, test we will inherent x,y,classes => complicated, need oo clean)
     # need for ram economy, we can make it as dict key
+    # But: multiple calls
     def get_x(self):
-        df = self.get('df', None)
+        df = self.get('data', None)
         raw_names = self.get('raw_names', None)
-        return df[[raw_names['features']]]
+        return df[raw_names['features']]
 
     def get_y(self):
-        df = self.get('df', None)
+        df = self.get('data', None)
         raw_names = self.get('raw_names', None)
         return df[raw_names['targets']]
+
+    # TODO: remove is_classifier check if no need
+    def get_classes(self, pos_labels=None):
+        df = self.get('data', None)
+        raw_names = self.get('raw_names', None)
+        if not pos_labels:
+            pos_labels = raw_names.get('pos_labels', [])
+
+        classes = [np.unique(j) for i, j in df[raw_names['targets']].iteritems()]  # [array([1]), array([2, 7])]
+        if not pos_labels:
+            pos_labels_ind = -1
+            pos_labels = [i[-1] for i in classes]  # [2,4]
+        else:
+            # Find where pos_labels in sorted labels.
+            pos_labels_ind = [np.where(classes[i] == pos_labels[i])[0][0] for i in range(len(classes))]  # [1, 0]
+
+        # [deprecated] not work if different number of classes in multi-output
+        # if not pos_labels:
+        #     pos_labels = classes[..., -1]  # [2,4]
+        #     pos_labels_ind = -1  # [wrong] np.full(pos_labels.shape, fill_value=-1)
+        # else:
+        #     pos_labels_ind = np.array(np.where(classes == pos_labels))[..., 0]  # [1, 0]
+
+        # [temp]
+        print(f"Label {pos_labels} identified as positive np.unique(targets)[-1]:\n"
+              f"    for classifiers provided predict_proba:"
+              f" if P(pos_labels)>threshold, prediction=pos_labels on sample.")
+
+        return {'classes': classes, 'pos_labels': pos_labels, 'pos_labels_ind': pos_labels_ind}
 
     def dump(self, filepath, obj, template=None):
         # [deprecated]
@@ -165,23 +208,23 @@ class Data(dict):
             obj = pd.DataFrame(index=template.index.values,
                                data={zip(template.columns, obj)}).rename_axis(template.index.name)
             # [deprecated] not enough abstract
-            # df = pd.DataFrame(index=self.get('df').index.values,
+            # df = pd.DataFrame(index=self.get('data').index.values,
             #                data={raw_names['targets'][0]: y_pred}).rename_axis(raw_names['index'])
 
         with open(f"{filepath}.csv", 'w', newline='') as f:
             obj.to_csv(f, mode='w', header=True, index=True, sep=',', line_terminator='\n')  # only LF
         return
 
-    def split(self, data):
-        df = data.get('df', None)
-        train_index = data.get('train_index', None)
-        test_index = data.get('test_index', None)
-        if not train_index and not test_index:
+    def split(self):
+        df = self.get('data', None)
+        train_index = self.get('train_index', None)
+        test_index = self.get('test_index', None)
+        if train_index is None and test_index is None:
             train_index = test_index = df.index
 
-        # inherent keys, except 'df'
-        train = Data(dict(self, **{'df': df.loc[train_index]}))
-        test = Data(dict(self, **{'df': df.loc[test_index]}))
+        # inherent keys, except 'data'
+        train = Dataset(dict(self, **{'data': df.loc[train_index]}))
+        test = Dataset(dict(self, **{'data': df.loc[test_index]}))
 
         return train, test
 
@@ -196,31 +239,6 @@ class Data(dict):
         # y_test = test['targets']
         # return (x_train, y_train), (x_test, y_test)
 
-    # TODO: better check in workflow level
-    def get_classes(self, data, is_classifier, pos_label=None):
-        # TODO: multi-output target
-
-        if is_classifier:
-            classes = np.unique(data['targets'])
-            # [deprecated] easy to get from classes
-            # n_classes = classes_.shape[0]
-
-            if not pos_label:
-                pos_label = classes[-1]  # self.p['th__pos_label']
-                pos_label_ind = -1
-            else:
-                pos_label_ind = np.where(classes == pos_label)[0][0]
-            # [deprecated] multiclass
-            # neg_label = classes[0]
-            self.logger.info(f"Label {pos_label} identified as positive np.unique(targets)[-1]:\n"
-                             f"    for classifiers provided predict_proba:"
-                             f" if P(pos_label)>threshold, prediction=pos_label on sample.")
-        else:
-            classes = None
-            pos_label = None
-            pos_label_ind = None
-        return classes, pos_label, pos_label_ind
-
 
 class DataFactory(DataExtractor, DataPreprocessor):
     def __init__(self, project_path, logger=None):
@@ -231,7 +249,7 @@ class DataFactory(DataExtractor, DataPreprocessor):
             self.logger = logger
         self.project_path = project_path
 
-    def produce(self, data_id, p):
+    def produce(self, dataset_id, p):
         """ Read dataset and Unify dataframe in compliance to workflow class.
 
         Arg:
@@ -241,27 +259,31 @@ class DataFactory(DataExtractor, DataPreprocessor):
 
         """
         self.logger.info("\u25CF HANDLE DATA")
-        self.logger.info(f"Data configuration:\n    {data_id}")
-        res_ = Data()
-        for key, val in p.items():
+        self.logger.info(f"Data configuration:\n    {dataset_id}")
+        res_ = Dataset()
+        for key, val in p.get('steps', {}):
             if not isinstance(val, dict):
                 continue
-            if key == 'dump_cache' and not val['flag']:
-                continue
+            # [deprecated] conf comments better than flag
+            # if key == 'dump_cache' and not val['flag']:
+            #     continue
             if 'prefix' in val and not val['prefix']:
-                val['prefix'] = data_id
+                val['prefix'] = dataset_id
             res_ = getattr(self, key)(res_, **val)
-            if key == 'load_cache' and val['flag'] and res_:
+            # [deprecated] conf comments better than flag, also contain error dataser={}
+            # if key == 'load_cache' and val['flag'] and res_:
+            if key == 'load_cache' and res_:
                 break
 
         res = self.check(res_)
 
+
         # [deprecated]
         # # cache flag False, True, update
         # if self.p['cache'] and not self.p['cache'] == 'update':
-        #     cache = self.load_cache(prefix=data_id)
+        #     cache = self.load_cache(prefix=dataset_id)
         #     # [deprecated] now cache arbitrary types
-        #     # cache, meta = self.load_cache(prefix=data_id)
+        #     # cache, meta = self.load_cache(prefix=dataset_id)
         #     # if cache is not None:
         #     #     data = cache
         #     #     data_df = data
@@ -287,14 +309,15 @@ class DataFactory(DataExtractor, DataPreprocessor):
         #     # [deprecated] move to workflow
         #     # self.check_numeric_types(data_df)
         #     if self.p['cache']:
-        #         self.dump_cache(res, prefix=data_id)
+        #         self.dump_cache(res, prefix=dataset_id)
         # else:
         #     res = cache
 
         return res
 
-    def dump_cache(self, var, prefix='', **kwargs):
-        """Dump imtermediate dataframe to disk."""
+    def dump_cache(self, dataset, prefix='', **kwargs):
+        """Dump intermediate dataframe to disk."""
+        # TODO: pickle could be more universal (better dill).
         cachedir = f"{self.project_path}/results/cache/data"
         if not os.path.exists(cachedir):
             # create temp dir for cache if not exist
@@ -302,13 +325,13 @@ class DataFactory(DataExtractor, DataPreprocessor):
         for filename in glob.glob(f"{cachedir}/{prefix}*"):
             os.remove(filename)
         fps = set()
-        for key, val in var.items():
-            if isinstance(var[key], (pd.DataFrame, pd.Series)):
+        for key, val in dataset.items():
+            if isinstance(dataset[key], (pd.DataFrame, pd.Series)):
                 filepath = f'{cachedir}/{prefix}_{key}_.csv'
                 fps.add(filepath)
                 with open(filepath, 'w', newline='') as f:
                     val.to_csv(f, mode='w', header=True, index=True, line_terminator='\n')
-            elif isinstance(var[key], np.ndarray):
+            elif isinstance(dataset[key], np.ndarray):
                 filepath = f'{cachedir}/{prefix}_{key}_.csv'
                 fps.add(filepath)
                 with open(filepath, 'w', newline='') as f:
@@ -322,22 +345,22 @@ class DataFactory(DataExtractor, DataPreprocessor):
                     json.dump(list(val.items()), f)
 
         self.logger.warning('Warning: update cache file(s):\n    {}'.format('\n    '.join(fps)))
-        return var
+        return dataset
 
-    def load_cache(self, var, prefix='', **kwargs):
+    def load_cache(self, dataset, prefix='', **kwargs):
         """Load intermediate dataframe from disk"""
         cachedir = f"{self.project_path}/results/cache/data"
-        var = {}
+        dataset = Dataset()
         for filepath in glob.glob(f"{cachedir}/{prefix}*"):
-            key = filepath.split('_')[1]
+            key = '_'.join(filepath.split('_')[1:-1])
             if filepath.endswith('.csv'):
                 with open(filepath, 'r') as f:
-                    var[key] = pd.read_csv(f, sep=",", index_col=0)
+                    dataset[key] = pd.read_csv(f, sep=",", index_col=0)
             else:
                 with open(filepath, 'r') as f:
-                    var[key] = dict(json.load(f))  # object_hook=json_keys2int)
+                    dataset[key] = dict(json.load(f))  # object_hook=json_keys2int)
         self.logger.warning(f"Warning: use cache file(s):\n    {cachedir}")
-        return var
+        return dataset
 
     # def dump_cache(self, data, categoric_ind_name, numeric_ind_name, prefix=''):
     #     """Dump imtermediate dataframe to disk."""
@@ -379,10 +402,10 @@ class DataFactory(DataExtractor, DataPreprocessor):
     #         return cache, meta
     #     return None, None
 
-    def info(self, var, **kwargs):
-        self.check_duplicates(var['df'])
-        self.check_gaps(var['df'])
-        return var
+    def info(self, dataset, **kwargs):
+        self.check_duplicates(dataset['data'])
+        self.check_gaps(dataset['data'])
+        return dataset
 
     def check_duplicates(self, data, del_duplicates=None):
         # find duplicates rows
@@ -426,7 +449,7 @@ class DataFactory(DataExtractor, DataPreprocessor):
             # delete rows with gaps in targets
             # data.dropna(self, axis=0, how='any', thresh=None, subset=[column_name], inplace=True)
 
-    def unify(self, var, **kwargs):
+    def unify(self, dataset, **kwargs):
         """ unify input dataframe
 
         Note:
@@ -438,7 +461,7 @@ class DataFactory(DataExtractor, DataPreprocessor):
                 * if gap in categor => 'unknown'(downcast dtype to str) => ordinalencoder
                 * if gap in non-categor => np.nan
             * transform to np.float64 (python float = np.float = np.float64 = C double = np.double(64 bit processor)).
-            * define dics for:
+            * define dictionaries of indices (when drop targets):
 
                 * self.categoric_ind_name => {1:('feat_n', ['cat1', 'cat2'])}
                 * self.numeric_ind_name   => {2:('feat_n',)}
@@ -449,13 +472,16 @@ class DataFactory(DataExtractor, DataPreprocessor):
             numeric_ind_name (dict):  {column_index: ('feature__name',),}
 
         """
-        data = var['df']
+        data = dataset['data']
+        raw_names = dataset['raw_names']
         categoric_ind_name = {}
         numeric_ind_name = {}
+        count = 0
         for ind, column_name in enumerate(data):
-            if 'targets' in column_name:
+            if column_name in raw_names['targets']:
+                count += 1
                 continue
-            if '_categor_' in column_name:
+            if column_name in raw_names['categor_features']:
                 # fill gaps with 'unknown'
                 # inplace unreliable (could not work without any error)
                 # copy!
@@ -468,37 +494,42 @@ class DataFactory(DataExtractor, DataPreprocessor):
                 data[column_name] = encoder.fit_transform(data[column_name].values.reshape(-1, 1))
                 # ('feature_categor__name',['B','A','C'])
                 # tolist need to json.dump in cache
-                categoric_ind_name[ind-1] = (column_name,
-                                             encoder.categories_[0].tolist())
+                categoric_ind_name[ind-count] = (column_name,
+                                                 encoder.categories_[0].tolist())
             else:
                 # fill gaps with np.nan
                 data[column_name].fillna(value=np.nan, method=None, axis=None,
                                          inplace=True, limit=None, downcast=None)
-                numeric_ind_name[ind-1] = (column_name,)
+                numeric_ind_name[ind-count] = (column_name,)
         # cast to np.float64 without copy
         # alternative: try .to_numeric
+
+        # TODO: try built-in alternative
+        #    sklearn.utils.as_float_array
+        #    assert_all_finite
+        #    https://scikit-learn.org/stable/developers/utilities.html#developers-utils
         data = data.astype(np.float64, copy=False, errors='ignore')
-        var.update({'df': data, 'categoric_ind_name': categoric_ind_name, 'numeric_ind_name': numeric_ind_name})
-        return var
+        dataset.update({'data': data, 'categoric_ind_name': categoric_ind_name, 'numeric_ind_name': numeric_ind_name})
+        return dataset
 
     # @memory_profiler
-    def split(self, var, **kwargs):
+    def split(self, dataset, **kwargs):
         """Split data on train, test
 
         data (pandas.DataFrame, optional (default=None)):
-            if not None ``data_id`` ignored, read kwargs.
-        data_id (str, optional (default='train')):
+            if not None ``dataset_id`` ignored, read kwargs.
+        dataset_id (str, optional (default='train')):
             | should be known key from params['data`]
-            | if None, used default ``data_id`` from params['fit__data_id'] and corresponding kwargs.
+            | if None, used default ``dataset_id`` from params['fit__dataset_id'] and corresponding kwargs.
         kwargs:
-            if data_id is not None, ignore current, use global from params['data__data_id__split'].
+            if dataset_id is not None, ignore current, use global from params['data__dataset_id__split'].
 
         Note:
             input data updated inplace with additional split key.
             if split ``train_size`` set to 1.0, use test=train.
         """
         self.logger.info("\u25CF SPLIT DATA")
-        data = var['df']
+        data = dataset['data']
 
         if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
             or kwargs['train_size'] is None and kwargs['test_size'] == 0):
@@ -513,16 +544,16 @@ class DataFactory(DataExtractor, DataPreprocessor):
                 data, data.index.values, **kwargs)
 
         # add to data
-        var.update({'train_index': train_index, 'test_index': test_index})
-        return var
+        dataset.update({'train_index': train_index, 'test_index': test_index})
+        return dataset
 
-    def check(self, var, **kwargs):
-        var = self._check_numeric_types(var, **kwargs)
-        return var
+    def check(self, dataset, **kwargs):
+        dataset = self._check_numeric_types(dataset, **kwargs)
+        return dataset
 
-    def _check_numeric_types(self, var, **kwargs):
+    def _check_numeric_types(self, dataset, **kwargs):
         # check that all non-categoric features are numeric type
-        data = var['df']
+        data = dataset['data']
         dtypes = data.dtypes
         misstype = []
         for ind, column_name in enumerate(data):
@@ -532,7 +563,7 @@ class DataFactory(DataExtractor, DataPreprocessor):
         if misstype:
             raise ValueError("Input data non-categoric columns"
                              " should be subtype of np.number, check:\n    {}".format(misstype))
-        return var
+        return dataset
 
 
 if __name__ == '__main__':

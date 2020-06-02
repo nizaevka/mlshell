@@ -19,37 +19,91 @@ validate():
 from mlshell.libs import *
 import mlshell
 
+# [deprecated] not work
+# def set_base(pipeline):
+#     class Pipeline(pipeline):
+#   return Pipeline
 
-def set_base(pipeline):
-    class Pipeline(pipeline):
-        def __init__(self):
-            self.pipeline = pipeline
-            self.best_params_ = {}
 
-        def __hash__(self):
-            return str(self.pipeline.get_params())
+class Pipeline(object):
+    def __init__(self, pipeline):
+        # not sure if self.fit will change self.pipeline [bad practice i think]
+        self.pipeline = pipeline
+        # Need only to add dataset_id to name for fitted pipeline when dump on disk.
+        # Can be skipped.
+        # TODO [code-review]: maybe better internal storage(actuaaly can do both)
+        self.dataset_id = None
 
-        def is_classifier(self):
-            return sklearn.base.is_classifier(self.pipeline)
+        # [deprecated] move out to optimizer
+        # self.optimizers = []
+        # self.best_params_ = {}
+        # self.best_score_ = float("-inf")
 
-        def is_regressor(self):
-            return sklearn.base.is_regressor(self.pipeline)
+    def __getattr__(self, name):
+        """Redirect unknown methods to pipeline object."""
+        def wrapper(*args, **kwargs):
+            getattr(self.pipeline, name)(*args, **kwargs)
+        return wrapper
 
-        def resolve(self, hp_name, dataset,  kwargs):
-            return mlshell.HpResolver().resolve(self.pipeline, dataset, hp_name, kwargs)
+    def __hash__(self):
+        return str(self.pipeline.get_params())
 
-        def dump(self, file):
-            joblib.dump(self.pipeline, file)
-            return
+    def fit(self, *args, **kwargs):
+        self.dataset_id = kwargs.pop('dataset_id', None)
+        self.pipeline.fit(*args, **kwargs)
 
-        # [deprecated] need to use in fit(), predict() ..
-        # def ckeck_data_format(self, data):
-        #     """additional check for data when pass to pipeline."""
-        #     if not isinstance(data, pd.DataFrame):
-        #         raise TypeError("input data should be pandas.DataFrame object")
-        #     return
+    def set_params(self, *args, **kwargs):
+        self.dataset_id = None
+        self.pipeline.set_params(*args, **kwargs)
 
-    return Pipeline
+    def is_classifier(self):
+        return sklearn.base.is_classifier(self.pipeline)
+
+    def is_regressor(self):
+        return sklearn.base.is_regressor(self.pipeline)
+
+    def resolve(self, hp_name, dataset, **kwargs):
+        resolver = kwargs.get('resolve', {}).get(hp_name, {}).get('resolver', mlshell.HpResolver)
+        # [deprecated] need all level kwargs
+        # sub_kwargs = kwargs.get('resolve', {}).get(hp_name, {})
+        return resolver().resolve(self.pipeline, dataset, hp_name, **kwargs)
+
+    def dump(self, file):
+        joblib.dump(self.pipeline, file)
+        return
+
+# [deprecated] move out
+#    def update_params(self, optimizer):
+#        """
+#        Note:
+#            work good for refine runs, could lose runs if the same param multiple times
+#            in thar case need to merge 'cv_results_' and recalc best each times
+#            but could be different number of split, hard to combine different optimizers
+#
+#            # best_params_ (not available if refit is False and multi-metric)
+#            # best_estimator availbale if refit is not False
+#            # best_score available if refit is not False and not callable
+#
+#            # TODO: discuss alternative storage pipeline as optimizer object and best_* attributes
+#            #       more logically and sklearn-consistent, but less flexible for different optimizers
+#            #       best_estimator not always available to fit
+#            # Optimizer fit it is not the same as pipeline fit, it is better
+#        """
+#        self.pipeline = optimizer.__dict__.get('best_estimator_', pipeline)
+#        self.best_params_.update(optimizer.__dict__.get('best_params_', {}))
+#
+#        # [alternative] not evailable if refit callable
+#        # best_score_ = optimizer.__dict__.get('best_score_', float("-inf"))
+#        # if pipeline.best_score_ <= best_score_:
+#        #        self.pipelines[pipeline_id].best_score_ = best_score_
+#
+#    # [deprecated] need to use in fit(), predict() ..
+#    # def ckeck_data_format(self, data):
+#    #     """additional check for data when pass to pipeline."""
+#    #     if not isinstance(data, pd.DataFrame):
+#    #         raise TypeError("input data should be pandas.DataFrame object")
+#    #     return
+
 
 
 class PipeFactory(object):
@@ -77,7 +131,7 @@ class PipeFactory(object):
         else:
             pipeline = self.create(**p['create'])
 
-        return set_base(pipeline)()
+        return Pipeline(pipeline)
 
     def load(self, filepath=None, **kwargs):
         """Load fitted model on disk/string.

@@ -3,7 +3,13 @@
 
 from mlshell.libs import *
 import mlshell.custom
+import mlshell.optimize
+import mlshell.validate
 
+
+# TODO:  there are asymmetry pipelines, datasets are separate object, but what if gs_params config?
+#  does it need fabric? do we need self.p? maybe it is possible to combine all?
+#  DO it in the end
 
 DEFAULT_PARAMS = {
     # when need fit two times
@@ -12,17 +18,25 @@ DEFAULT_PARAMS = {
     #    * either additional argument in steps [not beautiful]
     # DO BOTH!
     # possibility of multiple pipelines, metrics lists, gs_conf in one workflow!
+    # in second not possible to change func
+
+    # TODO [beta]: Data/Pipeline/Workflow: endpoint(class+func to replace), kwargs, steps.
+    #    Also need class for GUI.
+    #    but it will be less beautiful config.
+    #    Remain current change if needed. Maybe erson don`t want to use func.
     'workflow': {
-        'endpoint_id': None,
+        'endpoint_id': None,    # TODO: move out id or everywhere set id? I think better name_id,
+                                #     so additional explicit flag to search in config, but then "gs_params_id" not so good
+                                #     вообще итак нормально.
         'steps': [
-            ('fit', 1),
+            ('fit',),
             # ('fit', 0, {'pipeline':'pipeline_2'}),
-            ('optimize', 1),
+            ('optimize',),
             # ('optimize', 1, {'optimizer': None, 'gs_params':'gs_2', 'th_name': 'estimate__apply_threshold__threshold'})
-            ('dump', 0),
-            ('validate', 0),
-            ('gui', 0),
-            ('predict', 0),
+            ('dump',),
+            ('validate',),
+            ('gui',),
+            ('predict',),
         ],
     },
     'endpoint': {
@@ -35,7 +49,7 @@ DEFAULT_PARAMS = {
             #    'class': None,
             #    'seed': None,
             #     'pipeline': None,
-            #     'data': None,
+            #     'dataset': None,
             #     'metric': None,
             #     'gs': None,
             # },
@@ -65,32 +79,43 @@ DEFAULT_PARAMS = {
                       'seed': None},
             # both
             'optimize': {'func': None,
-                         'optimizer': None, # optimizer
+                         'optimizer': mlshell.optimize.RandomizedSearchOptimizer,  # optimizer
+                         'validator': mlshell.validate.Validator,
                          'pipeline': None,  # multiple pipeline? no, user can defined separately if really needed
-                         'data': 'train',
+                         'dataset': 'train',
                          'gs_params': None,
                          'fit_params': {},
+                         'resolve_params': {
+                             'estimate__apply_threshold__threshold': {
+                                 'resolver': None,  # if None, use pipeline default resolver
+                                 'samples': 10,
+                                 'plot_flag': False,
+                             },
+                         },
                          },
             'fit': {'func': None,
                     'pipeline': None,
-                    'data': 'train',
+                    'dataset': 'train',
                     'fit_params': {},
                     'hp': {},
-                    'seed': None,},
+                    'seed': None,
+                    'resolve_params': {},
+                    },
             'validate': {'func': None,
-                         'data': 'train',
+                         'dataset': 'train',
+                         'validator': None,
                          'metric': None,
                          'pos_label': None,  # if None, get -1
                          'pipeline': None,
                          'seed': None},
-            'predict': {'function': None,
-                        'data': 'test',
+            'predict': {'func': None,
+                        'dataset': 'test',
                         'pipeline': None,
                         'seed': None},
             'gui': {'plotter': None, # gui
                     'pipeline': None,
                     'hp_grid': {},
-                    'data': 'train',
+                    'dataset': 'train',
                     'base_sort': False,
                     # 'metric': False,  beta
                     'seed': None},
@@ -117,7 +142,7 @@ DEFAULT_PARAMS = {
                        # 'th_strategy': None,
                        },
             'resolve': {
-                {'func': None,
+                 'func': None,
                  # [deprecated]  should be setted 'auto'/['auto'], by default only for index
                  #  only if not setted
                  # 'hp': {
@@ -144,8 +169,8 @@ DEFAULT_PARAMS = {
         'default': {
             # 'flag': True,
             'hp_grid': {},
-            'n_iter': None, # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
-            'scoring': None, # no resolving (default estimator scoring)
+            'n_iter': None,  # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
+            'scoring': None,  # no resolving (default estimator scoring)
             'n_jobs': 1,
             'refit': None, # no resolving
             'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
@@ -155,27 +180,20 @@ DEFAULT_PARAMS = {
             #'random_state': None,
             #'error_score': np.nan,
             #'return_train_score': True,
-            'resolve': {
-                'name': {
-                    # 'pos_label': 1,  # [deprecated] get from data with info.
-                    'func': None,
-                    'samples': 10,
-                    'plot_flag': False,
-                },
-
-            },
         },
         'gs_2': {
             'hp_grid': {'threshold': [0.5]},
         },
     },
-    'data': {
+    # TODO: test that we can set as configuration
+    # 'resolve_params':{},
+    'dataset': {
         'default': {
             'class': None,  # Factory
             'steps': [
                 ('load_cache', {'flag': 0, 'func': None, 'prefix': None},),
                 ('get', {'func': None},),
-                ('preprocess', {'func': None},),
+                ('preprocess', {'func': None, 'categor_names': [], 'target_names': [], 'pos_labels': []},),
                 ('info', {'func': None},),
                 ('unify', {'func': None},),
                 ('split', False,),
@@ -184,6 +202,7 @@ DEFAULT_PARAMS = {
         },
     },
 }
+
 
 # [deprecated]
 # DEFAULT_PARAMS = {
@@ -366,12 +385,9 @@ class CreateDefaultPipeline(object):
                 last_step = sklearn.pipeline.Pipeline(steps=[('classifier', estimator)])
             else:
                 last_step = sklearn.pipeline.Pipeline(steps=[
-                        ('predict_proba',       mlshell.custom.PredictionTransformer(estimator)),
-                        ('apply_threshold',  mlshell.custom.ThresholdClassifier([], # 'classes',
-                                                                                # pos_label_ind,
-                                                                                # pos_label,
-                                                                                # neg_label,
-                                                                                threshold=0.5)),
+                        ('predict_proba',   mlshell.custom.PredictionTransformer(estimator)),
+                        ('apply_threshold', mlshell.custom.ThresholdClassifier(threshold=0.5,
+                                                                               kw_args='auto')),
                         ])
         else:
             raise ValueError(f"Unknown estimator type `{estimator_type}`.")
@@ -430,3 +446,18 @@ class CreateDefaultPipeline(object):
 
 if __name__ == '__main__':
     pass
+
+
+# Nuances
+#   user can set 'auto' or ['auto',] for hps need to resolve in resolver (for some hps is default).
+#   user can skip unify step, then nummeric/categoric_ind_names auto extracted in resolver.
+#       it`s possible to move out in DataFactory like mandatory, but users not always need this, only for resolving.
+#   target_names, categor_names, pos_labels should be alwaus list or None
+
+# My Hints:
+#   * we need to find compromise between user interface and keep close code in one block.
+#   * if we want key error not use get, just use [].
+#       get don`t give additional comliance to between dict keys and attributes.
+#   * arr = dic.get('arr',None)
+#       "if not arr" give error "The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()".
+#       "if arr is not None" is better.
