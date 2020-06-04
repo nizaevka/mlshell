@@ -337,10 +337,9 @@ class Workflow(object):
         # Resolve hp_grid.
         hp_grid = kwargs['gs_params'].pop('hp_grid', {})
         if hp_grid:
-            kwargs['gs_params']['hp_grid'] = self._resolve_hps(hp_grid,
-                                                               pipeline,
-                                                               dataset,
-                                                               **kwargs)
+            # [deprecated] kwargs['gs_params']['hp_grid'] =
+            hp_grid = self._resolve_hps(hp_grid, pipeline, dataset, **kwargs)
+
         # Resolve scoring.
         scoring = kwargs['gs_params'].pop('scoring', {})
         if scoring:
@@ -349,7 +348,7 @@ class Workflow(object):
         train, test = dataset.split()
 
         self.logger.info("\u25CF \u25B6 OPTIMIZE HYPERPARAMETERS")
-        optimizer = optimizer(pipeline, hp_grid, **kwargs.get('gs_params', {}))
+        optimizer = optimizer(pipeline.pipeline, hp_grid, **kwargs.get('gs_params', {}))
         optimizer.fit(train.get_x(), train.get_y(), **kwargs.get('fit_params', {}))
 
         # Results logs/dump to disk in run dir.
@@ -357,7 +356,7 @@ class Workflow(object):
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
         filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
-        optimizer.dump_runs(filepath)
+        optimizer.dump_runs(self.logger, filepath)
 
         self._runs[(pipeline_id, dataset_id)] = optimizer.update_best(self._runs.get((pipeline_id, dataset_id), {}))
         # [deprecated] for one pipeline could be different optimizer`s interface

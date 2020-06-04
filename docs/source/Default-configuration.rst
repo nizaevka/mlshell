@@ -13,3 +13,6 @@ Default configuration
     :members:
     :undoc-members:
     :show-inheritance:
+
+
+.. alternative https://stackoverflow.com/questions/27875455/displaying-dictionary-data-in-sphinx-documentation

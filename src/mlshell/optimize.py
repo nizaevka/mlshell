@@ -10,13 +10,8 @@ import mlshell
 
 
 class SklearnOptimizerMixin(object):
-    def __init__(self, logger):
-        self.logger = logger
+    def __init__(self):
         self.optimizer = None
-
-        # TODO: Maybe move out self.pipeline and logger?
-        # not sure actually
-        self.pipeline = None
 
     def update_best(self, prev):
         """
@@ -28,39 +23,39 @@ class SklearnOptimizerMixin(object):
             Dump predict/model need best_score_.
             More complicated logic on best_score_ or
         """
-        curr = self.__dict__
+        curr = self.optimizer
 
-        best_index_ = curr.get('best_index_', None)
+        best_index_ = getattr(curr, 'best_index_', None)
         if not best_index_:
             return prev
 
-        cv_results_ = curr.get('cv_results_')
+        cv_results_ = getattr(curr, 'cv_results_')
         params = cv_results_['params']
         best_params_ = params[best_index_]
-        best_estimator_ = curr.get('best_estimator_', None)
+        best_estimator_ = getattr(curr, 'best_estimator_', None)
         if not best_estimator_:
-            best_estimator_ = self.estimator.set_params(**best_params_)
+            best_estimator_ = curr.estimator.set_params(**best_params_)
 
-        best_score_ = curr.get('best_score_', float('-inf'))
-        refit = curr.get('refit','')
+        best_score_ = getattr(curr, 'best_score_', float('-inf'))
+        refit = getattr(curr, 'refit', '')
         score_name = refit if isinstance(refit, str) else ''
-        next = {
+        next_ = {
             'best_estimator_': best_estimator_,
             'best_params_': best_params_,
             'params': prev['params'].extend(params),
             'best_score_': (score_name, best_score_),
         }
-        return next
+        return next_
 
-    def dump_runs(self, filepath):
-        self._pretty_print(self.optimizer)
-        pipeline = self.pipeline
+    def dump_runs(self, logger, filepath):
+        self._pretty_print(logger, self.optimizer)
+        init_pipeline = getattr(self.optimizer, 'estimator')
+        pipeline = getattr(self.optimizer, 'best_estimator_', init_pipeline)
         runs = copy.deepcopy(self.optimizer.cv_results_)
         best_run_index = self.optimizer.best_index_
-        # TODO: runs_comppliance needed? test _dump_runs
-        self._dump_runs(filepath, pipeline, runs, best_run_index)
+        self._dump_runs(logger, filepath, pipeline, runs, best_run_index)
 
-    def _dump_runs(self, filepath, pipeline, runs, best_run_index):
+    def _dump_runs(self, logger, filepath, pipeline, runs, best_run_index):
         """Dumps grid search results in <timestamp>_runs.csv
 
         Args:
@@ -80,7 +75,11 @@ class SklearnOptimizerMixin(object):
                 * 'data__split_train_size'.
                 * 'data__source' params['data'].
         """
-        self.logger.info("\u25CF \u25B6 DUMP RUNS")
+        print('OK')
+        return
+
+        # TODO: runs_comppliance needed? test _dump_runs
+        logger.info("\u25CF \u25B6 DUMP RUNS")
         # get full params for each run
         nums = len(runs['params'])
         lis = list(range(nums))
@@ -126,8 +125,8 @@ class SklearnOptimizerMixin(object):
 
         with open(filepath, 'a', newline='') as f:
             df.to_csv(f, mode='a', header=f.tell() == 0, index=False, line_terminator='\n')
-        self.logger.log(25, f"Save run(s) results to file:\n    {filepath}")
-        self.logger.log(25, f"Best run id:\n    {run_id_list[best_run_index]}")
+        logger.log(25, f"Save run(s) results to file:\n    {filepath}")
+        logger.log(25, f"Best run id:\n    {run_id_list[best_run_index]}")
         # alternative: to hdf(longer,bigger) hdfstore(can use as dict)
         # df.to_hdf(filepath, key='key', append=True, mode='a', format='table')
 
@@ -167,7 +166,7 @@ class SklearnOptimizerMixin(object):
                 modifiers.append(key)
         return modifiers
 
-    def _pretty_print(self, optimizer):
+    def _pretty_print(self, logger, optimizer):
         """Pretty print."""
 
         # [deprecated] excessive, not work with distributions
@@ -181,20 +180,20 @@ class SklearnOptimizerMixin(object):
         df = pd.DataFrame(optimizer.cv_results_)[[key for key in optimizer.cv_results_ if key in param_modifiers
                                                   or 'mean_train' in key or 'mean_test' in key]]
         with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-            # self.logger.debug('{}'.format(df.head()))
-            self.logger.info('{}'.format(tabulate.tabulate(df, headers='keys', tablefmt='psql')))
+            # logger.debug('{}'.format(df.head()))
+            logger.info('{}'.format(tabulate.tabulate(df, headers='keys', tablefmt='psql')))
         # Alternative: df.to_string()
 
-        self.logger.info('GridSearch best index:\n    {}'.format(optimizer.best_index_))
-        self.logger.info('GridSearch time:\n    {}'.format(runs_avg))
-        self.logger.log(25, 'CV best modifiers:\n'
-                            '    {}'.format(jsbeautifier.beautify(str({key: optimizer.best_params_[key]
+        logger.info('GridSearch best index:\n    {}'.format(optimizer.best_index_))
+        logger.info('GridSearch time:\n    {}'.format(runs_avg))
+        logger.log(25, 'CV best modifiers:\n'
+                       '    {}'.format(jsbeautifier.beautify(str({key: optimizer.best_params_[key]
                                                                        for key in modifiers
                                                                        if key in optimizer.best_params_}))))
-        self.logger.info('CV best configuration:\n'
-                         '    {}'.format(jsbeautifier.beautify(str(optimizer.best_params_))))
-        self.logger.info('CV best mean test score:\n'
-                         '    {}'.format(optimizer.__dict__.get('best_score_', 'n/a')))  # not exist if refit callable
+        logger.info('CV best configuration:\n'
+                    '    {}'.format(jsbeautifier.beautify(str(optimizer.best_params_))))
+        logger.info('CV best mean test score:\n'
+                    '    {}'.format(optimizer.__dict__.get('best_score_', 'n/a')))  # not exist if refit callable
         # [deprecated] long ago
         # Alternative: nested dic to MultiIndex df
         # l = res.cv_results_['mean_fit_time'].shape[0]
@@ -216,35 +215,30 @@ class SklearnOptimizerMixin(object):
                 n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0]
                                   for i in hp_grid.values()])
             except AttributeError as e:
-                self.logger.critical("Error: distribution for hyperparameter grid is used,"
-                                     " specify 'gs__runs' in params.")
-                raise ValueError("distribution for hyperparameter grid is used, specify 'gs__runs' in params.")
+                raise ValueError("Error: distribution for hyperparameter grid is used,"
+                                 " specify 'gs__runs' in params.")
         return n_iter
 
 
 class RandomizedSearchOptimizer(SklearnOptimizerMixin):
-    def __init__(self, logger, pipeline, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        self.logger = logger
-        self.pipeline = pipeline
 
-        # TODO: move out __init__ and inherent from RandomizedSearchCV directly
-        # but then user can`t change this behavior
-        hp_grid = kwargs.get('hp_grid', {})
+        # [alternative]: move out __init__ and inherent from RandomizedSearchCV directly
+        #    actually monkeypatching is bad practice
+        #    and then user can`t change this behavior.
         if kwargs.get('n_iter', False) is None:
             kwargs['n_iter'] = self._get_n_iter(kwargs['n_iter'], kwargs.get('hp_grid', {}))
 
-        # optimize score
-        self.optimizer = sklearn.model_selection.RandomizedSearchCV(self.pipeline, hp_grid, **kwargs)
+        self.optimizer = sklearn.model_selection.RandomizedSearchCV(*args, **kwargs)
 
     def fit(self, x, y, **fit_params):
         """Tune hp on train by cv."""
         self.optimizer.fit(x, y, **fit_params)
-        self.__dict__.update(self.optimizer.__dict__)
 
+        # self.__dict__.update(self.optimizer.__dict__)
         # need for dump
-        self.pipeline = self.optimizer.__dict__.get('best_estimator_',
-                                                    self.pipeline)
+        # self.pipeline = self.optimizer.__dict__.get('best_estimator_', self.pipeline)
         return self
 
 

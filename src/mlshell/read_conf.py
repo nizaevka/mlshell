@@ -220,10 +220,12 @@ class GetParams(object):
 
         for key in ['pipeline', 'endpoint']:
             if key in p and len(p[key]) > 0:
-                for conf in p[key].values():
-                    for subkey in dp[key]['default'].keys():
-                        if subkey not in conf:
-                            conf[subkey] = copy.deepcopy(dp[key]['default'][subkey])
+                # Use default subkeys only for default class.
+                if 'class' not in p[key] or p[key]['class'] is None:
+                    for conf in p[key].values():
+                        for subkey in dp[key]['default'].keys():
+                            if subkey not in conf:
+                                conf[subkey] = copy.deepcopy(dp[key]['default'][subkey])
             else:
                 p[key] = {'default': copy.deepcopy(dp[key]['default'])}
 
@@ -232,9 +234,10 @@ class GetParams(object):
             name = p['pipeline']['type']
             p[key] = copy.deepcopy(dp[key][name])
 
-        key = 'gs_params'
-        if key not in p:
-            p[key] = {'default': copy.deepcopy(dp[key]['default'])}
+        # [deprecated] custom no need in defaults.
+        # key = 'gs_params'
+        # if key not in p:
+        #     p[key] = {'default': copy.deepcopy(dp[key]['default'])}
 
         # [deprecated] too complicated, mode to fit method with warning
         # # update gs only if default fit endpoint and explicit name

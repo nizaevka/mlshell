@@ -7,167 +7,253 @@ import mlshell.optimize
 import mlshell.validate
 
 
-# TODO:  there are asymmetry pipelines, datasets are separate object, but what if gs_params config?
-#  does it need fabric? do we need self.p? maybe it is possible to combine all?
-#  DO it in the end
-
-DEFAULT_PARAMS = {
-    # when need fit two times
-    #    * multiplpe endpoints [best]
-    #    * either different names 'fit2': {'func':'fit'}  [better, cause rare situation]
-    #    * either additional argument in steps [not beautiful]
-    # DO BOTH!
-    # possibility of multiple pipelines, metrics lists, gs_conf in one workflow!
-    # in second not possible to change func
+WORKFLOW = {
+    # DONE
+    #     when need fit two times
+    #        * multiplpe endpoints [best]
+    #        * either different names 'fit2': {'func':'fit'}  [better, cause rare situation]
+    #        * either additional argument in steps [not beautiful]
+    #     DO BOTH!
+    #     possibility of multiple pipelines, metrics lists, gs_conf in one workflow!
+    #     in second not possible to change func
 
     # TODO [beta]: Data/Pipeline/Workflow: endpoint(class+func to replace), kwargs, steps.
     #    Also need class for GUI.
     #    but it will be less beautiful config.
     #    Remain current change if needed. Maybe erson don`t want to use func.
-    'workflow': {
-        'endpoint_id': None,    # TODO: move out id or everywhere set id? I think better name_id,
-                                #     so additional explicit flag to search in config, but then "gs_params_id" not so good
-                                #     вообще итак нормально.
+    'endpoint_id': None,    # TODO: move out id or everywhere set id? I think better name_id,
+                            #     so additional explicit flag to search in config, but then "gs_params_id" not so good
+                            #     вообще итак нормально.
+    'steps': [
+        ('fit',),
+        ('optimize',),
+        ('dump',),
+        ('validate',),
+        ('plot',),
+        ('predict',),
+    ],
+}
+""" Workflow section.
+
+Specify endpoint configuration to construct workflow class.
+Specify the order of workflow methods to execute.
+
+Parameters
+----------
+endpoint : str or None.
+    Endpoint identifier, should be the one described in `endpoint section`.
+    Auto-resolved if None and endpoint section contain only one configuration,
+    else ValueError.
+    TODO: [beta].
+    It`s possible to specify list of endpoints to run consecutive.
+    In that case 'steps' should be list of lists.
+    
+steps : list of tuples (str 'step_identifier', kw_args).
+    List of workflow methods to run consecutive. 
+    Each step should be a tuple: `('step_identifier', {kw_args to use})`,
+    where 'step_identifier' should match with `endpoint` functions' names.
+    By default, step executed with argument taken from `endpoint section`,
+    but it also is possible to update kw_args here before calling. 
+
+Notes
+-----
+If section is skipped, default template is used.
+If subkeys are skipped, default values are used for these subkeys.
+
+See also
+--------
+
+"""
+
+
+ENDPOINTS = {
+    'default': {
+        'class': None,
+        
+        'global': {},
+        
+        'dump': {'func': None,
+                 'pipeline_id': None,},
+        # both
+        'optimize': {'func': None,
+                     'optimizer': mlshell.optimize.RandomizedSearchOptimizer,  # optimizer
+                     'validator': mlshell.validate.Validator,
+                     'pipeline_id': None,  # multiple pipeline? no, user can defined separately if really needed
+                     'dataset_id': 'train',
+                     'gs_params': {
+                        'hp_grid': {},
+                        'n_iter': None,  # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
+                        'scoring': None,  # no resolving (default estimator scoring)
+                        'n_jobs': 1,
+                        'refit': None, # no resolving
+                        'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+                        'verbose': 1,
+                        'pre_dispatch': 'n_jobs',
+                     },
+                     'fit_params': {},
+                     'resolve_params': {
+                         'estimate__apply_threshold__threshold': {
+                             'resolver': None,  # if None, use pipeline default resolver
+                             'samples': 10,
+                             'plot_flag': False,
+                         },
+                     },
+                     },
+        'fit': {'func': None,
+                'pipeline_id': None,
+                'dataset_id': 'train',
+                'fit_params': {},
+                'hp': {},
+                'resolve_params': {},
+                },
+        'validate': {'func': None,
+                     'dataset_id': 'train',
+                     'validator': None,
+                     'metric': None,
+                     'pos_label': None,  # if None, get -1
+                     'pipeline_id': None,},
+        'predict': {'func': None,
+                    'dataset_id': 'test',
+                    'pipeline_id': None,},
+        'plot': {'func': None,
+                'plotter': None,  # gui
+                'pipeline_id': None,
+                'hp_grid': {},
+                'dataset_id': 'train',
+                'base_sort': False,
+                # TODO: [beta]
+                # 'dynamic_metric': None,
+                },
+        # TODO: [beta] memory
+        # 'init': {},
+        # 'reset': {},
+    },
+    # TODO: [beta]
+    # 'pytorch': {},
+}
+""" Endpoint section.
+
+Specify separate endpoints configurations to fast switch between different
+workflow classes {'endpoint_identifier': parameters, ...}
+
+Parameters
+----------
+class : class or None.
+    !!!!
+    The class used to construct workflow instance.
+    If None, default Workflow class is used.
+
+**methods : dict {'method_name': {'func': None, **kwargs}, ...}.
+    Each key corresponds to one workflow method. Each value specifies kw_args 
+    to call that method . Special subkey `func` used to reassign target
+    function if needed. It takes either string name of `class` method, None, or
+    custom function. If `func` is None, default `class` method is used. 
+    
+    **kwargs : dict {'kwarg_name': value, ...}.
+        Arguments depends on workflow methods. It is possible to create
+        separate configuration section for any argument. If value is set here
+        to None, parser try to resolve it. First it searches for value in
+        `global` subsection. Then resolver looks up 'kwarg_name' in section
+        names. If such section exist, there are two possibilities: if
+        `kwarg_name` contain '_id' postfix, resolver substitutes None with
+        existed id of available configuration in section, else without postfix
+        resolver substitutes None with configuration itself. If case of fail
+        to find resolution, value is remained None. In case of plurality of 
+        resolutions, ValueError is raised.
+        TOOO !!!!
+        configuration with postfix will be passed to workflow separately.
+        
+global : dict {'kwarg_name': value, ...}.
+    Specify values to resolve None for arbitrary kwargs. This is convenient for
+    example when we use the same `pipeline` in all methods. Doesnt't rewrite 
+    not-None values.
+        
+
+Examples
+--------
+# Use built-in class methods` names to specify separate kw_args configuration.
+'dump_1': {'func': 'dump',
+            'pipeline_id': 'pipeline_1',},
+'dump_2': {'func': 'dump',
+          'pipeline_id': 'pipeline_2',},
+
+# Use custom functions.
+def my_func(self, pipeline, dataset):
+    # custom logic
+    return 
+'custom': {'func': my_func,
+           'pipeline_id': 'xgboost',
+           'dataset_id': 'train'},
+    
+Notes
+-----
+If section is skipped, default endpoint is added.
+Otherwise for each endpoint if `class` is None or not set, default values are
+used for skipped subkeys. So in most cases it is enough just to specify 
+'global' subsection.
+
+See also
+--------
+:class:`Workflow`:
+    default universal workflow class.
+
+"""
+
+PIPELINES = {
+    'default': {
+        'class': None,  # Factory
+
+        # one of two
+        'load': {'func': None,
+                 'filepath': None,
+                 'estimator_type': 'regressor',
+                 },
+        'create': {'func': None,
+                   'cache': None,
+                   'steps': None,
+                   'estimator': sklearn.linear_model.LinearRegression(),
+                   'estimator_type': 'regressor',
+                   # 'th_strategy': None,
+                   },
+        'resolve': {
+            'func': None,
+            # [deprecated]  should be setted 'auto'/['auto'], by default only for index
+            #  only if not setted
+            # 'hp': {
+            #     'process_parallel__pipeline_categoric__select_columns__kw_args',
+            #     'process_parallel__pipeline_numeric__select_columns__kw_args',
+            #     'estimate__apply_threshold__threshold'}
+            # },
+        },
+    },
+}
+
+
+METRICS = {
+    'classifier': (sklearn.metrics.accuracy_score, {'greater_is_better': True}),
+    'regressor': (sklearn.metrics.r2_score, {'greater_is_better': True}),
+}
+
+
+DATASETS = {
+    'default': {
+        'class': None,  # Factory
         'steps': [
-            ('fit',),
-            # ('fit', 0, {'pipeline':'pipeline_2'}),
-            ('optimize',),
-            # ('optimize', 1, {'optimizer': None, 'gs_params':'gs_2', 'th_name': 'estimate__apply_threshold__threshold'})
-            ('dump',),
-            ('validate',),
-            ('gui',),
-            ('predict',),
+            ('load_cache', {'flag': 0, 'func': None, 'prefix': None},),
+            ('get', {'func': None},),
+            ('preprocess', {'func': None, 'categor_names': [], 'target_names': [], 'pos_labels': []},),
+            ('info', {'func': None},),
+            ('unify', {'func': None},),
+            ('split', False,),
+            ('dump_cache', {'flag': 0, 'func': None, 'prefix': None},),
         ],
     },
-    'endpoint': {
-        # so workflow class have set of built-in function, so we can resolve None by key name
-        # if fit_2 can`t resolve => set from built in or new
-
-        'default': {
-            # only second-level keys copy if skipped, not third
-            # 'global': {
-            #    'class': None,
-            #    'seed': None,
-            #     'pipeline': None,
-            #     'dataset': None,
-            #     'metric': None,
-            #     'gs': None,
-            # },
-            # [deprecated] not necessary, better on call and del
-            ## data
-            #'handle': {},
-            # pipeline
-            ##'add': {},
+}
 
 
-            ## call pipeline endpoints
-            # no data
-            # 'load': {'func': None,
-            #          'pipeline': None,
-            #          'seed': None},
-            # 'load2': {'func': 'load',
-            #          'pipeline': None,
-            #          'seed': None},
-            # 'create': {'func': None,
-            #            'pipeline': None,
-            #            'seed': None},
-            'dump': {'func': None,
-                     'pipeline': None,
-                     'seed': None},
-            'dump2': {'func': 'dump',
-                      'pipeline': None,
-                      'seed': None},
-            # both
-            'optimize': {'func': None,
-                         'optimizer': mlshell.optimize.RandomizedSearchOptimizer,  # optimizer
-                         'validator': mlshell.validate.Validator,
-                         'pipeline': None,  # multiple pipeline? no, user can defined separately if really needed
-                         'dataset': 'train',
-                         'gs_params': None,
-                         'fit_params': {},
-                         'resolve_params': {
-                             'estimate__apply_threshold__threshold': {
-                                 'resolver': None,  # if None, use pipeline default resolver
-                                 'samples': 10,
-                                 'plot_flag': False,
-                             },
-                         },
-                         },
-            'fit': {'func': None,
-                    'pipeline': None,
-                    'dataset': 'train',
-                    'fit_params': {},
-                    'hp': {},
-                    'seed': None,
-                    'resolve_params': {},
-                    },
-            'validate': {'func': None,
-                         'dataset': 'train',
-                         'validator': None,
-                         'metric': None,
-                         'pos_label': None,  # if None, get -1
-                         'pipeline': None,
-                         'seed': None},
-            'predict': {'func': None,
-                        'dataset': 'test',
-                        'pipeline': None,
-                        'seed': None},
-            'gui': {'plotter': None, # gui
-                    'pipeline': None,
-                    'hp_grid': {},
-                    'dataset': 'train',
-                    'base_sort': False,
-                    # 'metric': False,  beta
-                    'seed': None},
-            # memory
-            'init': {},
-            'reset': {},
-
-        },
-    },
-    'pipeline': {
-        'default': {
-            'class': None,  # Factory
-
-            # one of two
-            'load': {'func': None,
-                     'filepath': None,
-                     'estimator_type': 'regressor',
-                     },
-            'create': {'func': None,
-                       'cache': None,
-                       'steps': None,
-                       'estimator': sklearn.linear_model.LinearRegression(),
-                       'estimator_type': 'regressor',
-                       # 'th_strategy': None,
-                       },
-            'resolve': {
-                 'func': None,
-                 # [deprecated]  should be setted 'auto'/['auto'], by default only for index
-                 #  only if not setted
-                 # 'hp': {
-                 #     'process_parallel__pipeline_categoric__select_columns__kw_args',
-                 #     'process_parallel__pipeline_numeric__select_columns__kw_args',
-                 #     'estimate__apply_threshold__threshold'}
-                 # },
-            },
-        },
-    },
-    'metric': {
-        # 'default': (sklearn.metrics.r2_score, {'greater_is_better': True}),
-        'classifier': (sklearn.metrics.accuracy_score, {'greater_is_better': True}),
-        'regressor': (sklearn.metrics.r2_score, {'greater_is_better': True}),
-    },
-    # can be, but not necessary
-    # 'optimizer': {
-    #     'default': {
-    #         'class': None,
-
-    #     }
-    # },
+CUSTOMS = {
     'gs_params': {
         'default': {
-            # 'flag': True,
             'hp_grid': {},
             'n_iter': None,  # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
             'scoring': None,  # no resolving (default estimator scoring)
@@ -176,32 +262,22 @@ DEFAULT_PARAMS = {
             'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
             'verbose': 1,
             'pre_dispatch': 'n_jobs',
-            # not necessary to specify all
-            #'random_state': None,
-            #'error_score': np.nan,
-            #'return_train_score': True,
-        },
-        'gs_2': {
-            'hp_grid': {'threshold': [0.5]},
-        },
-    },
-    # TODO: test that we can set as configuration
-    # 'resolve_params':{},
-    'dataset': {
-        'default': {
-            'class': None,  # Factory
-            'steps': [
-                ('load_cache', {'flag': 0, 'func': None, 'prefix': None},),
-                ('get', {'func': None},),
-                ('preprocess', {'func': None, 'categor_names': [], 'target_names': [], 'pos_labels': []},),
-                ('info', {'func': None},),
-                ('unify', {'func': None},),
-                ('split', False,),
-                ('dump_cache', {'flag': 0, 'func': None, 'prefix': None},),
-            ],
         },
     },
 }
+
+
+DEFAULT_PARAMS = {
+    'workflow': WORKFLOW,
+    'endpoint': ENDPOINTS,
+    'pipeline': PIPELINES,
+    'dataset': DATASETS,
+    'metric': METRICS,
+    **CUSTOMS,
+}
+
+# TODO:
+#    encompass all sklearn-wise in mlshell.utills.sklearn
 
 
 # [deprecated]

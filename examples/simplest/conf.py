@@ -34,6 +34,22 @@ hp_grid = {
     #'estimate__regressor__l1_ratio': np.linspace(0.1, 1, 10),
 }
 
+# TODO: test
+# 'dump2': {'func': 'dump',
+#           'pipeline': None,
+#           'seed': None},
+# 'steps': [
+#     ('fit',),
+#     # ('fit', {'pipeline':'pipeline_2'}),
+# 'global': {
+#    'class': None,
+#    'seed': None,
+#     'pipeline': None,
+#     'dataset': None,
+#     'metric': None,
+#     'gs': None,
+# },
+# Можно ли задавать напрямую?
 
 # set workflow params
 params = {
@@ -55,7 +71,6 @@ params = {
     },
     'gs_params': {
         'my_gs': {
-            'flag': True,
             'hp_grid': hp_grid,
             'n_iter': None,  # 'gs__runs'
             'scoring': ['score', 'mae', 'mse'],
@@ -69,7 +84,6 @@ params = {
             'return_train_score': True,
         },
         'my_gs_2': {
-            'flag': False,
         }
     },
     'dataset': {
