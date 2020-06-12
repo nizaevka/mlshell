@@ -58,16 +58,19 @@ class GetParams(object):
         # merge with default parameters
         self.merge_default(p, copy.deepcopy(mlshell.default.DEFAULT_PARAMS))
 
-        if not p['workflow']['endpoint_id']:
+        # Resolve endpoint.
+        if p['workflow']['endpoint_id'] is None:
             if len(p['endpoint']) > 1:
-                raise ValueError(f"Multiple 'endpoint' configuration provided, specify 'endpoint' id in 'workflow'.")
+                raise ValueError(f"Multiple 'endpoint' configuration provided,"
+                                 f" specify 'endpoint' id in 'workflow'.")
             else:
                 p['workflow']['endpoint_id'] = list(p['endpoint'].keys())[0]
         endpoint_ids = p['workflow']['endpoint_id']
-
         if isinstance(endpoint_ids, str):
             endpoint_ids = [endpoint_ids]
         ids = {'endpoint': endpoint_ids}
+
+        # Resolve parameters in endpoint(s).
         for endpoint_id in endpoint_ids:
             self.resolve_none(p, endpoint_id, ids)
 
@@ -106,7 +109,6 @@ class GetParams(object):
         #     #    else:
         #     #        raise ValueError('unknown pipeline_id')
 
-
         # miss_data_ids = set()
         # for data_id in data_ids:
         #     if data_id not in p['dataset']:
@@ -114,8 +116,7 @@ class GetParams(object):
         # if miss_data_ids:
         #     raise KeyError(f"Unknown {name_id} configuration(s): {miss_data_ids}.")
 
-        # [deprecated] TODO: should be enpdoint-wise, also at each subfunction,
-        #                   ny default disabled.
+        # [deprecated] global seed is bad practice, anyway available in conf.
         # set global random state as soon as possible.
         # checked, work for whole process (estimator has its own seed).
         # if 'seed' in p['endpoint'][endpoint_id]['global']:
@@ -126,17 +127,32 @@ class GetParams(object):
         return res
 
     def resolve_none(self, p, endpoint_id, ids):
-        # if some None, use global, if global None, use from conf list, if more than one, error
+        """Auto resolution for None parameters in endpoint section.
 
-        if 'global' not in p['endpoint'][endpoint_id]:
-            p['endpoint'][endpoint_id]['global'] = {}
+        If parameter None => use global,
+        if global None => use from available configuration,
+        if more than one configuration => ValueError.
+        If parameter name contain '_id', None substitute with conf name,
+        else with conf itself.
+        if no configuration => remain None.
 
+        """
+        # TODO: check consequence.
+        # [deprecated] already exist in default.
+        # if 'global' not in p['endpoint'][endpoint_id]:
+        #     p['endpoint'][endpoint_id]['global'] = {}
+
+        # TODO: check consequence.
+        # [deprecated] asymmetry + should be user defined.
         # metric by default all
-        if 'metric' not in p['endpoint'][endpoint_id]['global'] or not p['endpoint'][endpoint_id]['global']['metric']:
-            p['endpoint'][endpoint_id]['global']['metric'] = p['metric'].keys()
+        # if 'metric' not in p['endpoint'][endpoint_id]['global'] \
+        #         or not p['endpoint'][endpoint_id]['global']['metric']:
+        #     p['endpoint'][endpoint_id]['global']['metric'] = p['metric'].keys()
 
-        # keys with not separate conf (like 'seed', global None is possible)
-        primitive = {key for key in p['endpoint'][endpoint_id]['global'] if key not in p}
+        # Keys resolved via global.
+        # (exist in global and no separate conf).
+        primitive = {key for key in p['endpoint'][endpoint_id]['global']
+                     if key.replace('_id', '') not in p}
         for key in primitive:
             key_id = key
             # read glob val if exist
@@ -150,19 +166,28 @@ class GetParams(object):
                     if not value[key_id]:
                         value[key_id] = glob_val
 
-        # keys with separate conf (like 'dataset', 'pipeline', 'metric', 'gs_params', ..)
+        # Keys resolved via separate conf section.
+        # two separate check: contain '_id' or not.
         nonprimitive = {key for key in p.keys() if key not in ['workflow', 'endpoint']}
         for key in nonprimitive:
-            key_id = key
             # read glob val if exist
-            if key_id in p['endpoint'][endpoint_id]['global']:
-                glob_val = p['endpoint'][endpoint_id]['global'][key_id]
+            if key in p['endpoint'][endpoint_id]['global']:
+                glob_val = p['endpoint'][endpoint_id]['global'][key]
+            elif f"{key}_id" in p['endpoint'][endpoint_id]['global']:
+                glob_val = p['endpoint'][endpoint_id]['global'][f"{key}_id"]
             else:
                 glob_val = None
             if key not in ids:
                 ids[key] = set()
             for subkey, value in p['endpoint'][endpoint_id].items():
-                if subkey is not 'global' and key_id in value:
+                if subkey is 'global':
+                    continue
+                key_id = None
+                if key in value:
+                    key_id = key
+                elif f"{key}_id" in value:
+                    key_id = f"{key}_id"
+                if key_id:
                     # If None use global.
                     if not value[key_id]:
                         # If global None use from conf (if only one provided)
@@ -186,12 +211,11 @@ class GetParams(object):
                         if conf not in p[key]:
                             raise ValueError(f"Unknown {key} configuration: {conf}.")
 
-                    # set either in ids, or inplace.
-                    if key in ['dataset', 'pipeline', 'metric']:
-                        # dataset/pipeline/metric have separate storage in workflow.
+                    # Substitute either id(s), or conf.
+                    if key_id.endswith('_id'):
                         ids[key].update(confs)
                     else:
-                        # others nonprimitives set inplace with copy (contain mutable).
+                        # set inplace with copy (contain mutable).
                         if len(confs) > 1:
                             value[key_id] = copy.deepcopy([p[key][conf] for conf in confs])
                         else:
@@ -218,7 +242,7 @@ class GetParams(object):
         else:
             p[key] = copy.deepcopy(dp[key])
 
-        for key in ['pipeline', 'endpoint']:
+        for key in ['endpoint']:  # [deprecated] 'pipeline', unified
             if key in p and len(p[key]) > 0:
                 # Use default subkeys only for default class.
                 if 'class' not in p[key] or p[key]['class'] is None:
@@ -229,6 +253,9 @@ class GetParams(object):
             else:
                 p[key] = {'default': copy.deepcopy(dp[key]['default'])}
 
+        # TODO: all others are customs, do similar as for endpoint.
+
+        # TODO: better apply in validator factory.
         key = 'metric'
         if key not in p:
             name = p['pipeline']['type']

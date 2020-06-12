@@ -1,4 +1,53 @@
-"""Module contains default configuration for user params and class to create default pipeline steps."""
+"""Module contains default workflow configuration and pipeline steps.
+
+Workflow configuration is set with python dictionary.
+It could be passed to the `mlshell.run()` function or some user-defined handler, where
+workflow class is built and its endpoints are executed.
+
+There is common logic for all configuration sections:
+{'section_id':
+    'configuration_id 1': {
+        'init': initial object of custom type.
+        'producer': factory class, which contain methods to run steps.
+        'patch': add custom method to class.
+        'steps': [
+            ('method_id 1', kw_args_1),
+            ('method_id 2', kw_args_2),
+        ],
+        'global': shortcut to common parameters.
+        'priority': parsing priority (integer number).
+    }
+    'configuration_id 2':{
+        ...
+    }
+}
+The target of each section is to create object (pipeline, dataset, ..).
+`producer` work as factory, it should contain .produce() method, which is:
+* takes `init` and consecutive pass it to `steps` with additional kwargs.
+* return resulting object.
+so `init` is the future object template (empty dict() for example).
+
+Created objects can be used as kw_args for any step in others sections or even
+as `init`/`producer` object. But it is important the order in which
+sections handled. For this 'priority' key is available, otherwise default
+python dict() keys order is used.
+
+`mlshell.run()` handler:
+* Parse section one by one in priority.
+* For each configuration in section:
+    * call .produce(`init`, `steps`) on `producer`.
+    * store result in internally storage under `section_id__configuration_id`.
+
+For flexibility, it is possible to:
+* monkey patch `producer` object with custom functions via `patch` key.
+* specify global value for common kw_args in steps via `global` key.
+* create separate section for any configuration`s subkey or kw_arg parameter.
+
+For ML task, common sections would be:
+* create/read pipelines and datasets objects.
+* create workflow class and call methods with pipeline/dataset as argument.
+
+"""
 
 
 from mlshell.libs import *
@@ -6,6 +55,8 @@ import mlshell.custom
 import mlshell.optimize
 import mlshell.validate
 
+
+TODO: move logger, find_path in conf.py as class creation argument
 
 WORKFLOW = {
     # DONE
@@ -69,8 +120,8 @@ See also
 ENDPOINTS = {
     'default': {
         'class': None,
-        
         'global': {},
+        'steps': [],
         
         'dump': {'func': None,
                  'pipeline_id': None,},
@@ -139,15 +190,15 @@ workflow classes {'endpoint_identifier': parameters, ...}
 Parameters
 ----------
 class : class or None.
-    !!!!
+    TODO !!!! always should be in endpoint, factory class 
     The class used to construct workflow instance.
     If None, default Workflow class is used.
 
 **methods : dict {'method_name': {'func': None, **kwargs}, ...}.
     Each key corresponds to one workflow method. Each value specifies kw_args 
     to call that method . Special subkey `func` used to reassign target
-    function if needed. It takes either string name of `class` method, None, or
-    custom function. If `func` is None, default `class` method is used. 
+    function if needed. It takes either string name of `producer` method, None, or
+    custom function. If `func` is None, default `producer` method is used. 
     
     **kwargs : dict {'kwarg_name': value, ...}.
         Arguments depends on workflow methods. It is possible to create
@@ -162,11 +213,19 @@ class : class or None.
         resolutions, ValueError is raised.
         TOOO !!!!
         configuration with postfix will be passed to workflow separately.
+        Also list of id is possible (like for metric)
         
 global : dict {'kwarg_name': value, ...}.
     Specify values to resolve None for arbitrary kwargs. This is convenient for
     example when we use the same `pipeline` in all methods. Doesnt't rewrite 
     not-None values.
+    
+steps : list of tuples (str 'step_identifier', kw_args).
+    List of class methods to run consecutive. 
+    Each step should be a tuple: `('step_identifier', {kw_args to use})`,
+    where 'step_identifier' should match with `producer` functions' names.
+    By default, step executed with argument taken from **methods,
+    but it is also possible to update kw_args before calling. 
         
 
 Examples
@@ -188,7 +247,7 @@ def my_func(self, pipeline, dataset):
 Notes
 -----
 If section is skipped, default endpoint is added.
-Otherwise for each endpoint if `class` is None or not set, default values are
+Otherwise for each endpoint if `producer` is None or not set, default values are
 used for skipped subkeys. So in most cases it is enough just to specify 
 'global' subsection.
 
@@ -199,11 +258,13 @@ See also
 
 """
 
+# TODO: if class is provided => Factory with produce method => workflow via argument
+#       else =>  => workflow via argument without changes
+
 PIPELINES = {
     'default': {
         'class': None,  # Factory
 
-        # one of two
         'load': {'func': None,
                  'filepath': None,
                  'estimator_type': 'regressor',
@@ -230,7 +291,11 @@ PIPELINES = {
 
 
 METRICS = {
-    'classifier': (sklearn.metrics.accuracy_score, {'greater_is_better': True}),
+    'classifier': {
+        'class': None,
+        'func':sklearn.metrics.accuracy_score,
+        'kw_args': {'greater_is_better': True},
+    },
     'regressor': (sklearn.metrics.r2_score, {'greater_is_better': True}),
 }
 
@@ -238,14 +303,15 @@ METRICS = {
 DATASETS = {
     'default': {
         'class': None,  # Factory
+        # TODO: both steps and reaassign
         'steps': [
-            ('load_cache', {'flag': 0, 'func': None, 'prefix': None},),
+            ('load_cache', {'func': None, 'prefix': None},),
             ('get', {'func': None},),
             ('preprocess', {'func': None, 'categor_names': [], 'target_names': [], 'pos_labels': []},),
             ('info', {'func': None},),
             ('unify', {'func': None},),
             ('split', False,),
-            ('dump_cache', {'flag': 0, 'func': None, 'prefix': None},),
+            ('dump_cache', {'func': None, 'prefix': None},),
         ],
     },
 }

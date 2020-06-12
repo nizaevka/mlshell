@@ -1,19 +1,15 @@
 Configuration
 =============
 
-Workflow configuration is set with python dictionary.
-It could be passed to the `mlshell.run()` function or some user-defined handler, where
-workflow class is built and its endpoints are called.
-TODO: see "" for details.
+# module title
 
+# ML task picture.
 
-# картинка
-
+# default configuration description
 .. contents:: **Contents**
     :depth: 1
     :local:
     :backlinks: none
-
 
 
 Default workflow class have set of built-in functions:
