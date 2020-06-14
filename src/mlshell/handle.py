@@ -11,7 +11,7 @@ import types
 
 class ConfHandler(object):
     """Class to read workflow configuration from file"""
-    def __init__(self, project_path='', logger=None):
+    def __init__(self, project_path='', logger=None, **kwargs):
         self.logger = logger if logger else logging.Logger(__class__.__name__)
         self.project_path = project_path
 
@@ -38,28 +38,6 @@ class ConfHandler(object):
     def _parse_conf(self, p, dp=None):
         if dp is None:
             dp = copy.deepcopy(mlshell.default.DEFAULT_PARAMS)
-        # [deprecated] unreliable for custom, always contain name
-        # # check if configuration name is skipped, set under 'user' name
-        # reserved = {'endpoint': mlshell.default.DEFAULT_PARAMS['endpoint']['default'].keys(),
-        #             'gs': mlshell.default.DEFAULT_PARAMS['gs']['default'].keys(),
-        #             'pipeline': mlshell.default.DEFAULT_PARAMS['pipeline']['default'].keys(),}
-        # for key in ['pipeline', 'endpoint', 'gs']:
-        #     if key in p and len(p[key])>0:
-        #         subkeys = set(p[key].keys())
-        #         if subkeys - reserved[key]:
-        #             pass
-        #             # [deprecated] check key names when merge default
-        #             # for subkey in subkeys:
-        #             #     subsubkeys = set(p[key][subkey].keys())
-        #             #     diff = subsubkeys - reserved[key]
-        #             #     if diff:
-        #             #         raise KeyError(f"Unknown keys {diff} in {key}__{subkey} conf.py")
-        #         else:
-        #             p[key]['user'] = p.pop(key)
-        # if 'metric' in p and len(p['metric']) > 0:
-        #     item = list(p['metric'].items())[0]
-        #     if isinstance(item, dict):
-        #         p['metric']['user'] = p.pop('metric')
         if 'dataset' not in p or not p['dataset']:
             raise KeyError('Specify dataset configuration in conf.py.')
 
