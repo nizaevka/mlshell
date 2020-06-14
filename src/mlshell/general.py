@@ -258,29 +258,32 @@ class Workflow(mlshell.Producer):
                 for pipe_id in pipe_ids}
 
     # =============================================== gridsearch =======================================================
-    def _check_arg(self, arg, func=None):
-        """Check if argument is id or object."""
-        if isinstance(arg, str):
-            return arg
-        else:
-            assert False, 'Argument should be str'
-            # TODO[beta]: пока оставлю так,пусть дата и пайплайн всегда через config задаются, потом можно расширить
-            # fit() принимает pipeline_id вместо  pipeline, но read_conf резолвит pipeline
-            # вообще у даты и пайплайн особый статус, но с другими параметрами должна быть синхронность
-            # Лучше так: можно и id  и напрямую пайплайн, дату, это будет логично.
-            # тогда не будет отличатся от других. Только там внутри есть хранилища зависимые от айдишников.
-            # надо дефолтный айди тогда создавать!
-            # pipeline should contain pipeline.pipeine
-
-            # Generate arbitrary.
-            # id = str(int(time.time()))
-            # Add to storage under id.
-            # func(arg, id)
-            # return id
+# [deprecated] hard-code type always better.
+#     def _check_arg(self, arg, func=None):
+#         """Check if argument is id or object."""
+#         if isinstance(arg, str):
+#             return arg
+#         else:
+#             assert False, 'Argument should be str'
+#             # TODO[beta]: пока оставлю так,пусть дата и пайплайн всегда через config задаются, потом можно расширить
+#             # fit() принимает pipeline_id вместо  pipeline, но read_conf резолвит pipeline
+#             # вообще у даты и пайплайн особый статус, но с другими параметрами должна быть синхронность
+#             # Лучше так: можно и id  и напрямую пайплайн, дату, это будет логично.
+#             # тогда не будет отличатся от других. Только там внутри есть хранилища зависимые от айдишников.
+#             # надо дефолтный айди тогда создавать!
+#             # pipeline should contain pipeline.pipeine
+#
+#             # Generate arbitrary.
+#             # id = str(int(time.time()))
+#             # Add to storage under id.
+#             # func(arg, id)
+#             # return id
 
     @checker
     # @memory_profiler
-    def fit(self, pipeline, dataset, **kwargs):
+    def fit(self, res, pipeline_id='default', dataset_id='train',
+            fit_params=None, hp=None,
+            resolve_params=None, objects=None, **kwargs):
         """Tune hp, fit best.
             https://scikit-learn.org/stable/modules/grid_search.html#grid-search
 
@@ -297,11 +300,24 @@ class Workflow(mlshell.Producer):
 
             If gs_flag is True run grid search else just fit estimator
         """
-        pipeline_id = self._check_arg(pipeline)
-        dataset_id = self._check_arg(dataset)
+        if fit_params is None:
+            fit_params = {}
+        if hp is None:
+            hp = {}
+        if resolve_params is None:
+            resolve_params = {}
+        if objects is None:
+            objects = {}
 
-        dataset = self.datasets[dataset_id]
-        pipeline = self.pipelines[pipeline_id]
+        # [deprecated]
+        # pipeline_id = self._check_arg(pipeline)
+        # dataset_id = self._check_arg(dataset)
+        # dataset = self.datasets[dataset_id]
+        # pipeline = self.pipelines[pipeline_id]
+
+        pipeline = objects[pipeline_id]
+        dataset = objects[dataset_id]
+
         # resolve and set hps
         pipeline = self._set_hps(pipeline, dataset, **kwargs)
         # optional
@@ -321,14 +337,21 @@ class Workflow(mlshell.Producer):
         # [deprecated] dump not needed, no score evaluation
         # best_run_index = 0
         # runs = {'params': [self.estimator.get_params(),]}
-        self.pipelines[pipeline_id] = pipeline
+        objects[pipeline_id] = pipeline
+        return res
 
-    def optimize(self, pipeline, dataset, optimizer, validator, **kwargs):
-        pipeline_id = self._check_arg(pipeline)
-        dataset_id = self._check_arg(dataset)
+    def optimize(self, res, pipeline_id=None, dataset_id=None,
+                 optimizer, validator, **kwargs):
 
-        dataset = self.datasets[dataset_id]
-        pipeline = self.pipelines[pipeline_id]
+        # [deprecated]
+        # pipeline_id = self._check_arg(pipeline)
+        # dataset_id = self._check_arg(dataset)
+        # dataset = self.datasets[dataset_id]
+        # pipeline = self.pipelines[pipeline_id]
+        pipeline = objects[pipeline_id]
+        dataset = objects[dataset_id]
+
+
         # For pass_custom.
         self.current_pipeline_id = pipeline_id
         # Resolve and set hps.

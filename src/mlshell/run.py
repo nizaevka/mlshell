@@ -1,14 +1,9 @@
-"""
-TODO:
-    move get, preprocess, plot to Workflow
-    change preprocess to get categor features and targets
-
-"""
+""" """
 
 import mlshell
 
 
-def run(conf, project_path='', logger=None):
+def run(conf, default_conf=None, project_path='', logger=None):
     logger_name = 'logger'
     if not project_path:
         project_path, script_name = mlshell.find_path()
@@ -18,7 +13,7 @@ def run(conf, project_path='', logger=None):
 
     # get params from conf.py
     handler = mlshell.ConfHandler(project_path=project_path, logger=logger)
-    configs = handler.read(conf=conf)
+    configs = handler.read(conf=conf, default_conf=default_conf)
     objects = handler.exec(configs)
 
 # [deprecated] now unified.

@@ -53,17 +53,18 @@ class ExtendedScorer(object):
         """
         # Use initial kwargs for score if pipeline not contain steps.
         self.scorer._kwargs.update(self.init_kwargs)
-        try:
+        if hasattr(estimator, 'steps'):
             if estimator.steps[0][0] == 'pass_custom':
                 if estimator.steps[0][1].kwargs:
                     self.scorer._kwargs.update(estimator.steps[0][1].kwargs)
-        except AttributeError:
-            # ThresholdClassifier object has no attribute 'steps'.
+        # [deprecated] need tests.
+        # except AttributeError:
+        #     # ThresholdClassifier object has no attribute 'steps'.
 
-            # [deprecated] Now use init kwargs in score,
-            #   not last if no step or `pass_custom`.
-            # self.scorer._kwargs.update(self.cache_custom_kwargs)
-            pass
+        #     # [deprecated] Now use init kwargs in score,
+        #     #   not last if no step or `pass_custom`.
+        #     # self.scorer._kwargs.update(self.cache_custom_kwargs)
+        #     pass
 
         return self.scorer(estimator, x, y, **kwargs)
 
@@ -104,11 +105,12 @@ class ScorerProducer(mlshell.Producer):
                 # create special object.
                 # [alternative] Rewrite _BaseScorer.
                 custom_scorer = sklearn.metrics.make_scorer(func, **kwargs)
-                scorer.scorer = _ExtendedScorer(custom_scorer)._scorer_shell
+                # TODO: combine with Scorer class after testing.
+                scorer = ExtendedScorer
             else:
                 scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
 
-        # TODO: move out check somewhere.
+        # TODO: move out check somewhere or prohibit.
         # if metric_id not in custom_metrics:
         #     # valid sklearn.metrics.SCORERS.keys().
         #     scorers[metric_id] = sklearn.metrics.get_scorer(metric_id)

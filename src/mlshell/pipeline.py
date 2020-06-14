@@ -1,8 +1,4 @@
 """
-TODO:
-    load pipeline will not work, because it don`t know about input chanel
-    visualize pipeline
-
 Pipeline should contain:
 
 fit():

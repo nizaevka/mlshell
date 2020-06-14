@@ -4,7 +4,7 @@
 import importlib.util
 import sys
 import logging
-from mlshell.libs import copy, np, rd, heapq
+from mlshell.libs import copy, np, rd, heapq, inspect, collections
 import mlshell.default
 import types
 
@@ -15,7 +15,7 @@ class ConfHandler(object):
         self.logger = logger if logger else logging.Logger(__class__.__name__)
         self.project_path = project_path
 
-    def read(self, conf=None):
+    def read(self, conf=None, default_conf=None):
         self.logger.info("\u25CF READ CONFIGURATION")
         if conf is None:
             dir_name = self.project_path.split('/')[-1]
@@ -24,7 +24,7 @@ class ConfHandler(object):
             spec.loader.exec_module(conf_file)
             sys.modules['conf'] = conf_file  # otherwise problem with pickle, depends on the module path
             conf = copy.deepcopy(conf_file.conf)
-        return self._parse_conf(conf)
+        return self._parse_conf(conf, default_conf)
 
     def exec(self, configs):
         objects = {}
@@ -35,7 +35,9 @@ class ConfHandler(object):
             objects[name] = self._exec(val, objects)
         return objects
 
-    def _parse_conf(self, p):
+    def _parse_conf(self, p, dp=None):
+        if dp is None:
+            dp = copy.deepcopy(mlshell.default.DEFAULT_PARAMS)
         # [deprecated] unreliable for custom, always contain name
         # # check if configuration name is skipped, set under 'user' name
         # reserved = {'endpoint': mlshell.default.DEFAULT_PARAMS['endpoint']['default'].keys(),
@@ -62,7 +64,8 @@ class ConfHandler(object):
             raise KeyError('Specify dataset configuration in conf.py.')
 
         # merge with default parameters
-        self.merge_default(p, copy.deepcopy(mlshell.default.DEFAULT_PARAMS))
+
+        self.merge_default(p, dp)
 
         # Resolve endpoint.
         if p['workflow']['endpoint_id'] is None:
@@ -130,8 +133,14 @@ class ConfHandler(object):
         #     rd.seed(seed)
         #     np.random.seed(seed)
 
-        res = self._priority_arange(res)
-        # [('section__config', config), ...]
+        res = self._priority_arrange(res)
+        # [('config__id', config), ...]
+        # check repeated name
+        non_uniq = [k for (k, v) in
+                    collections.Counter(list(zip(*res))[0]).items() if v > 1]
+        if non_uniq:
+            raise ValueError(f"Non-unique configuration id found:\n"
+                             f"    {non_uniq}")
         return res
 
     def resolve_none(self, p, endpoint_id, ids):
@@ -336,7 +345,9 @@ class ConfHandler(object):
         for key in res:
             for subkey in res[key]:
                 val = res[key][subkey]
-                name = f'{key}__{subkey}'
+                # [beta]
+                # name = f'{key}__{subkey}'
+                name = subkey
                 priority = val.get('priority', 0)
                 heapq.heappush(min_heap, (priority, (name, val)))
         sorted_ = heapq.nsmallest(len(min_heap), min_heap)
@@ -345,8 +356,12 @@ class ConfHandler(object):
     def _exec(self, conf, objects):
         init = conf.get('init', {})
         steps = conf.get('steps', [])
-        producer = conf.get('producer', mlshell.Producer())
+        producer = conf.get('producer', mlshell.Producer)
         patch = conf.get('patch', {})
+        if inspect.isclass(init):
+            init = init()
+        if inspect.isclass(producer):
+            producer = producer(project_path=self.project_path, logger=self.logger)
         producer = self._patch(patch, producer)
         return producer.produce(init, steps, objects)
 

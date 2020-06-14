@@ -34,23 +34,6 @@ hp_grid = {
     #'estimate__regressor__l1_ratio': np.linspace(0.1, 1, 10),
 }
 
-# TODO: test
-# 'dump2': {'func': 'dump',
-#           'pipeline': None,
-#           'seed': None},
-# 'steps': [
-#     ('fit',),
-#     # ('fit', {'pipeline':'pipeline_2'}),
-# 'global': {
-#    'class': None,
-#    'seed': None,
-#     'pipeline': None,
-#     'dataset': None,
-#     'metric': None,
-#     'gs': None,
-# },
-# Можно ли задавать напрямую?
-
 
 # find project path/script name
 project_path, script_name = mlshell.find_path()
@@ -61,41 +44,54 @@ logger = mlshell.logger.CreateLogger(project_path, script_name).logger
 # set workflow params
 conf = {
     'workflow': {
-        'endpoint_id': ['endpoint_1', 'endpoint_2']
-    },
-    'endpoint': {
-        'endpoint_1': {'global': {'gs_params': 'my_gs', 'pipeline': 'pipeline_1'}},
-        'endpoint_2': {'global': {'gs_params': 'my_gs_2', 'pipeline': 'pipeline_2'}},
+        'workflow_1': {
+            'global': {'gs_params': 'my_gs', 'pipeline_id': 'pipeline_1'},
+        },
     },
     'pipeline': {
-        'pipeline_1': {'estimator': estimator, 'type': 'regressor'},
-        'pipeline_2': {'filepath': 'some', 'type': 'classifier'},
+        'pipeline_1': {
+            'global': {'estimator': estimator, 'type': 'regressor'},
+        },
     },
     'metric': {
-        'score': (sklearn.metrics.r2_score, {'greater_is_better': True}),
-        'mae': (sklearn.metrics.mean_absolute_error, {'greater_is_better': False}),
-        'mse': (sklearn.metrics.mean_squared_error, {'greater_is_better': False, 'squared': False}),
+        'score': {
+            'global': {
+                'func': sklearn.metrics.r2_score,
+                'kwargs': {'greater_is_better': True},
+            },
+        },
+        'mae': {
+            'global': {
+                'func': sklearn.metrics.mean_absolute_error,
+                'kwargs': {'greater_is_better': True},
+            },
+        },
+        'mse': {
+            'global': {
+                'func': sklearn.metrics.mean_squared_error,
+                'kwargs': {'greater_is_better': False, 'squared': False},
+            },
+        },
     },
     'gs_params': {
         'my_gs': {
-            'hp_grid': hp_grid,
-            'n_iter': None,  # 'gs__runs'
-            'scoring': ['score', 'mae', 'mse'],
-            'n_jobs': 1,
-            'refit': 'score',
-            'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),  # gs__splitter
-            'verbose': 1,
-            'pre_dispatch': 1,
-            'random_state': None,
-            'error_score': np.nan,
-            'return_train_score': True,
+            'init': {
+                'hp_grid': hp_grid,
+                'n_iter': None,  # 'gs__runs'
+                'scoring': ['score', 'mae', 'mse'],
+                'n_jobs': 1,
+                'refit': 'score',
+                'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),  # gs__splitter
+                'verbose': 1,
+                'pre_dispatch': 1,
+                'random_state': None,
+                'error_score': np.nan,
+                'return_train_score': True,
+            },
         },
-        'my_gs_2': {
-        }
     },
     'dataset': {
         'train': {
-            'class': None,
             'steps': [
                 # ('load_cache', {'func': None, 'prefix': 'train'}),
                 ('get', {'func': None, 'filename': 'data/train.csv'}),
@@ -112,7 +108,6 @@ conf = {
             ],
         },
         'test': {
-            'class': None,
             'steps': [
                 ('get', {'func': None, 'filename': 'data/test.csv'}),
                 ('preprocess', {'func': None, 'categor_names': [], 'target_names': ['targets']}),

@@ -65,6 +65,12 @@ For ML task, common sections would be:
     kwargs(not kwargs) everywhere in documentation/code
 
 See default configuration for example.
+
+[beta] Ideas:
+* all keys in configuration (except hardcoded) are global => more beautiful config
+* support 'section_id__conf_id', not sure if possible, require read variable name.
+
+
 """
 
 
@@ -77,7 +83,7 @@ import mlshell.validate
 WORKFLOW = {
     'default': {
         'init': {},
-        'producer': mlshell.Workflow(project_path=project_path, logger=logger),
+        'producer': mlshell.Workflow,
         'global': {},
         'patch': {},
         'priority': 1,
@@ -103,6 +109,9 @@ WORKFLOW = {
                    'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
                    'verbose': 1,
                    'pre_dispatch': 'n_jobs',
+                   # TODO: for thresholdoptimizer, also need add pass_custom step.
+                   #   so here params to mock.
+                   # 'th_name':
                 },
                 'fit_params': {},
                 'resolve_params': {
@@ -147,8 +156,8 @@ WORKFLOW = {
 
 PIPELINES = {
     'default': {
-        'init': mlshell.Pipeline(),
-        'producer': mlshell.PipeProducer(project_path=project_path, logger=logger),
+        'init': mlshell.Pipeline,
+        'producer': mlshell.PipeProducer,
         'global': {},
         'patch': {},
         'priority': 0,
@@ -176,7 +185,7 @@ PIPELINES = {
 METRICS = {
     'classifier': {
         'init': None,
-        'producer': mlshell.MetricProducer(project_path=project_path, logger=logger),
+        'producer': mlshell.MetricProducer,
         'global': {},
         'patch': {},
         'priority': 0,
@@ -189,7 +198,7 @@ METRICS = {
     },
     'regressor': {
         'init': None,
-        'producer': mlshell.MetricProducer(project_path=project_path, logger=logger),
+        'producer': mlshell.MetricProducer,
         'global': {},
         'patch': {},
         'priority': 0,
@@ -206,7 +215,7 @@ METRICS = {
 DATASETS = {
     'default': {
         'init': mlshell.Dataset(),
-        'class': mlshell.DataProducer(project_path=project_path, logger=logger),
+        'class': mlshell.DataProducer,
         'global': {},
         'patch': {},
         'priority': 0,
