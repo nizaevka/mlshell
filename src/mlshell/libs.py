@@ -25,6 +25,7 @@ import functools
 import glob
 import threading
 import operator
+import heapq
 from typing import List, Optional
 
 # third-party module or package

@@ -1,74 +1,168 @@
+import mlshell
 from mlshell.libs import *
 
 
-class Validator(object):
-    def __init__(self, *args, **kwargs):
-        self.logger = kwargs.get('logger', logging.Logger('Validator'))
-        self.custom_scorer = None
-        self.cache_custom_kw_args = {}
+class Scorer(object):
+    def __init__(self, scorer=None):
+        """
 
-    def resolve_scoring(self, metric_ids, custom_metrics, **kwargs):
-        """Make scorers from user_metrics.
+        Attributes:
+            scorer:
+                Object for which wrapper is created.
 
-        Args:
-            metric_ids (sequence of str): user_metrics names to use in gs.
-            custom_metrics (dict): {'name': (sklearn metric object, bool greater_is_better), }
+        """
+        self.scorer = scorer
 
-        Returns:
-            scorers (dict): {'name': sklearn scorer object, }
+    def __call__(self, *args, **kwargs):
+        """Redirect call to scorer object."""
+        return self.scorer(*args, **kwargs)
+
+    def __getattr__(self, name):
+        """Redirect unknown methods to scorer object."""
+        def wrapper(*args, **kwargs):
+            getattr(self.scorer, name)(*args, **kwargs)
+        return wrapper
+
+
+#TODO: [beta]
+class ExtendedScorer(object):
+    def __init__(self, scorer):
+        # Scorer to extend.
+        self.scorer = scorer
+
+        # [deprecated] now not memorize state, if no pass_csutom step, use default
+        # Last kwargs state to use in score for second stage optimizers.
+        # self.cache_custom_kwargs = {}
+        # TODO: here is actually problem when multiple pipeline are used.
+        #   it is better to inheret pass_custom step for next level
+        #   so the attribute error will never rise.
+
+        self.init_kwargs = self.scorer._kwargs
+
+    def __call__(self, estimator, x, y, **kwargs):
+        """Read custom_kwargs from current pipeline, pass to scorer.
 
         Note:
-            if 'gs__metric_id' is None, estimator default will be used.
+            In gs self object copy, we can dynamically get param only from estimator.
+
+            Use initial kwargs for score if:
+                pipeline not contain steps
+                no `pass_custom`
+                kwargs empty {}.
 
         """
-        scorers = {}
-        self.cache_custom_kw_args = kwargs.get('pass_custom__kw_args', {})
-        self.custom_scorer = None
-
-        # [deprecated]
-        # if not names:
-        #     # need to set explicit, because always need not None 'refit' name
-        #     # can`t extract estimator built-in name, so use all from validation user_metrics
-        #     names = user_metrics.keys()
-        for metric_id in metric_ids:
-            if metric_id in custom_metrics:
-                metric = custom_metrics[metric_id]
-                if isinstance(metric[0], str):
-                    # convert to callable
-                    # ignore kw_args (built-in `str` metrics has hard-coded kwargs)
-                    scorers[metric_id] = sklearn.metrics.get_scorer(metric[0])
-                    continue
-                if len(metric) == 1:
-                    kw_args = {}
-                else:
-                    kw_args = copy.deepcopy(metric[1])
-                    if 'needs_custom_kw_args' in kw_args:
-                        if self.custom_scorer:
-                            raise ValueError("Only one custom metric can be set with 'needs_custom_kw_args'.")
-                        del kw_args['needs_custom_kw_args']
-                        self.custom_scorer = sklearn.metrics.make_scorer(metric[0], **kw_args)
-                        scorers[metric_id] = self._custom_scorer_shell
-                        continue
-                scorers[metric_id] = sklearn.metrics.make_scorer(metric[0], **kw_args)
-            else:
-                # valid sklearn.metrics.SCORERS.keys().
-                scorers[metric_id] = sklearn.metrics.get_scorer(metric_id)
-        return scorers
-
-    def _custom_scorer_shell(self, estimator, x, y):
-        """Read custom_kw_args from current pipeline, pass to scorer.
-
-        Note: in gs self object copy, we can dynamically get param only from estimator.
-        """
+        # Use initial kwargs for score if pipeline not contain steps.
+        self.scorer._kwargs.update(self.init_kwargs)
         try:
             if estimator.steps[0][0] == 'pass_custom':
-                if estimator.steps[0][1].kw_args:
-                    self.custom_scorer._kwargs.update(estimator.steps[0][1].kw_args)
+                if estimator.steps[0][1].kwargs:
+                    self.scorer._kwargs.update(estimator.steps[0][1].kwargs)
         except AttributeError:
-            # ThresholdClassifier object has no attribute 'steps'
-            self.custom_scorer._kwargs.update(self.cache_custom_kw_args)
+            # ThresholdClassifier object has no attribute 'steps'.
 
-        return self.custom_scorer(estimator, x, y)
+            # [deprecated] Now use init kwargs in score,
+            #   not last if no step or `pass_custom`.
+            # self.scorer._kwargs.update(self.cache_custom_kwargs)
+            pass
+
+        return self.scorer(estimator, x, y, **kwargs)
+
+
+class ScorerProducer(mlshell.Producer):
+    def __init__(self, project_path='', logger=None):
+        self.logger = logger if logger else logging.Logger(__class__.__name__)
+        self.project_path = project_path
+        super().__init__(self.project_path, self.logger)
+
+    # [alternative]
+    # def __init__(self, *args, **kwargs):
+    #    self.logger = kwargs.get('logger', logging.Logger('Validator'))
+
+    def make_scorer(self, scorer, func=None, kwargs=None):
+        """Make scorer from metric function.
+
+        func : callback or str.
+            Custom function or sklearn built-in metric name.
+        kwargs
+        """
+        if func is None:
+            raise ValueError('Specify metric function')
+        if kwargs is None:
+            kwargs = {}
+
+        if isinstance(func, str):
+            # convert to callable
+            # ignore kwargs (built-in `str` metrics has hard-coded kwargs)
+            scorer.scorer = sklearn.metrics.get_scorer(func)
+        else:
+            kwargs = copy.deepcopy(kwargs)
+            if 'needs_custom_kwargs' in kwargs:
+                # [deprecated] Now check will not work, separate objects.
+                # if self.custom_scorer:
+                #     raise ValueError("Only one custom metric can be set with 'needs_custom_kwargs'.")
+                del kwargs['needs_custom_kwargs']
+                # create special object.
+                # [alternative] Rewrite _BaseScorer.
+                custom_scorer = sklearn.metrics.make_scorer(func, **kwargs)
+                scorer.scorer = _ExtendedScorer(custom_scorer)._scorer_shell
+            else:
+                scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
+
+        # TODO: move out check somewhere.
+        # if metric_id not in custom_metrics:
+        #     # valid sklearn.metrics.SCORERS.keys().
+        #     scorers[metric_id] = sklearn.metrics.get_scorer(metric_id)
+        return scorer
+
+# [deprecated] Now is the new object.
+#     def resolve_scoring(self, metric_ids, custom_metrics, **kwargs):
+#         """Make scorers from user_metrics.
+#
+#         Args:
+#             metric_ids (sequence of str): user_metrics names to use in gs.
+#             custom_metrics (dict): {'name': (sklearn metric object, bool greater_is_better), }
+#
+#         Returns:
+#             scorers (dict): {'name': sklearn scorer object, }
+#
+#         Note:
+#             if 'gs__metric_id' is None, estimator default will be used.
+#
+#         """
+#         scorers = {}
+#         self.cache_custom_kwargs = kwargs.get('pass_custom__kwargs', {})
+#         self.custom_scorer = None
+#
+#         # [deprecated]
+#         # if not names:
+#         #     # need to set explicit, because always need not None 'refit' name
+#         #     # can`t extract estimator built-in name, so use all from validation user_metrics
+#         #     names = user_metrics.keys()
+#         for metric_id in metric_ids:
+#             if metric_id in custom_metrics:
+#                 metric = custom_metrics[metric_id]
+#                 if isinstance(metric[0], str):
+#                     # convert to callable
+#                     # ignore kwargs (built-in `str` metrics has hard-coded kwargs)
+#                     scorers[metric_id] = sklearn.metrics.get_scorer(metric[0])
+#                     continue
+#                 if len(metric) == 1:
+#                     kwargs = {}
+#                 else:
+#                     kwargs = copy.deepcopy(metric[1])
+#                     if 'needs_custom_kwargs' in kwargs:
+#                         if self.custom_scorer:
+#                             raise ValueError("Only one custom metric can be set with 'needs_custom_kwargs'.")
+#                         del kwargs['needs_custom_kwargs']
+#                         self.custom_scorer = sklearn.metrics.make_scorer(metric[0], **kwargs)
+#                         # [alternative] Rewrite _BaseScorer.
+#                         scorers[metric_id] = self._custom_scorer_shell
+#                         continue
+#                 scorers[metric_id] = sklearn.metrics.make_scorer(metric[0], **kwargs)
+#             else:
+#                 # valid sklearn.metrics.SCORERS.keys().
+#                 scorers[metric_id] = sklearn.metrics.get_scorer(metric_id)
+#         return scorers
 
     def resolve_metric(self, metric_ids, custom_metrics):
         res = {}
@@ -81,12 +175,13 @@ class Validator(object):
                 metric = (
                     scorer._score_func,
                     {'greater_is_better': scorer._sign > 0,
-                    'needs_proba':
-                        isinstance(scorer,
-                                   sklearn.metrics._scorer._ProbaScorer),
-                    'needs_threshold':
-                        isinstance(scorer,
-                                   sklearn.metrics._scorer._ThresholdScorer),})
+                     'needs_proba':
+                         isinstance(scorer,
+                                    sklearn.metrics._scorer._ProbaScorer),
+                     'needs_threshold':
+                         isinstance(scorer,
+                                    sklearn.metrics._scorer._ThresholdScorer),}
+                )
                 res.update({metric_id: metric})
         return res
 
@@ -107,7 +202,7 @@ class Validator(object):
         #     y_pred_train = self.prob_to_pred(y_pred_proba_train, th_)
         #     y_pred_test = self.prob_to_pred(y_pred_proba_test, th_)
 
-        # prevent multiple prediction
+        # Need to prevent multiple prediction.
         temp = {'predict_proba': None,
                 'decision_function': None,
                 'predict': None}
@@ -155,21 +250,21 @@ class Validator(object):
                     y_pred_train, y_pred_test = temp['predict']
 
             # skip make_scorer params
-            kw_args = {key: metric[1][key] for key in metric[1]
+            kwargs = {key: metric[1][key] for key in metric[1]
                        if key not in ['greater_is_better', 'needs_proba',
-                                      'needs_threshold', 'needs_custom_kw_args']}
+                                      'needs_threshold', 'needs_custom_kwargs']}
 
             # pass_custom steo inly
-            if metric[1].get('needs_custom_kw_args', False):
+            if metric[1].get('needs_custom_kwargs', False):
                 if (hasattr(pipeline, 'steps') and
                     pipeline.steps[0][0] == 'pass_custom' and
-                    pipeline.steps[0][1].kw_args):
-                    kw_args.update(pipeline.steps[0][1].kw_args)
+                    pipeline.steps[0][1].kwargs):
+                    kwargs.update(pipeline.steps[0][1].kwargs)
 
             # result score on Train
-            score_train = metric[0](y_train, y_pred_train, **kw_args)
+            score_train = metric[0](y_train, y_pred_train, **kwargs)
             # result score on test
-            score_test = metric[0](y_test, y_pred_test, **kw_args)
+            score_test = metric[0](y_test, y_pred_test, **kwargs)
 
             self.logger.log(25, f"{name}:")
             self.logger.log(5, f"{name}:")
@@ -206,7 +301,7 @@ class Validator(object):
                            f"Test:\n    {score_test}")
         return
 
-    # [deprecated] need rearange
+    # [deprecated] need rearrange
     # def _via_scorers(self, scorers, pipeline,
     #                  train, test, pos_labels_ind, classes):
     #     # via scorers

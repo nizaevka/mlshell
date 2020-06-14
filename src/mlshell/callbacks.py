@@ -5,7 +5,7 @@ from mlshell.libs import get_ipython, os, sys
 
 
 def find_path(filepath=None):
-    """Get fullpath and name of main script
+    """Get fullpath and name of main script.
 
     Args:
         filepath (str): path to main script (default=None)

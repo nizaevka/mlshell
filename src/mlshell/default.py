@@ -1,8 +1,8 @@
-"""Module contains default workflow configuration and pipeline steps.
+"""Module contains default configuration and pipeline steps.
 
 Workflow configuration is set with python dictionary.
-It could be passed to the `mlshell.run()` function or some user-defined handler, where
-workflow class is built and its endpoints are executed.
+It could be passed to `mlshell.run()` function or some user-defined handler,
+where workflow class is built and its endpoints are executed.
 
 There is common logic for all configuration sections:
 {'section_id':
@@ -11,42 +11,60 @@ There is common logic for all configuration sections:
         'producer': factory class, which contain methods to run steps.
         'patch': add custom method to class.
         'steps': [
-            ('method_id 1', kw_args_1),
-            ('method_id 2', kw_args_2),
+            ('method_id 1', kwargs_1),
+            ('method_id 2', kwargs_2),
         ],
         'global': shortcut to common parameters.
-        'priority': parsing priority (integer number).
+        'priority': execute priority (integer non-negative number).
     }
     'configuration_id 2':{
         ...
     }
 }
-The target of each section is to create object (pipeline, dataset, ..).
-`producer` work as factory, it should contain .produce() method, which is:
-* takes `init` and consecutive pass it to `steps` with additional kwargs.
+The target for each section is to create object (pipeline, dataset, ..).
+`producer` object work as factory, it should contain .produce() method which:
+* takes `init` consecutive pass it to `steps` with additional kwargs.
 * return resulting object.
-so `init` is the future object template (empty dict() for example).
+so `init` is the template for produced object (empty dict() for example).
 
-Created objects can be used as kw_args for any step in others sections or even
-as `init`/`producer` object. But it is important the order in which
-sections handled. For this 'priority' key is available, otherwise default
-python dict() keys order is used.
+Created `objects` can be used as kwargs for any step in others sections.
+But the order in which sections handled is important. For this purpose
+'priority' key is available: non-negative integer number, the more the higher
+the priority (by default all set to 0). For two with same priority order is
+not guaranteed.
 
 `mlshell.run()` handler:
 * Parse section one by one in priority.
-* For each configuration in section:
-    * call .produce(`init`, `steps`) on `producer`.
-    * store result in internally storage under `section_id__configuration_id`.
+* For each configuration in sections:
+    * call `producer`.produce(`init`, `steps`, `objects`).
+    * store result in built-in `objects` storage under `section_id__configuration_id`.
 
 For flexibility, it is possible to:
 * monkey patch `producer` object with custom functions via `patch` key.
-* specify global value for common kw_args in steps via `global` key.
-* create separate section for any configuration`s subkey or kw_arg parameter.
+* specify global value for common kwargs in steps via `global` key.
+* create separate section for any configuration subkey or kw_arg parameter in
+steps. TODO: any configuration subkeys + need rearange read conf.
+there are two ways:
+    * use `section_id` to deepcopy target configuration `init` before execute steps.
+    * use `section_id__id` postfix to pass `configuration_id` as kwargs.
+* TODO: skip anykwargs in steps, will be used class default.
+    actually default better specify in class functions.
 
 For ML task, common sections would be:
 * create/read pipelines and datasets objects.
 * create workflow class and call methods with pipeline/dataset as argument.
 
+# TODO: do both producer as class or object.
+#    better give flexibility for user
+#    and in default i can use class.
+
+# TODO:
+#    encompass all sklearn-wise in mlshell.utills.sklearn
+
+# TODO:
+    kwargs(not kwargs) everywhere in documentation/code
+
+See default configuration for example.
 """
 
 
@@ -56,41 +74,241 @@ import mlshell.optimize
 import mlshell.validate
 
 
-TODO: move logger, find_path in conf.py as class creation argument
-
 WORKFLOW = {
-    # DONE
-    #     when need fit two times
-    #        * multiplpe endpoints [best]
-    #        * either different names 'fit2': {'func':'fit'}  [better, cause rare situation]
-    #        * either additional argument in steps [not beautiful]
-    #     DO BOTH!
-    #     possibility of multiple pipelines, metrics lists, gs_conf in one workflow!
-    #     in second not possible to change func
-
-    # TODO [beta]: Data/Pipeline/Workflow: endpoint(class+func to replace), kwargs, steps.
-    #    Also need class for GUI.
-    #    but it will be less beautiful config.
-    #    Remain current change if needed. Maybe erson don`t want to use func.
-    'endpoint_id': None,    # TODO: move out id or everywhere set id? I think better name_id,
-                            #     so additional explicit flag to search in config, but then "gs_params_id" not so good
-                            #     вообще итак нормально.
-    'steps': [
-        ('fit',),
-        ('optimize',),
-        ('dump',),
-        ('validate',),
-        ('plot',),
-        ('predict',),
-    ],
+    'default': {
+        'init': {},
+        'producer': mlshell.Workflow(project_path=project_path, logger=logger),
+        'global': {},
+        'patch': {},
+        'priority': 1,
+        'steps': [
+            ('fit', {
+                'pipeline_id': None,
+                'dataset_id': 'train',
+                'fit_params': {},
+                'hp': {},
+                'resolve_params': {},
+            },),
+            ('optimize', {
+                'optimizer': mlshell.optimize.RandomizedSearchOptimizer,  # optimizer
+                'validator': mlshell.validate.Validator,
+                'pipeline_id': None,  # multiple pipeline? no, user can defined separately if really needed
+                'dataset_id': 'train',
+                'gs_params': {
+                   'hp_grid': {},
+                   'n_iter': None,  # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
+                   'scoring': None,  # no resolving (default estimator scoring)
+                   'n_jobs': 1,
+                   'refit': None, # no resolving
+                   'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+                   'verbose': 1,
+                   'pre_dispatch': 'n_jobs',
+                },
+                'fit_params': {},
+                'resolve_params': {
+                    'estimate__apply_threshold__threshold': {
+                        'resolver': None,  # if None, use pipeline default resolver
+                        'samples': 10,
+                        'plot_flag': False,
+                    },
+                },
+            },),
+            ('dump', {'pipeline_id': None}),
+            ('validate', {
+                'dataset_id': 'train',
+                'validator': None,
+                'metric': None,
+                'pos_label': None,  # if None, get -1
+                'pipeline_id': None,
+            },),
+            ('plot', {
+                'plotter': None,  # gui
+                'pipeline_id': None,
+                'hp_grid': {},
+                'dataset_id': 'train',
+                'base_sort': False,
+                # TODO: [beta]
+                # 'dynamic_metric': None,
+            }),
+            ('predict', {
+                'dataset_id': 'test',
+                'pipeline_id': None,
+            }),
+            # TODO: [beta] Free memory.
+            #   ('init',),
+            #   ('reset',),
+        ],
+    },
+    # TODO: [beta] DL workflow.
+    #   'pytorch': {},
 }
-""" Workflow section.
+""""""
 
-Specify endpoint configuration to construct workflow class.
-Specify the order of workflow methods to execute.
+
+PIPELINES = {
+    'default': {
+        'init': mlshell.Pipeline(),
+        'producer': mlshell.PipeProducer(project_path=project_path, logger=logger),
+        'global': {},
+        'patch': {},
+        'priority': 0,
+        'steps': [
+            ('create', {
+                'cache': None,
+                'steps': None,
+                'estimator': sklearn.linear_model.LinearRegression(),
+                'estimator_type': 'regressor',
+                # 'th_strategy': None,
+            },),
+            ('resolve', {},),
+                # [deprecated]  should be setted 'auto'/['auto'], by default only for index
+                #  only if not setted
+                # 'hp': {
+                #     'process_parallel__pipeline_categoric__select_columns__kwargs',
+                #     'process_parallel__pipeline_numeric__select_columns__kwargs',
+                #     'estimate__apply_threshold__threshold'}
+                # },
+        ],
+    },
+}
+
+
+METRICS = {
+    'classifier': {
+        'init': None,
+        'producer': mlshell.MetricProducer(project_path=project_path, logger=logger),
+        'global': {},
+        'patch': {},
+        'priority': 0,
+        'steps': [
+            ('make_scorer', {
+                'func': sklearn.metrics.accuracy_score,
+                'kwargs': {'greater_is_better': True},
+            }),
+        ],
+    },
+    'regressor': {
+        'init': None,
+        'producer': mlshell.MetricProducer(project_path=project_path, logger=logger),
+        'global': {},
+        'patch': {},
+        'priority': 0,
+        'steps': [
+            ('make_scorer', {
+                'func': sklearn.metrics.r2_score,
+                'kwargs': {'greater_is_better': True},
+            }),
+        ],
+    }
+}
+
+
+DATASETS = {
+    'default': {
+        'init': mlshell.Dataset(),
+        'class': mlshell.DataProducer(project_path=project_path, logger=logger),
+        'global': {},
+        'patch': {},
+        'priority': 0,
+
+        'steps': [
+            ('load_cache', {'prefix': None},),
+            ('get', {},),
+            ('preprocess', {'categor_names': [], 'target_names': [], 'pos_labels': []},),
+            ('info', {},),
+            ('unify', {},),
+            ('split', {},),
+            ('dump_cache', {'prefix': None},),
+        ],
+    },
+}
+
+
+DEFAULT_PARAMS = {
+    'pipeline': PIPELINES,
+    'dataset': DATASETS,
+    'metric': METRICS,
+    'workflow': WORKFLOW,
+}
+""" Default sections for ML task.
+
+Each section specify set of configurations.
+Each configuration provide steps to construct an object, that can be
+utilize as argument in some other sections.
+See below detailed configuration keys description.
+
+TODO: Better move to producer.
+    Default better move to read conf.
 
 Parameters
 ----------
+init : object.
+    Initial state for constructed object. Will be passed consecutive in steps
+    as argument.
+    If None or skipped, dict() is used.
+    
+producer : class or instance.
+    Factory to construct object, producer.produce(`init`, `steps`, `objects`) 
+    will be called, where `objects` is dictionary with previously created 
+    objects {'section_id__configuration_id': object}.  
+    TODO: 
+    If None or skipped, mlshell.Producer is used.
+    If class will be initialized with producer(project_path, logger).
+    
+patch : dict {'method_id' : function}.
+    Monkey-patching `producer` object with custom functions.
+    
+steps : list of tuples (str: 'method_id', Dict: kwargs).
+    List of class methods to run consecutive with kwargs. 
+    Each step should be a tuple: `('method_id', {kwargs to use})`,
+    where 'method_id' should match to `producer` functions' names.
+    It is possible to omit kwargs, in that case each step executed with kwargs
+    set default in corresponding producer method (see producer interface)
+
+    **kwargs : dict {'kwarg_name': value, ...}.
+        Arguments depends on workflow methods. It is possible to create
+        separate configuration section for any argument. If value is set here
+        to None, parser try to resolve it. First it searches for value in
+        `global` subsection. Then resolver looks up 'kwarg_name' in section
+        names. If such section exist, there are two possibilities: if
+        `kwarg_name` contain '_id' postfix, resolver substitutes None with
+        available `configuration_id`, else without postfix
+        resolver substitutes None with copy of configuration `init` object.
+        If fails to find resolution, value is remained None. In case of plurality of 
+        resolutions, ValueError is raised.
+        TODO: check if?
+        Also list of id is possible (like for metric)
+
+global : dict {'kwarg_name': value, ...}.
+    Specify values to resolve None for arbitrary kwargs. This is convenient for
+    example when we use the same `pipeline` in all methods. It is not rewrite 
+    not-None values.
+
+
+Examples
+--------
+# Use custom functions.
+def my_func(self, pipeline, dataset):
+    # ... custom logic ...
+    return 
+
+{'patch': {'extra': my_func,},}
+
+Notes
+-----
+If section is skipped, default section is used.
+If sub-keys are skipped and `producer` is None/skipeed, default values are used 
+for these sub-keys. So in most cases it is enough just to specify 
+'global'.
+
+See also
+--------
+:class:`Workflow`:
+    default universal workflow class.
+
+"""
+"""
+
 endpoint : str or None.
     Endpoint identifier, should be the one described in `endpoint section`.
     Auto-resolved if None and endpoint section contain only one configuration,
@@ -98,13 +316,15 @@ endpoint : str or None.
     TODO: [beta].
     It`s possible to specify list of endpoints to run consecutive.
     In that case 'steps' should be list of lists.
-    
-steps : list of tuples (str 'step_identifier', kw_args).
+
+steps : list of tuples (str 'step_identifier', kwargs).
     List of workflow methods to run consecutive. 
-    Each step should be a tuple: `('step_identifier', {kw_args to use})`,
+    Each step should be a tuple: `('step_identifier', {kwargs to use})`,
     where 'step_identifier' should match with `endpoint` functions' names.
     By default, step executed with argument taken from `endpoint section`,
-    but it also is possible to update kw_args here before calling. 
+    but it also is possible to update kwargs here before calling.
+    
+ 
 
 Notes
 -----
@@ -116,275 +336,6 @@ See also
 
 """
 
-
-ENDPOINTS = {
-    'default': {
-        'class': None,
-        'global': {},
-        'steps': [],
-        
-        'dump': {'func': None,
-                 'pipeline_id': None,},
-        # both
-        'optimize': {'func': None,
-                     'optimizer': mlshell.optimize.RandomizedSearchOptimizer,  # optimizer
-                     'validator': mlshell.validate.Validator,
-                     'pipeline_id': None,  # multiple pipeline? no, user can defined separately if really needed
-                     'dataset_id': 'train',
-                     'gs_params': {
-                        'hp_grid': {},
-                        'n_iter': None,  # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
-                        'scoring': None,  # no resolving (default estimator scoring)
-                        'n_jobs': 1,
-                        'refit': None, # no resolving
-                        'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
-                        'verbose': 1,
-                        'pre_dispatch': 'n_jobs',
-                     },
-                     'fit_params': {},
-                     'resolve_params': {
-                         'estimate__apply_threshold__threshold': {
-                             'resolver': None,  # if None, use pipeline default resolver
-                             'samples': 10,
-                             'plot_flag': False,
-                         },
-                     },
-                     },
-        'fit': {'func': None,
-                'pipeline_id': None,
-                'dataset_id': 'train',
-                'fit_params': {},
-                'hp': {},
-                'resolve_params': {},
-                },
-        'validate': {'func': None,
-                     'dataset_id': 'train',
-                     'validator': None,
-                     'metric': None,
-                     'pos_label': None,  # if None, get -1
-                     'pipeline_id': None,},
-        'predict': {'func': None,
-                    'dataset_id': 'test',
-                    'pipeline_id': None,},
-        'plot': {'func': None,
-                'plotter': None,  # gui
-                'pipeline_id': None,
-                'hp_grid': {},
-                'dataset_id': 'train',
-                'base_sort': False,
-                # TODO: [beta]
-                # 'dynamic_metric': None,
-                },
-        # TODO: [beta] memory
-        # 'init': {},
-        # 'reset': {},
-    },
-    # TODO: [beta]
-    # 'pytorch': {},
-}
-""" Endpoint section.
-
-Specify separate endpoints configurations to fast switch between different
-workflow classes {'endpoint_identifier': parameters, ...}
-
-Parameters
-----------
-class : class or None.
-    TODO !!!! always should be in endpoint, factory class 
-    The class used to construct workflow instance.
-    If None, default Workflow class is used.
-
-**methods : dict {'method_name': {'func': None, **kwargs}, ...}.
-    Each key corresponds to one workflow method. Each value specifies kw_args 
-    to call that method . Special subkey `func` used to reassign target
-    function if needed. It takes either string name of `producer` method, None, or
-    custom function. If `func` is None, default `producer` method is used. 
-    
-    **kwargs : dict {'kwarg_name': value, ...}.
-        Arguments depends on workflow methods. It is possible to create
-        separate configuration section for any argument. If value is set here
-        to None, parser try to resolve it. First it searches for value in
-        `global` subsection. Then resolver looks up 'kwarg_name' in section
-        names. If such section exist, there are two possibilities: if
-        `kwarg_name` contain '_id' postfix, resolver substitutes None with
-        existed id of available configuration in section, else without postfix
-        resolver substitutes None with configuration itself. If case of fail
-        to find resolution, value is remained None. In case of plurality of 
-        resolutions, ValueError is raised.
-        TOOO !!!!
-        configuration with postfix will be passed to workflow separately.
-        Also list of id is possible (like for metric)
-        
-global : dict {'kwarg_name': value, ...}.
-    Specify values to resolve None for arbitrary kwargs. This is convenient for
-    example when we use the same `pipeline` in all methods. Doesnt't rewrite 
-    not-None values.
-    
-steps : list of tuples (str 'step_identifier', kw_args).
-    List of class methods to run consecutive. 
-    Each step should be a tuple: `('step_identifier', {kw_args to use})`,
-    where 'step_identifier' should match with `producer` functions' names.
-    By default, step executed with argument taken from **methods,
-    but it is also possible to update kw_args before calling. 
-        
-
-Examples
---------
-# Use built-in class methods` names to specify separate kw_args configuration.
-'dump_1': {'func': 'dump',
-            'pipeline_id': 'pipeline_1',},
-'dump_2': {'func': 'dump',
-          'pipeline_id': 'pipeline_2',},
-
-# Use custom functions.
-def my_func(self, pipeline, dataset):
-    # custom logic
-    return 
-'custom': {'func': my_func,
-           'pipeline_id': 'xgboost',
-           'dataset_id': 'train'},
-    
-Notes
------
-If section is skipped, default endpoint is added.
-Otherwise for each endpoint if `producer` is None or not set, default values are
-used for skipped subkeys. So in most cases it is enough just to specify 
-'global' subsection.
-
-See also
---------
-:class:`Workflow`:
-    default universal workflow class.
-
-"""
-
-# TODO: if class is provided => Factory with produce method => workflow via argument
-#       else =>  => workflow via argument without changes
-
-PIPELINES = {
-    'default': {
-        'class': None,  # Factory
-
-        'load': {'func': None,
-                 'filepath': None,
-                 'estimator_type': 'regressor',
-                 },
-        'create': {'func': None,
-                   'cache': None,
-                   'steps': None,
-                   'estimator': sklearn.linear_model.LinearRegression(),
-                   'estimator_type': 'regressor',
-                   # 'th_strategy': None,
-                   },
-        'resolve': {
-            'func': None,
-            # [deprecated]  should be setted 'auto'/['auto'], by default only for index
-            #  only if not setted
-            # 'hp': {
-            #     'process_parallel__pipeline_categoric__select_columns__kw_args',
-            #     'process_parallel__pipeline_numeric__select_columns__kw_args',
-            #     'estimate__apply_threshold__threshold'}
-            # },
-        },
-    },
-}
-
-
-METRICS = {
-    'classifier': {
-        'class': None,
-        'func':sklearn.metrics.accuracy_score,
-        'kw_args': {'greater_is_better': True},
-    },
-    'regressor': (sklearn.metrics.r2_score, {'greater_is_better': True}),
-}
-
-
-DATASETS = {
-    'default': {
-        'class': None,  # Factory
-        # TODO: both steps and reaassign
-        'steps': [
-            ('load_cache', {'func': None, 'prefix': None},),
-            ('get', {'func': None},),
-            ('preprocess', {'func': None, 'categor_names': [], 'target_names': [], 'pos_labels': []},),
-            ('info', {'func': None},),
-            ('unify', {'func': None},),
-            ('split', False,),
-            ('dump_cache', {'func': None, 'prefix': None},),
-        ],
-    },
-}
-
-
-CUSTOMS = {
-    'gs_params': {
-        'default': {
-            'hp_grid': {},
-            'n_iter': None,  # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
-            'scoring': None,  # no resolving (default estimator scoring)
-            'n_jobs': 1,
-            'refit': None, # no resolving
-            'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
-            'verbose': 1,
-            'pre_dispatch': 'n_jobs',
-        },
-    },
-}
-
-
-DEFAULT_PARAMS = {
-    'workflow': WORKFLOW,
-    'endpoint': ENDPOINTS,
-    'pipeline': PIPELINES,
-    'dataset': DATASETS,
-    'metric': METRICS,
-    **CUSTOMS,
-}
-
-# TODO:
-#    encompass all sklearn-wise in mlshell.utills.sklearn
-
-
-# [deprecated]
-# DEFAULT_PARAMS = {
-#     'pipeline__estimator': sklearn.linear_model.LinearRegression(),
-#     'pipeline__type': 'regressor',
-#     'pipeline__fit_params': {},
-#     'pipeline__steps': None,
-#     'pipeline__debug': False,
-#     'pipeline_cache': None,
-#
-#     'metrics': {
-#         'score': (sklearn.metrics.r2_score, {'greater_is_better': True}),
-#     },
-#     'gs__flag': False,
-#     'gs__splitter': sklearn.model_selection.KFold(shuffle=False),
-#     'gs__hp_grid': {},
-#     'gs__verbose': 1,
-#     'gs__n_jobs': 1,
-#     'gs__pre_dispatch': 'n_jobs',
-#     'gs__refit': 'score',
-#     'gs__runs': None,
-#     'gs__metrics': ['score'],
-#
-#     'data__split_train_size': 0.7,
-#     'data__del_duplicates': False,
-#     'data__train__args': [],
-#     'data__train__kw_args': {},
-#     'data__test__args': [],
-#     'data__test__kw_args': {},
-#
-#     'th__pos_label': 1,
-#     'th__strategy': 0,
-#     'th__samples': 10,
-#     'th__plot_flag': False,
-#
-#     'cache__pipeline': False,
-#     'cache__unifier': False,
-#
-#     'seed': 42,
-# }
 """(dict): if user skip declaration for any parameter the default one will be used.
 
     pipeline__estimator (``sklearn.base.BaseEstimator``, optional (default=sklearn.linear_model.LinearRegression())):
@@ -422,12 +373,12 @@ DEFAULT_PARAMS = {
         Split data on train and validation. It is possible to set 1.0 and CV on whole data (validation=train).
     data__del_duplicates (bool, optional (default=False)):
         If True remove duplicates rows from input data before pass to pipeline (workflow class level).
-    data__train__args/data__train__kw_args (list, (default=[])
+    data__train__args/data__train__kwargs (list, (default=[])
         Specify args to pass in user-defined classes.GetData class constructor.
         Typically there are contain path to files, index_column name, rows read limit. 
         For example see `Examples <./Examples.html>`__.                     
-    data__test__args/data__test__kw_args (dict, (default={})
-        Specify kw_args to pass in user-defined classes.GetData class constructor.
+    data__test__args/data__test__kwargs (dict, (default={})
+        Specify kwargs to pass in user-defined classes.GetData class constructor.
         Typically there are contain index_column name, rows read limit. 
         For example see `Examples <./Examples.html>`__.                     
     th__pos_label (int or str, optional (default=1)):
@@ -493,15 +444,15 @@ class CreateDefaultPipeline(object):
         """
 
         self._steps = [
-            ('pass_custom',      sklearn.preprocessing.FunctionTransformer(func=self.set_scorer_kw_args, validate=False)),
+            ('pass_custom',      sklearn.preprocessing.FunctionTransformer(func=self.set_scorer_kwargs, validate=False)),
             ('select_rows',      sklearn.preprocessing.FunctionTransformer(func=self.subrows, validate=False)),
             ('process_parallel', sklearn.pipeline.FeatureUnion(transformer_list=[
                 ('pipeline_categoric', sklearn.pipeline.Pipeline(steps=[
-                   ('select_columns',      sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args='auto')),  # {'indices': 'data__categoric_ind_name'}
+                   ('select_columns',      sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kwargs='auto')),  # {'indices': 'data__categoric_ind_name'}
                    ('encode_onehot',       mlshell.custom.SkippableOneHotEncoder(handle_unknown='ignore', categories='auto', sparse=False, drop=None, skip=False)),
                 ])),
                 ('pipeline_numeric',   sklearn.pipeline.Pipeline(steps=[
-                    ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kw_args='auto')),  # {'indices':  'data__numeric_ind_name'}
+                    ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kwargs='auto')),  # {'indices':  'data__numeric_ind_name'}
                     ('impute',             sklearn.pipeline.FeatureUnion([
                         ('indicators',         sklearn.impute.MissingIndicator(missing_values=np.nan, error_on_new=False)),
                         ('gaps',               sklearn.impute.SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0, copy=True)),
@@ -529,7 +480,7 @@ class CreateDefaultPipeline(object):
                 last_step = sklearn.pipeline.Pipeline(steps=[
                         ('predict_proba',   mlshell.custom.PredictionTransformer(estimator)),
                         ('apply_threshold', mlshell.custom.ThresholdClassifier(threshold=0.5,
-                                                                               kw_args='auto')),
+                                                                               kwargs='auto')),
                         ])
         else:
             raise ValueError(f"Unknown estimator type `{estimator_type}`.")
@@ -543,8 +494,8 @@ class CreateDefaultPipeline(object):
         """Pipeline steps getter."""
         return self._steps
 
-    def set_scorer_kw_args(self, *args, **kw_args):
-        """Mock function to allow set custom kw_args."""
+    def set_scorer_kwargs(self, *args, **kwargs):
+        """Mock function to allow set custom kwargs."""
         # pass x futher
         return args[0]
 

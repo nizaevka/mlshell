@@ -4,32 +4,38 @@
 import importlib.util
 import sys
 import logging
-from mlshell.callbacks import dic_flatter
-from mlshell.libs import copy, np, rd
+from mlshell.libs import copy, np, rd, heapq
 import mlshell.default
+import types
 
 
-class GetParams(object):
+class ConfHandler(object):
     """Class to read workflow configuration from file"""
-    def __init__(self, logger=None):
-        if logger is None:
-            self.logger = logging.Logger('GetParams')
-        else:
-            self.logger = logger
-        self.logger = logger
+    def __init__(self, project_path='', logger=None):
+        self.logger = logger if logger else logging.Logger(__class__.__name__)
+        self.project_path = project_path
 
-    def get_params(self, project_path, params=None):
+    def read(self, conf=None):
         self.logger.info("\u25CF READ CONFIGURATION")
-        if params is None:
-            dir_name = project_path.split('/')[-1]
-            spec = importlib.util.spec_from_file_location(f'conf', f"{project_path}/conf.py")
-            conf = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(conf)
-            sys.modules['conf'] = conf  # otherwise problem with pickle, depends on the module path
-            params = copy.deepcopy(conf.params)
-        return self.parse_params(params)
+        if conf is None:
+            dir_name = self.project_path.split('/')[-1]
+            spec = importlib.util.spec_from_file_location(f'conf', f"{self.project_path}/conf.py")
+            conf_file = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(conf_file)
+            sys.modules['conf'] = conf_file  # otherwise problem with pickle, depends on the module path
+            conf = copy.deepcopy(conf_file.conf)
+        return self._parse_conf(conf)
 
-    def parse_params(self, p):
+    def exec(self, configs):
+        objects = {}
+        for config in configs:
+            name, val = config
+            self.logger.info(f"\u25CF HANDLE {name}")
+            self.logger.info(f"Configuration:\n    {name}")
+            objects[name] = self._exec(val, objects)
+        return objects
+
+    def _parse_conf(self, p):
         # [deprecated] unreliable for custom, always contain name
         # # check if configuration name is skipped, set under 'user' name
         # reserved = {'endpoint': mlshell.default.DEFAULT_PARAMS['endpoint']['default'].keys(),
@@ -124,6 +130,8 @@ class GetParams(object):
         #     rd.seed(seed)
         #     np.random.seed(seed)
 
+        res = self._priority_arange(res)
+        # [('section__config', config), ...]
         return res
 
     def resolve_none(self, p, endpoint_id, ids):
@@ -201,7 +209,7 @@ class GetParams(object):
                                 glob_val = list(p[key].keys())[0]
                         value[key_id] = glob_val
 
-                    # check if conf available
+                    # Check if conf available.
                     if not isinstance(value[key_id], str) and hasattr(value[key_id], '__iter__'):
                         # for compatibility with sequence of ids (like metric)
                         confs = value[key_id]
@@ -215,11 +223,16 @@ class GetParams(object):
                     if key_id.endswith('_id'):
                         ids[key].update(confs)
                     else:
-                        # set inplace with copy (contain mutable).
+                        # Set inplace with `init` copy (contain mutable).
+                        # [alternative] not copy, so will always contain fresh 'object'
+                        #     currently only template is copy => for kw_args without factory
+                        #     kwargs with factory better via separate storage.
+                        #     It is also possible to resolve `init`/`storage` to skip `objects`
+                        #     but in that case we need to fix structure => less flexible.
                         if len(confs) > 1:
-                            value[key_id] = copy.deepcopy([p[key][conf] for conf in confs])
+                            value[key_id] = copy.deepcopy([p[key][conf]['init'] for conf in confs])
                         else:
-                            value[key_id] = copy.deepcopy(p[key][confs[0]])
+                            value[key_id] = copy.deepcopy(p[key][confs[0]]['init'])
 
     def merge_default(self, p, dp):
         """Add skipped key from default."""
@@ -317,6 +330,46 @@ class GetParams(object):
                 if not isinstance(p[key], dict):
                     raise TypeError(f"Custom params[{key}] should be the dict instance.")
             # self.logger.warning(f"Ignore unknown key(s) in conf.py params, check\n    {miss_keys}")
+
+    def _priority_arrange(self, res):
+        min_heap = []
+        for key in res:
+            for subkey in res[key]:
+                val = res[key][subkey]
+                name = f'{key}__{subkey}'
+                priority = val.get('priority', 0)
+                heapq.heappush(min_heap, (priority, (name, val)))
+        sorted_ = heapq.nsmallest(len(min_heap), min_heap)
+        return list(zip(*sorted_))[1]
+
+    def _exec(self, conf, objects):
+        init = conf.get('init', {})
+        steps = conf.get('steps', [])
+        producer = conf.get('producer', mlshell.Producer())
+        patch = conf.get('patch', {})
+        producer = self._patch(patch, producer)
+        return producer.produce(init, steps, objects)
+
+    def _patch(self, patch, producer):
+        """Monkey-patching producer.
+
+        producer : class object.
+            Object to patch.
+        patch : dict {'method_id' : function/existed 'method_id' }.
+            Functions to add/rewrite.
+
+        """
+        needs_resolve = []
+        # update/add new methods
+        for key, val in patch.items():
+            if isinstance(val, str):
+                needs_resolve.append((key, val))
+                patch[key] = producer.__getattribute__(val)
+            setattr(producer, key, types.MethodType(val, producer))
+        # resolve str name for existed methods
+        for key, name in needs_resolve:
+            setattr(producer, key, getattr(producer, name))
+        return producer
 
 
 if __name__ == '__main__':

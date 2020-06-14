@@ -59,12 +59,12 @@ def checker(function_to_decorate, options=None):
     return wrapper
 
 
-class Workflow(object):
+class Workflow(mlshell.Producer):
     """Class for ml workflow."""
     # TODO:
     # _required_parameters = [,]
 
-    def __init__(self, project_path, logger=None, endpoint_id='default_workflow',
+    def __init__(self, project_path='', logger=None, endpoint_id='default_workflow',
                  datasets=None, pipelines=None, metrics=None, params=None):
         """Initialize workflow object
 
@@ -102,11 +102,10 @@ class Workflow(object):
 
         """
         self.project_path = project_path
+        self.logger = logger if logger else logging.Logger(__class__.__name__)
+        super().__init__(self.project_path, self.logger)
+
         self.endpoint_id = endpoint_id
-        if logger is None:
-            self.logger = logging.Logger('Workflow')
-        else:
-            self.logger = logger
         self.logger.info("\u25CF INITITALIZE WORKFLOW")
         self.datasets = datasets if datasets else {}
         self.pipelines = pipelines if pipelines else {}
@@ -152,7 +151,7 @@ class Workflow(object):
 
         # for pass custom only (thread-unsafe)
         self.custom_scorer = {'n/a': None}
-        self.cache_custom_kw_args = {'n/a':{}}
+        self.cache_custom_kwargs = {'n/a':{}}
         self.current_pipeline_id = 'n/a'
 
         # fit

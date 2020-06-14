@@ -8,14 +8,12 @@ Maybe in sklearn there are special format for datasets?
 """
 
 from mlshell.libs import *
+import mlshell
 
 
 class DataExtractor(object):
-    def __init__(self, project_path, logger=None):
-        if logger is None:
-            self.logger = logging.Logger('GetData')
-        else:
-            self.logger = logger
+    def __init__(self, project_path='', logger=None):
+        self.logger = logger if logger else logging.Logger(__class__.__name__)
         self.project_path = project_path
         # [deprecated] self.raw = None  # data attribute, fullfill in self.get_data()
 
@@ -150,170 +148,11 @@ class DataPreprocessor(object):
         return df
 
 
-class Dataset(dict):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def __hash__(self):
-        return pd.util.hash_pandas_object(self.get('data')).sum()
-
-    # good choice, cause for train,
-    # otherwise if attribute, for train, test we will inherent x,y,classes => complicated, need oo clean)
-    # need for ram economy, we can make it as dict key
-    # But: multiple calls
-    def get_x(self):
-        df = self.get('data', None)
-        raw_names = self.get('raw_names', None)
-        return df[raw_names['features']]
-
-    def get_y(self):
-        df = self.get('data', None)
-        raw_names = self.get('raw_names', None)
-        return df[raw_names['targets']]
-
-    # TODO: remove is_classifier check if no need
-    def get_classes(self, pos_labels=None):
-        df = self.get('data', None)
-        raw_names = self.get('raw_names', None)
-        if not pos_labels:
-            pos_labels = raw_names.get('pos_labels', [])
-
-        classes = [np.unique(j) for i, j in df[raw_names['targets']].iteritems()]  # [array([1]), array([2, 7])]
-        if not pos_labels:
-            pos_labels_ind = -1
-            pos_labels = [i[-1] for i in classes]  # [2,4]
-        else:
-            # Find where pos_labels in sorted labels.
-            pos_labels_ind = [np.where(classes[i] == pos_labels[i])[0][0] for i in range(len(classes))]  # [1, 0]
-
-        # [deprecated] not work if different number of classes in multi-output
-        # if not pos_labels:
-        #     pos_labels = classes[..., -1]  # [2,4]
-        #     pos_labels_ind = -1  # [wrong] np.full(pos_labels.shape, fill_value=-1)
-        # else:
-        #     pos_labels_ind = np.array(np.where(classes == pos_labels))[..., 0]  # [1, 0]
-
-        # [temp]
-        print(f"Label {pos_labels} identified as positive np.unique(targets)[-1]:\n"
-              f"    for classifiers provided predict_proba:"
-              f" if P(pos_labels)>threshold, prediction=pos_labels on sample.")
-
-        return {'classes': classes, 'pos_labels': pos_labels, 'pos_labels_ind': pos_labels_ind}
-
-    def dump(self, filepath, obj, template=None):
-        # [deprecated]
-        # raw_names = self.get('raw_names')
-        if template:
-            # recover original index and names
-            obj = pd.DataFrame(index=template.index.values,
-                               data={zip(template.columns, obj)}).rename_axis(template.index.name)
-            # [deprecated] not enough abstract
-            # df = pd.DataFrame(index=self.get('data').index.values,
-            #                data={raw_names['targets'][0]: y_pred}).rename_axis(raw_names['index'])
-
-        with open(f"{filepath}.csv", 'w', newline='') as f:
-            obj.to_csv(f, mode='w', header=True, index=True, sep=',', line_terminator='\n')  # only LF
-        return
-
-    def split(self):
-        df = self.get('data', None)
-        train_index = self.get('train_index', None)
-        test_index = self.get('test_index', None)
-        if train_index is None and test_index is None:
-            train_index = test_index = df.index
-
-        # inherent keys, except 'data'
-        train = Dataset(dict(self, **{'data': df.loc[train_index]}))
-        test = Dataset(dict(self, **{'data': df.loc[test_index]}))
-
-        return train, test
-
-        # [deprecated] better create subobject
-        # columns = df.columns
-        # # deconcatenate without copy, better dataframe over numpy (provide index)
-        # train = df.loc[train_index]
-        # test = df.loc[test_index]
-        # x_train = train[[name for name in columns if 'feature' in name]]
-        # y_train = train['targets']
-        # x_test = test[[name for name in columns if 'feature' in name]]
-        # y_test = test['targets']
-        # return (x_train, y_train), (x_test, y_test)
-
-
-class DataFactory(DataExtractor, DataPreprocessor):
-    def __init__(self, project_path, logger=None):
-        super().__init__(project_path, logger)
-        if logger is None:
-            self.logger = logging.Logger('DataFactory')
-        else:
-            self.logger = logger
+class DataProducer(mlshell.Producer, DataExtractor, DataPreprocessor):
+    def __init__(self, project_path='', logger=None):
+        self.logger = logger if logger else logging.Logger(__class__.__name__)
         self.project_path = project_path
-
-    def produce(self, dataset_id, p):
-        """ Read dataset and Unify dataframe in compliance to workflow class.
-
-        Arg:
-            p():
-        Note:
-            Else: run unifer without cahing results.
-
-        """
-        self.logger.info("\u25CF HANDLE DATA")
-        self.logger.info(f"Data configuration:\n    {dataset_id}")
-        res_ = Dataset()
-        for key, val in p.get('steps', {}):
-            if not isinstance(val, dict):
-                continue
-            # [deprecated] conf comments better than flag
-            # if key == 'dump_cache' and not val['flag']:
-            #     continue
-            if 'prefix' in val and not val['prefix']:
-                val['prefix'] = dataset_id
-            res_ = getattr(self, key)(res_, **val)
-            # [deprecated] conf comments better than flag, also contain error dataser={}
-            # if key == 'load_cache' and val['flag'] and res_:
-            if key == 'load_cache' and res_:
-                break
-
-        res = self.check(res_)
-
-
-        # [deprecated]
-        # # cache flag False, True, update
-        # if self.p['cache'] and not self.p['cache'] == 'update':
-        #     cache = self.load_cache(prefix=dataset_id)
-        #     # [deprecated] now cache arbitrary types
-        #     # cache, meta = self.load_cache(prefix=dataset_id)
-        #     # if cache is not None:
-        #     #     data = cache
-        #     #     data_df = data
-        #     #     categoric_ind_name = meta['categoric']
-        #     #     numeric_ind_name = meta['numeric']
-        # else:
-        #     cache = None
-
-        # if cache is None:
-        #     res_ = None
-        #     for key, val in p.items():
-        #         if not isinstance(val, dict):
-        #             continue
-        #         res_ = getattr(self, key)(res_, **val)
-        #     res = res_
-
-        #     # [deprecated] manual
-        #     # raw = self.get(**p['get'])
-        #     # data = self.preprocess(raw, **p['preprocess'])
-        #     # data = self.check(data, **p['check'])
-        #     # data = self.unify(data, **p['unify'])
-
-        #     # [deprecated] move to workflow
-        #     # self.check_numeric_types(data_df)
-        #     if self.p['cache']:
-        #         self.dump_cache(res, prefix=dataset_id)
-        # else:
-        #     res = cache
-
-        return res
+        super().__init__(self.project_path, self.logger)
 
     def dump_cache(self, dataset, prefix='', **kwargs):
         """Dump intermediate dataframe to disk."""
@@ -350,7 +189,6 @@ class DataFactory(DataExtractor, DataPreprocessor):
     def load_cache(self, dataset, prefix='', **kwargs):
         """Load intermediate dataframe from disk"""
         cachedir = f"{self.project_path}/results/cache/data"
-        dataset = Dataset()
         for filepath in glob.glob(f"{cachedir}/{prefix}*"):
             key = '_'.join(filepath.split('_')[1:-1])
             if filepath.endswith('.csv'):
@@ -564,6 +402,97 @@ class DataFactory(DataExtractor, DataPreprocessor):
             raise ValueError("Input data non-categoric columns"
                              " should be subtype of np.number, check:\n    {}".format(misstype))
         return dataset
+
+
+class Dataset(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __hash__(self):
+        return pd.util.hash_pandas_object(self.get('data')).sum()
+
+    # good choice, cause for train,
+    # otherwise if attribute, for train, test we will inherent x,y,classes => complicated, need oo clean)
+    # need for ram economy, we can make it as dict key
+    # But: multiple calls
+    def get_x(self):
+        df = self.get('data', None)
+        raw_names = self.get('raw_names', None)
+        return df[raw_names['features']]
+
+    def get_y(self):
+        df = self.get('data', None)
+        raw_names = self.get('raw_names', None)
+        return df[raw_names['targets']]
+
+    # TODO: remove is_classifier check if no need
+    def get_classes(self, pos_labels=None):
+        df = self.get('data', None)
+        raw_names = self.get('raw_names', None)
+        if not pos_labels:
+            pos_labels = raw_names.get('pos_labels', [])
+
+        classes = [np.unique(j) for i, j in df[raw_names['targets']].iteritems()]  # [array([1]), array([2, 7])]
+        if not pos_labels:
+            pos_labels_ind = -1
+            pos_labels = [i[-1] for i in classes]  # [2,4]
+        else:
+            # Find where pos_labels in sorted labels.
+            pos_labels_ind = [np.where(classes[i] == pos_labels[i])[0][0] for i in range(len(classes))]  # [1, 0]
+
+        # [deprecated] not work if different number of classes in multi-output
+        # if not pos_labels:
+        #     pos_labels = classes[..., -1]  # [2,4]
+        #     pos_labels_ind = -1  # [wrong] np.full(pos_labels.shape, fill_value=-1)
+        # else:
+        #     pos_labels_ind = np.array(np.where(classes == pos_labels))[..., 0]  # [1, 0]
+
+        # [temp]
+        print(f"Label {pos_labels} identified as positive np.unique(targets)[-1]:\n"
+              f"    for classifiers provided predict_proba:"
+              f" if P(pos_labels)>threshold, prediction=pos_labels on sample.")
+
+        return {'classes': classes, 'pos_labels': pos_labels, 'pos_labels_ind': pos_labels_ind}
+
+    def dump(self, filepath, obj, template=None):
+        # [deprecated]
+        # raw_names = self.get('raw_names')
+        if template:
+            # recover original index and names
+            obj = pd.DataFrame(index=template.index.values,
+                               data={zip(template.columns, obj)}).rename_axis(template.index.name)
+            # [deprecated] not enough abstract
+            # df = pd.DataFrame(index=self.get('data').index.values,
+            #                data={raw_names['targets'][0]: y_pred}).rename_axis(raw_names['index'])
+
+        with open(f"{filepath}.csv", 'w', newline='') as f:
+            obj.to_csv(f, mode='w', header=True, index=True, sep=',', line_terminator='\n')  # only LF
+        return
+
+    def split(self):
+        df = self.get('data', None)
+        train_index = self.get('train_index', None)
+        test_index = self.get('test_index', None)
+        if train_index is None and test_index is None:
+            train_index = test_index = df.index
+
+        # inherent keys, except 'data'
+        train = Dataset(dict(self, **{'data': df.loc[train_index]}))
+        test = Dataset(dict(self, **{'data': df.loc[test_index]}))
+
+        return train, test
+
+        # [deprecated] better create subobject
+        # columns = df.columns
+        # # deconcatenate without copy, better dataframe over numpy (provide index)
+        # train = df.loc[train_index]
+        # test = df.loc[test_index]
+        # x_train = train[[name for name in columns if 'feature' in name]]
+        # y_train = train['targets']
+        # x_test = test[[name for name in columns if 'feature' in name]]
+        # y_test = test['targets']
+        # return (x_train, y_train), (x_test, y_test)
+
 
 
 if __name__ == '__main__':
