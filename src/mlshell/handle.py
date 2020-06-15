@@ -1,4 +1,119 @@
-"""Module contains class to read configuration file from project directory."""
+"""The module contains class to read and execute configuration(s).
+
+Configuration is a python dictionary.
+Configuration could be passed to `mlshell.run` function or user-defined handler,
+where `mlshell.ConfHandler` built objects and executes its endpoints.
+Configuration support multiple sections. Each section specify set of
+sub-configurations.
+Each sub-configuration provide steps to construct an object, that can be
+utilize as argument in some other sections.
+
+For each section there is common logic:
+{'section_id':
+    'configuration_id 1': {
+        'init': initial object of custom type.
+        'producer': factory class, which contain methods to run steps.
+        'patch': add custom method to class.
+        'steps': [
+            ('method_id 1', kwargs_1),
+            ('method_id 2', kwargs_2),
+        ],
+        'global': shortcut to common parameters.
+        'priority': execute priority (integer non-negative number).
+    }
+    'configuration_id 2':{
+        ...
+    }
+}
+
+The target for each sub-configuration is to create an instance.
+`init` is the template for future object (empty dict() for example).
+`producer` work as factory, it should contain .produce() method that:
+* takes `init` and consecutive pass it to `steps` with specified kwargs.
+* return resulting object, that can be used as kwargs for any step in others
+sections.
+To specify the order in which sections handled, 'priority' key is available.
+
+For flexibility, it is possible to:
+* Monkey patch `producer` object with custom functions via `patch` key.
+* Specify global value for common kwargs in steps via `global` key.
+all keys in configuration (except ['init', 'producer', 'global', 'patch',
+'steps', 'priority']) are moved to `global` automatically.
+* Create separate section for arbitrary parameter in steps.
+So it is sufficient to use `section_id__configuration_id` as kwarg value, then
+in step execution kwarg could be gotten from `objects`.
+As alternative, if add '_id' postfix to `kwarg_id`,
+`init` object from `configuration_id` will be copy on parse
+
+Then there are two ways to define kwarg {`kwarg_id`: kwarg_val}:
+* `producer`/`init` can be both class or object.
+
+
+TODO:
+    encompass all sklearn-wise in mlshell.utills.sklearn
+
+TODO [beta]
+    * support 'section_id__conf_id', not sure if possible, require read variable name.
+
+Parameters
+----------
+init : object.
+    Initial state for constructed object. Will be passed consecutive in steps
+    as argument. If None or skipped, dict() is used.
+
+producer : class or instance.
+    Factory to construct an object: `producer.produce(`init`, `steps`, `objects`)`
+    will be called, where `objects` is dictionary with previously created
+    objects {'section_id__configuration_id': object}.
+    If None or skipped, mlshell.Producer is used. If set as class will be
+    auto initialized: `producer(project_path, logger)` will be called.
+
+patch : dict {'method_id' : function}.
+    Monkey-patching `producer` object with custom functions.
+
+steps : list of tuples (str: 'method_id', Dict: kwargs).
+    List of class methods to run consecutive with kwargs.
+    Each step should be a tuple: `('method_id', {kwargs to use})`,
+    where 'method_id' should match to `producer` functions' names.
+    It is possible to omit kwargs, in that case each step executed with kwargs
+    set default in corresponding producer method (see producer interface)
+
+    **kwargs : dict {'kwarg_name': value, ...}.
+        Arguments depends on workflow methods. It is possible to create
+        separate configuration section for any argument and specify the `value`
+        either as 'configuration_id', or as list of 'configuration_id'.
+        If `value` is set to None, parser try to resolve it. First it searches
+        for value in `global` subsection. Then resolver looks up 'kwarg_name'
+        in section names. If such section exist, there are two possibilities:
+        if `kwarg_name` contain '_id' postfix, resolver substitutes None with
+        available `configuration_id`, else without postfix
+        resolver substitutes None with copy of configuration `init` object.
+        If fails to find resolution, `value` is remained None. In case of
+        resulation plurality, ValueError is raised.
+
+global : dict {'kwarg_name': value, ...}.
+    Specify values to resolve None for arbitrary kwargs. This is convenient for
+    example when we use the same `pipeline` in all methods. It is not rewrite
+    not-None values.
+
+priority : non-negative integer, optional (default=0).
+    Priority of configuratuon execution. The more the higher priority.
+    For two conf with same priority order is not guaranteed.
+
+**keys : arbitraty objects.
+    All keys in configuration (except ['init', 'producer', 'global', 'patch',
+    'steps', 'priority']) are moved to `global` automatically.
+
+Examples
+--------
+# Patch producer with custom functions.
+def my_func(self, pipeline, dataset):
+    # ... custom logic ...
+    return
+
+{'patch': {'extra': my_func,},}
+
+"""
 
 
 import importlib.util
@@ -10,20 +125,69 @@ import types
 
 
 class ConfHandler(object):
-    """Class to read workflow configuration from file"""
-    def __init__(self, project_path='', logger=None, **kwargs):
-        self.logger = logger if logger else logging.Logger(__class__.__name__)
+    """Read and execute configurations.
+
+    Important members are read, exec.
+
+    `mlshell.ConfHandler`:
+* Parse section one by one in priority.
+* For each configuration in sections:
+    * call `producer`.produce(`init`, `steps`, `objects`).
+    * store result in built-in `objects` storage under `section_id__configuration_id`.
+
+    Parameters
+    ----------
+    project_path: str.
+        Absolute path to current project dir (with conf.py).
+    logger : logger object.
+        Logs.
+
+    See Also
+    ---------
+    :class:`mlshell.Producer`:
+        Execute configuration steps.
+
+    """
+    _required_parameters = []
+
+    def __init__(self, project_path, logger, **kwargs):
+        self.logger = logger
         self.project_path = project_path
 
     def read(self, conf=None, default_conf=None):
+        """Read raw configuration and transform to executable.
+
+        Parse and resolve skipped parameters.
+
+        Parameters
+        ----------
+        conf : dict or None.
+            Set of configurations {'section_id': {'configuration_id': configuration,},}.
+            If None, try to read `conf` from `project_path/conf.py`.
+        default_conf : dict .
+            Set of default configurations. {'section_id': {'configuration_id': configuration, },}
+            If None, read from `mlshell.DEFAULT_PARAMS`.
+
+        Notes
+        -----
+        If section is skipped, default section is used.
+        If sub-keys are skipped, default values are used for these sub-keys.
+        So in most cases it is enough just to specify 'global'.
+
+        TODO: auto-resolution rules move here.
+
+        """
         self.logger.info("\u25CF READ CONFIGURATION")
         if conf is None:
             dir_name = self.project_path.split('/')[-1]
             spec = importlib.util.spec_from_file_location(f'conf', f"{self.project_path}/conf.py")
             conf_file = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(conf_file)
-            sys.modules['conf'] = conf_file  # otherwise problem with pickle, depends on the module path
+            # Otherwise problem with pickle, depends on the module path.
+            sys.modules['conf'] = conf_file
             conf = copy.deepcopy(conf_file.conf)
+        if default_conf is None:
+            default_conf = copy.deepcopy(mlshell.DEFAULT_PARAMS)
         return self._parse_conf(conf, default_conf)
 
     def exec(self, configs):
@@ -35,93 +199,27 @@ class ConfHandler(object):
             objects[name] = self._exec(val, objects)
         return objects
 
-    def _parse_conf(self, p, dp=None):
-        if dp is None:
-            dp = copy.deepcopy(mlshell.default.DEFAULT_PARAMS)
-        if 'dataset' not in p or not p['dataset']:
-            raise KeyError('Specify dataset configuration in conf.py.')
+    def _parse_conf(self, p, dp):
+        # Apply default.
+        p = self._merge_default(p, dp)
+        # Resolve None for configuration.
+        ids = {}
+        for section_id in p:
+            for conf_id in p[section_id]:
+                self._resolve_none(p, section_id, conf_id, ids)
 
-        # merge with default parameters
-
-        self.merge_default(p, dp)
-
-        # Resolve endpoint.
-        if p['workflow']['endpoint_id'] is None:
-            if len(p['endpoint']) > 1:
-                raise ValueError(f"Multiple 'endpoint' configuration provided,"
-                                 f" specify 'endpoint' id in 'workflow'.")
-            else:
-                p['workflow']['endpoint_id'] = list(p['endpoint'].keys())[0]
-        endpoint_ids = p['workflow']['endpoint_id']
-        if isinstance(endpoint_ids, str):
-            endpoint_ids = [endpoint_ids]
-        ids = {'endpoint': endpoint_ids}
-
-        # Resolve parameters in endpoint(s).
-        for endpoint_id in endpoint_ids:
-            self.resolve_none(p, endpoint_id, ids)
-
-        # remain only used configuration
-        res = {'workflow': p['workflow'], }
+        # Remain only used configuration.
+        res = {}
         for key, val in ids.items():
-            # if not empty configuration
+            # If not empty configuration.
             if val:
                 res[key] = {id_: p[key][id_] for id_ in val}
-        # [deprecated] too complicated
-        # # if pipeline_id specified and more than one conf in dict,
-        # # set with pipeline_id.
-        # if ids['pipeline_id'] is not 'auto':
-        #     for key in ['endpoint', 'gs', 'metric']:
-        #         name_id = f'{key}_id'
-        #         if key in p and len(p[key]) > 1:
-        #             if ids[name_id] is 'auto':
-        #                 ids[name_id] = ids['pipeline_id']
 
-        # # if specified try to find, if 'auto' use single or pipeline_id
-        # for key in ['pipeline', 'endpoint', 'gs', 'metric']:
-        #     name_id = f'{key}_id'
-        #     if key in p and len(p[key]) > 0:
-        #         if ids[name_id] is not 'auto':
-        #             if ids[name_id] not in p[key]:
-        #                 raise ValueError(f"Unknown {name_id} configuration: {ids[name_id]}.")
-        #         else:
-        #             if len(p[key]) == 1:
-        #                 ids[name_id] = list(p[key].keys())[0]
-        #             else:
-        #                 raise ValueError(f"Multiple {key} configuration provided, specify {name_id}.")
-        #     # [deprecated] after merge 'default' already in
-        #     #else:
-        #     #    if ids['pipeline_id'] is 'auto':
-        #     #        ids[f'{key}_id'] = 'default'
-        #     #    else:
-        #     #        raise ValueError('unknown pipeline_id')
-
-        # miss_data_ids = set()
-        # for data_id in data_ids:
-        #     if data_id not in p['dataset']:
-        #         miss_data_ids.add(data_id)
-        # if miss_data_ids:
-        #     raise KeyError(f"Unknown {name_id} configuration(s): {miss_data_ids}.")
-
-        # [deprecated] global seed is bad practice, anyway available in conf.
-        # set global random state as soon as possible.
-        # checked, work for whole process (estimator has its own seed).
-        # if 'seed' in p['endpoint'][endpoint_id]['global']:
-        #     seed = p['endpoint'][endpoint_id]['global']['seed']
-        #     rd.seed(seed)
-        #     np.random.seed(seed)
-
-        res = self._priority_arrange(res)
-        # [('config__id', config), ...]
-        # check repeated name
-        non_uniq = [k for (k, v) in
-                    collections.Counter(list(zip(*res))[0]).items() if v > 1]
-        if non_uniq:
-            raise ValueError(f"Non-unique configuration id found:\n"
-                             f"    {non_uniq}")
+        res = self._priority_arrange(res)  # [('config__id', config), ...]
+        self._check_res(res)
         return res
 
-    def resolve_none(self, p, endpoint_id, ids):
+    def _resolve_none(self, p, section_id, conf_id, ids):
         """Auto resolution for None parameters in endpoint section.
 
         If parameter None => use global,
@@ -131,52 +229,52 @@ class ConfHandler(object):
         else with conf itself.
         if no configuration => remain None.
 
-        """
-        # TODO: check consequence.
-        # [deprecated] already exist in default.
-        # if 'global' not in p['endpoint'][endpoint_id]:
-        #     p['endpoint'][endpoint_id]['global'] = {}
+        [alternative] update with global when call step.
 
-        # TODO: check consequence.
-        # [deprecated] asymmetry + should be user defined.
-        # metric by default all
-        # if 'metric' not in p['endpoint'][endpoint_id]['global'] \
-        #         or not p['endpoint'][endpoint_id]['global']['metric']:
-        #     p['endpoint'][endpoint_id]['global']['metric'] = p['metric'].keys()
+        """
+        # Assemble unknown keys to global.
+        for key in p[section_id][conf_id]:
+            if key not in ['init', 'producer', 'global',
+                           'patch', 'steps', 'priority']:
+                p[section_id][conf_id]['global'].update({key: p[section_id][conf_id].pop(key)})
 
         # Keys resolved via global.
         # (exist in global and no separate conf).
-        primitive = {key for key in p['endpoint'][endpoint_id]['global']
+        primitive = {key for key in p[section_id][conf_id]['global']
                      if key.replace('_id', '') not in p}
         for key in primitive:
             key_id = key
             # read glob val if exist
-            if key_id in p['endpoint'][endpoint_id]['global']:
-                glob_val = p['endpoint'][endpoint_id]['global'][key_id]
+            if key_id in p[section_id][conf_id]['global']:
+                glob_val = p[section_id][conf_id]['global'][key_id]
             else:
                 glob_val = None
-            for subkey, value in p['endpoint'][endpoint_id].items():
-                if subkey is not 'global' and key_id in value:
+            for step in p[section_id][conf_id]['steps']:
+                if len(step) <= 1:
+                    continue
+                subkey, value = step
+                if key_id in value:
                     # if None use global
                     if not value[key_id]:
                         value[key_id] = glob_val
 
         # Keys resolved via separate conf section.
         # two separate check: contain '_id' or not.
-        nonprimitive = {key for key in p.keys() if key not in ['workflow', 'endpoint']}
+        nonprimitive = {key for key in p.keys()}
         for key in nonprimitive:
             # read glob val if exist
-            if key in p['endpoint'][endpoint_id]['global']:
-                glob_val = p['endpoint'][endpoint_id]['global'][key]
-            elif f"{key}_id" in p['endpoint'][endpoint_id]['global']:
-                glob_val = p['endpoint'][endpoint_id]['global'][f"{key}_id"]
+            if key in p[section_id][conf_id]['global']:
+                glob_val = p[section_id][conf_id]['global'][key]
+            elif f"{key}_id" in p[section_id][conf_id]['global']:
+                glob_val = p[section_id][conf_id]['global'][f"{key}_id"]
             else:
                 glob_val = None
             if key not in ids:
                 ids[key] = set()
-            for subkey, value in p['endpoint'][endpoint_id].items():
-                if subkey is 'global':
+            for step in p[section_id][conf_id]['steps']:
+                if len(step) <= 1:
                     continue
+                subkey, value = step
                 key_id = None
                 if key in value:
                     key_id = key
@@ -191,7 +289,7 @@ class ConfHandler(object):
                             if len(p[key]) > 1:
                                 raise ValueError(
                                     f"Multiple {key} configurations provided, specify key:\n"
-                                    f"    'endpoint:{endpoint_id}:{subkey}:{key_id}' or 'endpoint:{endpoint_id}:global:{key_id}'.")
+                                    f"    'endpoint:{conf_id}:{subkey}:{key_id}' or 'endpoint:{conf_id}:global:{key_id}'.")
                             else:
                                 glob_val = list(p[key].keys())[0]
                         value[key_id] = glob_val
@@ -220,116 +318,67 @@ class ConfHandler(object):
                             value[key_id] = copy.deepcopy([p[key][conf]['init'] for conf in confs])
                         else:
                             value[key_id] = copy.deepcopy(p[key][confs[0]]['init'])
-
-    def merge_default(self, p, dp):
-        """Add skipped key from default."""
-        self.check_params_keys(p, dp)
-
-        key = 'workflow'
-        if key in p and len(p[key]) > 0:
-            # [deprecated]
-            # if 'pipeline_id' not in p[key]:
-            #     p[key]['pipeline_id'] = dp[key]['pipeline_id']
-            if 'endpoint_id' not in p[key] or not p[key]['endpoint_id']:
-                p[key]['endpoint_id'] = copy.deepcopy(dp[key]['endpoint_id'])
-            if 'steps' not in p[key] or p[key] is None:
-                p[key]['steps'] = copy.deepcopy(dp[key]['steps'])
-            # [deprecated] use user steps without additions
-            # else:
-            #     for subkey in dp[key]['steps']:
-            #         if subkey not in p[key]['steps']:
-            #             p[key]['steps'][subkey] = dp[key]['steps'][subkey]
-        else:
-            p[key] = copy.deepcopy(dp[key])
-
-        for key in ['endpoint']:  # [deprecated] 'pipeline', unified
-            if key in p and len(p[key]) > 0:
-                # Use default subkeys only for default class.
-                if 'class' not in p[key] or p[key]['class'] is None:
-                    for conf in p[key].values():
-                        for subkey in dp[key]['default'].keys():
-                            if subkey not in conf:
-                                conf[subkey] = copy.deepcopy(dp[key]['default'][subkey])
-            else:
-                p[key] = {'default': copy.deepcopy(dp[key]['default'])}
-
-        # TODO: all others are customs, do similar as for endpoint.
-
-        # TODO: better apply in validator factory.
-        key = 'metric'
-        if key not in p:
-            name = p['pipeline']['type']
-            p[key] = copy.deepcopy(dp[key][name])
-
-        # [deprecated] custom no need in defaults.
-        # key = 'gs_params'
-        # if key not in p:
-        #     p[key] = {'default': copy.deepcopy(dp[key]['default'])}
-
-        # [deprecated] too complicated, mode to fit method with warning
-        # # update gs only if default fit endpoint and explicit name
-        # # from endpoints get all gs_ids with default fit func
-        # gs_ids = set()
-        # for endpoint in p['endpoint'].values():
-        #     if endpoint['fit']['func'] is None:
-        #         gs_ids.add(endpoint['gs_id'])
-        #         gs_ids.add(endpoint['fit']['gs_id'])
-        # for gs_id in gs_ids:
-        #     if gs_id is not None and gs_id in p['gs']:
-        #         for subkey in dp[key]['default'].keys():
-        #             if subkey not in conf:
-        #                 conf[subkey] = dp[key]['default'][subkey]
-        # # double gs_id extraction, here and below
-        # # this one optional
-        # for endpoint in p['endpoint'].values():
-        #     if endpoint['fit']['func'] is None:
-        #         gs_id = endpoint['gs_id']
-        #         if gs_id in p['gs']:
-        #             conf = p['gs'][gs_id]
-        #         elif gs_id is None and len(p['gs']) == 1:
-        #             gs_id = list(p['gs'].keys())[0]
-        #             conf = p['gs'][gs_id]
-        #         else:
-        #             # raise error below
-        #             continue
-        #         for subkey in dp[key]['default'].keys():
-        #             if subkey not in conf:
-        #                 conf[subkey] = dp[key]['default'][subkey]
-
-        # [deprecated] always user-defined
-        # 'dataset'
-        # for data_id in p['dataset']:
-        #     for subkey in dp['dataset']['default']:
-        #         if subkey not in p['dataset'][data_id]:
-        #             p['dataset'][data_id][subkey] = dp['dataset']['default'][subkey]
         return None
 
-    def check_params_keys(self, p, dp):
-        miss_keys = set()
+    def _merge_default(self, p, dp):
+        """Add skipped key from default.
+
+        * Copy skipped sections from dp.
+        * Copy skipped subkeys for existed in dp conf, zero position if
+        multiple.
+        """
+        for section_id in dp:
+            if section_id not in p:
+                # Copy skipped section_ids from dp.
+                p[section_id] = copy.deepcopy(dp[section_id])
+            else:
+                # Copy skipped subkeys for existed in dp conf(zero position).
+                # Get zero position dp conf
+                dp_conf_id = list(dp[section_id].keys())
+                for conf_id, conf in p[section_id].items():
+                    for subkey in dp[section_id][dp_conf_id].keys():
+                        if subkey not in conf:
+                            conf[subkey] = copy.deepcopy(
+                                dp[section_id][dp_conf_id][subkey])
+        return p
+
+    # [future]
+    def _find_new_keys(self, p, dp):
+        """Find keys that not exist in dp."""
+        new_keys = set()
         for key in list(p.keys()):
             if key not in dp:
-                miss_keys.add(key)
-                # del p[key]
-        if miss_keys:
+                new_keys.add(key)
+        if new_keys:
             # user can create configuration for arbitrary param
             # check if dict type
-            for key in miss_keys:
+            for key in new_keys:
                 if not isinstance(p[key], dict):
-                    raise TypeError(f"Custom params[{key}] should be the dict instance.")
-            # self.logger.warning(f"Ignore unknown key(s) in conf.py params, check\n    {miss_keys}")
+                    raise TypeError(f"Custom params[{key}]"
+                                    f" should be the dict instance.")
 
     def _priority_arrange(self, res):
+        """Sort configuration by `priority` sub-key."""
         min_heap = []
         for key in res:
             for subkey in res[key]:
                 val = res[key][subkey]
-                # [beta]
+                # TODO: [beta]
                 # name = f'{key}__{subkey}'
                 name = subkey
                 priority = val.get('priority', 0)
                 heapq.heappush(min_heap, (priority, (name, val)))
         sorted_ = heapq.nsmallest(len(min_heap), min_heap)
         return list(zip(*sorted_))[1]
+
+    def _check_res(self, tup):
+        """Check list of tuple for repeated values at first indices."""
+        non_uniq = [k for (k, v) in
+                    collections.Counter(list(zip(*tup))[0]).items() if v > 1]
+        if non_uniq:
+            raise ValueError(f"Non-unique configuration id found:\n"
+                             f"    {non_uniq}")
+        return None
 
     def _exec(self, conf, objects):
         init = conf.get('init', {})

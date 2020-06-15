@@ -362,6 +362,16 @@ class Workflow(mlshell.Producer):
             # [deprecated] kwargs['gs_params']['hp_grid'] =
             hp_grid = self._resolve_hps(hp_grid, pipeline, dataset, **kwargs)
 
+
+        # TODO:
+        #  если метрики не заданы, копируется для классификатора и регрессора,
+        #  их надо испольовать автоматом.
+        #  также проверь есть ли что в случае пустого скоринга.
+        key = 'metric'
+        if key not in p:
+            name = p['pipeline']['type']
+            p[key] = copy.deepcopy(dp[key][name])
+
         # Resolve scoring.
         scoring = kwargs['gs_params'].pop('scoring', {})
         if scoring:

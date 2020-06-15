@@ -6,6 +6,7 @@ from .__version__ import __version__
 from .callbacks import find_path
 from .logger import CreateLogger
 from .handle import ConfHandler
+from .default import CreateDefaultPipeline, DEFAULT_PARAMS
 from .produce import Producer
 from .data import DataProducer, Dataset
 from .pipeline import PipeProducer, Pipeline
@@ -13,7 +14,6 @@ from .resolve import HpResolver
 from .optimize import RandomizedSearchOptimizer, ThresholdOptimizer
 from .validate import Validator
 from .general import Workflow
-from .default import CreateDefaultPipeline, DEFAULT_PARAMS
 from .gui import GUI
 from .eda import EDA
 from .run import run

@@ -1,77 +1,4 @@
-"""Module contains default configuration and pipeline steps.
-
-Workflow configuration is set with python dictionary.
-It could be passed to `mlshell.run()` function or some user-defined handler,
-where workflow class is built and its endpoints are executed.
-
-There is common logic for all configuration sections:
-{'section_id':
-    'configuration_id 1': {
-        'init': initial object of custom type.
-        'producer': factory class, which contain methods to run steps.
-        'patch': add custom method to class.
-        'steps': [
-            ('method_id 1', kwargs_1),
-            ('method_id 2', kwargs_2),
-        ],
-        'global': shortcut to common parameters.
-        'priority': execute priority (integer non-negative number).
-    }
-    'configuration_id 2':{
-        ...
-    }
-}
-The target for each section is to create object (pipeline, dataset, ..).
-`producer` object work as factory, it should contain .produce() method which:
-* takes `init` consecutive pass it to `steps` with additional kwargs.
-* return resulting object.
-so `init` is the template for produced object (empty dict() for example).
-
-Created `objects` can be used as kwargs for any step in others sections.
-But the order in which sections handled is important. For this purpose
-'priority' key is available: non-negative integer number, the more the higher
-the priority (by default all set to 0). For two with same priority order is
-not guaranteed.
-
-`mlshell.run()` handler:
-* Parse section one by one in priority.
-* For each configuration in sections:
-    * call `producer`.produce(`init`, `steps`, `objects`).
-    * store result in built-in `objects` storage under `section_id__configuration_id`.
-
-For flexibility, it is possible to:
-* monkey patch `producer` object with custom functions via `patch` key.
-* specify global value for common kwargs in steps via `global` key.
-* create separate section for any configuration subkey or kw_arg parameter in
-steps. TODO: any configuration subkeys + need rearange read conf.
-there are two ways:
-    * use `section_id` to deepcopy target configuration `init` before execute steps.
-    * use `section_id__id` postfix to pass `configuration_id` as kwargs.
-* TODO: skip anykwargs in steps, will be used class default.
-    actually default better specify in class functions.
-
-For ML task, common sections would be:
-* create/read pipelines and datasets objects.
-* create workflow class and call methods with pipeline/dataset as argument.
-
-# TODO: do both producer as class or object.
-#    better give flexibility for user
-#    and in default i can use class.
-
-# TODO:
-#    encompass all sklearn-wise in mlshell.utills.sklearn
-
-# TODO:
-    kwargs(not kwargs) everywhere in documentation/code
-
-See default configuration for example.
-
-[beta] Ideas:
-* all keys in configuration (except hardcoded) are global => more beautiful config
-* support 'section_id__conf_id', not sure if possible, require read variable name.
-
-
-"""
+"""The module contains default configuration and pipeline steps."""
 
 
 from mlshell.libs import *
@@ -239,112 +166,16 @@ DEFAULT_PARAMS = {
     'metric': METRICS,
     'workflow': WORKFLOW,
 }
-""" Default sections for ML task.
+"""Default sections for ML task.
 
-Each section specify set of configurations.
-Each configuration provide steps to construct an object, that can be
-utilize as argument in some other sections.
-See below detailed configuration keys description.
-
-TODO: Better move to producer.
-    Default better move to read conf.
-
-Parameters
-----------
-init : object.
-    Initial state for constructed object. Will be passed consecutive in steps
-    as argument.
-    If None or skipped, dict() is used.
-    
-producer : class or instance.
-    Factory to construct object, producer.produce(`init`, `steps`, `objects`) 
-    will be called, where `objects` is dictionary with previously created 
-    objects {'section_id__configuration_id': object}.  
-    TODO: 
-    If None or skipped, mlshell.Producer is used.
-    If class will be initialized with producer(project_path, logger).
-    
-patch : dict {'method_id' : function}.
-    Monkey-patching `producer` object with custom functions.
-    
-steps : list of tuples (str: 'method_id', Dict: kwargs).
-    List of class methods to run consecutive with kwargs. 
-    Each step should be a tuple: `('method_id', {kwargs to use})`,
-    where 'method_id' should match to `producer` functions' names.
-    It is possible to omit kwargs, in that case each step executed with kwargs
-    set default in corresponding producer method (see producer interface)
-
-    **kwargs : dict {'kwarg_name': value, ...}.
-        Arguments depends on workflow methods. It is possible to create
-        separate configuration section for any argument. If value is set here
-        to None, parser try to resolve it. First it searches for value in
-        `global` subsection. Then resolver looks up 'kwarg_name' in section
-        names. If such section exist, there are two possibilities: if
-        `kwarg_name` contain '_id' postfix, resolver substitutes None with
-        available `configuration_id`, else without postfix
-        resolver substitutes None with copy of configuration `init` object.
-        If fails to find resolution, value is remained None. In case of plurality of 
-        resolutions, ValueError is raised.
-        TODO: check if?
-        Also list of id is possible (like for metric)
-
-global : dict {'kwarg_name': value, ...}.
-    Specify values to resolve None for arbitrary kwargs. This is convenient for
-    example when we use the same `pipeline` in all methods. It is not rewrite 
-    not-None values.
-
-
-Examples
---------
-# Use custom functions.
-def my_func(self, pipeline, dataset):
-    # ... custom logic ...
-    return 
-
-{'patch': {'extra': my_func,},}
-
-Notes
------
-If section is skipped, default section is used.
-If sub-keys are skipped and `producer` is None/skipeed, default values are used 
-for these sub-keys. So in most cases it is enough just to specify 
-'global'.
-
-See also
---------
-:class:`Workflow`:
-    default universal workflow class.
-
-"""
-"""
-
-endpoint : str or None.
-    Endpoint identifier, should be the one described in `endpoint section`.
-    Auto-resolved if None and endpoint section contain only one configuration,
-    else ValueError.
-    TODO: [beta].
-    It`s possible to specify list of endpoints to run consecutive.
-    In that case 'steps' should be list of lists.
-
-steps : list of tuples (str 'step_identifier', kwargs).
-    List of workflow methods to run consecutive. 
-    Each step should be a tuple: `('step_identifier', {kwargs to use})`,
-    where 'step_identifier' should match with `endpoint` functions' names.
-    By default, step executed with argument taken from `endpoint section`,
-    but it also is possible to update kwargs here before calling.
-    
- 
-
-Notes
------
-If section is skipped, default template is used.
-If subkeys are skipped, default values are used for these subkeys.
-
-See also
---------
+For ML task, common sections would be:
+* create/read pipelines and datasets objects.
+* create workflow class and call methods with pipeline/dataset as argument.
 
 """
 
+
+# TODO: Move out to related methods.
 """(dict): if user skip declaration for any parameter the default one will be used.
 
     pipeline__estimator (``sklearn.base.BaseEstimator``, optional (default=sklearn.linear_model.LinearRegression())):
