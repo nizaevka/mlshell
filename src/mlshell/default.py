@@ -13,7 +13,7 @@ WORKFLOW = {
         'producer': mlshell.Workflow,
         'global': {},
         'patch': {},
-        'priority': 1,
+        'priority': 2,
         'steps': [
             ('fit', {
                 'pipeline_id': None,
@@ -87,7 +87,7 @@ PIPELINES = {
         'producer': mlshell.PipeProducer,
         'global': {},
         'patch': {},
-        'priority': 0,
+        'priority': 1,
         'steps': [
             ('create', {
                 'cache': None,
@@ -115,7 +115,7 @@ METRICS = {
         'producer': mlshell.MetricProducer,
         'global': {},
         'patch': {},
-        'priority': 0,
+        'priority': 1,
         'steps': [
             ('make_scorer', {
                 'func': sklearn.metrics.accuracy_score,
@@ -128,7 +128,7 @@ METRICS = {
         'producer': mlshell.MetricProducer,
         'global': {},
         'patch': {},
-        'priority': 0,
+        'priority': 1,
         'steps': [
             ('make_scorer', {
                 'func': sklearn.metrics.r2_score,
@@ -145,7 +145,7 @@ DATASETS = {
         'class': mlshell.DataProducer,
         'global': {},
         'patch': {},
-        'priority': 0,
+        'priority': 1,
 
         'steps': [
             ('load_cache', {'prefix': None},),

@@ -15,8 +15,8 @@ For each section there is common logic:
         'producer': factory class, which contain methods to run steps.
         'patch': add custom method to class.
         'steps': [
-            ('method_id 1', kwargs_1),
-            ('method_id 2', kwargs_2),
+            ('method_id 1', {'kwarg_id':value, ..}),
+            ('method_id 2', {'kwarg_id':value, ..}),
         ],
         'global': shortcut to common parameters.
         'priority': execute priority (integer non-negative number).
@@ -35,74 +35,70 @@ sections.
 To specify the order in which sections handled, 'priority' key is available.
 
 For flexibility, it is possible to:
-* Monkey patch `producer` object with custom functions via `patch` key.
 * Specify global value for common kwargs in steps via `global` key.
-all keys in configuration (except ['init', 'producer', 'global', 'patch',
-'steps', 'priority']) are moved to `global` automatically.
 * Create separate section for arbitrary parameter in steps.
-So it is sufficient to use `section_id__configuration_id` as kwarg value, then
-in step execution kwarg could be gotten from `objects`.
-As alternative, if add '_id' postfix to `kwarg_id`,
-`init` object from `configuration_id` will be copy on parse
-
-Then there are two ways to define kwarg {`kwarg_id`: kwarg_val}:
-* `producer`/`init` can be both class or object.
+* `producer`/`init` can be both an instance or a class.
+* Monkey patch `producer` object with custom functions via `patch` key.
 
 
-TODO:
-    encompass all sklearn-wise in mlshell.utills.sklearn
-
-TODO [beta]
-    * support 'section_id__conf_id', not sure if possible, require read variable name.
-
-Parameters
-----------
-init : object.
+Configuration keys
+------------------
+init : class or instance, optional (default={})
     Initial state for constructed object. Will be passed consecutive in steps
-    as argument. If None or skipped, dict() is used.
+    as argument. If set as class will be auto initialized: `init()`.
 
-producer : class or instance.
-    Factory to construct an object: `producer.produce(`init`, `steps`, `objects`)`
+producer : class or instance, optional (default=mlshell.Producer).
+    Factory to construct an object:`producer.produce(`init`,`steps`,`objects`)`
     will be called, where `objects` is dictionary with previously created
-    objects {'section_id__configuration_id': object}.
-    If None or skipped, mlshell.Producer is used. If set as class will be
-    auto initialized: `producer(project_path, logger)` will be called.
+    objects {'section_id__configuration_id': object}. If set as class will be
+    auto initialized: `producer(project_path, logger)`.
 
-patch : dict {'method_id' : function}.
+patch : dict {'method_id' : function}, optional (default={}).
     Monkey-patching `producer` object with custom functions.
 
-steps : list of tuples (str: 'method_id', Dict: kwargs).
+steps : list of tuples ('method_id', {**kwargs}), optional (default=[]).
     List of class methods to run consecutive with kwargs.
     Each step should be a tuple: `('method_id', {kwargs to use})`,
     where 'method_id' should match to `producer` functions' names.
     It is possible to omit kwargs, in that case each step executed with kwargs
-    set default in corresponding producer method (see producer interface)
+    set default in corresponding producer method (see `producer` interface).
 
-    **kwargs : dict {'kwarg_name': value, ...}.
-        Arguments depends on workflow methods. It is possible to create
-        separate configuration section for any argument and specify the `value`
-        either as 'configuration_id', or as list of 'configuration_id'.
+    **kwargs : dict {'kwarg_id': value, ...}, optional (default={}).
+        Arguments depends on workflow methods.
+
+        It is possible to create separate configuration section for any argument.
+        Set `section_id__configuration_id` for kwarg value, then it would be
+        auto-filled with corresponding section `objects` before step execution.
+        To prevent auto `object` substitution, use special '_id' postfix to `kwarg_id`.
+        It is also possible to set list of `section_id__configuration_id`s.
+
+
         If `value` is set to None, parser try to resolve it. First it searches
-        for value in `global` subsection. Then resolver looks up 'kwarg_name'
+        for value in `global`. Then resolver looks up 'kwarg_name'
         in section names. If such section exist, there are two possibilities:
         if `kwarg_name` contain '_id' postfix, resolver substitutes None with
-        available `configuration_id`, else without postfix
-        resolver substitutes None with copy of configuration `init` object.
+        available `section_id__configuration_id`, otherwise with
+        configuration object.
         If fails to find resolution, `value` is remained None. In case of
-        resulation plurality, ValueError is raised.
+        resolution plurality, ValueError is raised.
 
-global : dict {'kwarg_name': value, ...}.
+priority : non-negative integer, optional (default=1).
+    Priority of configuration execution. The more the higher priority.
+    For two conf with same priority order is not guaranteed.
+    If zero, not execute configuration.
+
+global : dict {'kwarg_name': value, ...}, optional (default={}).
     Specify values to resolve None for arbitrary kwargs. This is convenient for
     example when we use the same `pipeline` in all methods. It is not rewrite
     not-None values.
 
-priority : non-negative integer, optional (default=0).
-    Priority of configuratuon execution. The more the higher priority.
-    For two conf with same priority order is not guaranteed.
+**keys : arbitrary objects, optional (default={}).
+    All additional keys in configuration are moved to `global` automatically.
+    If is useful if mostly rely on default configuration
 
-**keys : arbitraty objects.
-    All keys in configuration (except ['init', 'producer', 'global', 'patch',
-    'steps', 'priority']) are moved to `global` automatically.
+Notes
+-----
+Default value can be rearrange in `mlshell.ConfHandler.read(conf, default)`.
 
 Examples
 --------
@@ -112,6 +108,15 @@ def my_func(self, pipeline, dataset):
     return
 
 {'patch': {'extra': my_func,},}
+
+See Also
+--------
+:class:`mlshell.ConfHandler`:
+    Reads configurations, executes steps.
+
+
+TODO:
+    encompass all sklearn-wise in mlshell.utills.sklearn
 
 """
 
@@ -127,13 +132,7 @@ import types
 class ConfHandler(object):
     """Read and execute configurations.
 
-    Important members are read, exec.
-
-    `mlshell.ConfHandler`:
-* Parse section one by one in priority.
-* For each configuration in sections:
-    * call `producer`.produce(`init`, `steps`, `objects`).
-    * store result in built-in `objects` storage under `section_id__configuration_id`.
+    Interface: read, exec.
 
     Parameters
     ----------
@@ -148,7 +147,7 @@ class ConfHandler(object):
         Execute configuration steps.
 
     """
-    _required_parameters = []
+    _required_parameters = ['project_path', 'logger']
 
     def __init__(self, project_path, logger, **kwargs):
         self.logger = logger
@@ -156,8 +155,6 @@ class ConfHandler(object):
 
     def read(self, conf=None, default_conf=None):
         """Read raw configuration and transform to executable.
-
-        Parse and resolve skipped parameters.
 
         Parameters
         ----------
@@ -168,13 +165,25 @@ class ConfHandler(object):
             Set of default configurations. {'section_id': {'configuration_id': configuration, },}
             If None, read from `mlshell.DEFAULT_PARAMS`.
 
+        Returns
+        -------
+        configs : list of tuple [('section_id__config__id', config), ...].
+            List of configurations, prepared for execution.
+
         Notes
         -----
-        If section is skipped, default section is used.
-        If sub-keys are skipped, default values are used for these sub-keys.
-        So in most cases it is enough just to specify 'global'.
+        Apply default:
+        * If section is skipped, default section is used.
+        * If sub-keys are skipped, default values are used for these sub-keys.
 
-        TODO: auto-resolution rules move here.
+        Resolve kwargs:
+        * If any step kwarg is None => use value from `global`,
+        * if not in `global` => search `kwarg_id` in 'section_id's,
+        If no section => remain None.
+        If found section:
+            If more then one configurations in section => ValueError.
+            If `kwarg_id` contains postfix '_id', substitute None
+            `section_id__configuration_id`, otherwise with configuration object.
 
         """
         self.logger.info("\u25CF READ CONFIGURATION")
@@ -188,9 +197,35 @@ class ConfHandler(object):
             conf = copy.deepcopy(conf_file.conf)
         if default_conf is None:
             default_conf = copy.deepcopy(mlshell.DEFAULT_PARAMS)
-        return self._parse_conf(conf, default_conf)
+        configs = self._parse_conf(conf, default_conf)
+        return configs
 
     def exec(self, configs):
+        """Execute configurations in priority.
+
+        For each configuration:
+        * call `producer`.produce(`init`, `steps`, `objects`).
+        * store result in `objects` storage under `section_id__configuration_id`.
+
+        Parameters
+        ----------
+        configs : list of tuple [('section_id__config__id', config), ...].
+            List of configurations, prepared for execution.
+
+        Returns
+        -------
+        objects : dict {'section_id__config__id', object,}.
+            Dictionary with resulted objects from `configs` execution.
+
+        Notes
+        -----
+        `producer`/`init` auto initialized.
+
+        Default values for skipped config keys:
+        {'init': {}, 'steps': [], 'producer': mlshell.Producer, 'patch': {},}
+
+
+        """
         objects = {}
         for config in configs:
             name, val = config
@@ -202,32 +237,67 @@ class ConfHandler(object):
     def _parse_conf(self, p, dp):
         # Apply default.
         p = self._merge_default(p, dp)
-        # Resolve None for configuration.
-        ids = {}
+        # Resolve None inplace for configurations.
+        # `ids` contain used confs ref by section.
+        ids = {}  # {'section_id': set('configuration_id', )}
         for section_id in p:
             for conf_id in p[section_id]:
                 self._resolve_none(p, section_id, conf_id, ids)
 
-        # Remain only used configuration.
-        res = {}
-        for key, val in ids.items():
-            # If not empty configuration.
-            if val:
-                res[key] = {id_: p[key][id_] for id_ in val}
+        # [deprecated] add -1 priority to skip conf.
+        # in common config we need all objects
+        # and explicit kwargs list not available.
+        # # Remain only used configuration.
+        # res = {}
+        # for key, val in ids.items():
+        #     if val:
+        #         res[key] = {id_: p[key][id_] for id_ in val}
+        # p = res
 
-        res = self._priority_arrange(res)  # [('config__id', config), ...]
+        # Arrange in priority.
+        res = self._priority_arrange(p)  # [('section_id__config__id', config)]
         self._check_res(res)
         return res
 
+    def _merge_default(self, p, dp):
+        """Add skipped key from default.
+
+        * Copy skipped sections from dp.
+        * Copy skipped subkeys for existed in dp conf, zero position if
+        multiple.
+        """
+        for section_id in dp:
+            if section_id not in p:
+                # Copy skipped section_ids from dp.
+                p[section_id] = copy.deepcopy(dp[section_id])
+            else:
+                # Copy skipped subkeys for existed in dp conf(zero position).
+                # Get zero position dp conf
+                dp_conf_id = list(dp[section_id].keys())
+                for conf_id, conf in p[section_id].items():
+                    for subkey in dp[section_id][dp_conf_id].keys():
+                        if subkey not in conf:
+                            conf[subkey] = copy.deepcopy(
+                                dp[section_id][dp_conf_id][subkey])
+        return p
+
+    # [future]
+    def _find_new_keys(self, p, dp):
+        """Find keys that not exist in dp."""
+        new_keys = set()
+        for key in list(p.keys()):
+            if key not in dp:
+                new_keys.add(key)
+        if new_keys:
+            # user can create configuration for arbitrary param
+            # check if dict type
+            for key in new_keys:
+                if not isinstance(p[key], dict):
+                    raise TypeError(f"Custom params[{key}]"
+                                    f" should be the dict instance.")
+
     def _resolve_none(self, p, section_id, conf_id, ids):
         """Auto resolution for None parameters in endpoint section.
-
-        If parameter None => use global,
-        if global None => use from available configuration,
-        if more than one configuration => ValueError.
-        If parameter name contain '_id', None substitute with conf name,
-        else with conf itself.
-        if no configuration => remain None.
 
         [alternative] update with global when call step.
 
@@ -291,71 +361,40 @@ class ConfHandler(object):
                                     f"Multiple {key} configurations provided, specify key:\n"
                                     f"    'endpoint:{conf_id}:{subkey}:{key_id}' or 'endpoint:{conf_id}:global:{key_id}'.")
                             else:
-                                glob_val = list(p[key].keys())[0]
+                                glob_val = f"{key}__{list(p[key].keys())[0]}"
                         value[key_id] = glob_val
 
                     # Check if conf available.
-                    if not isinstance(value[key_id], str) and hasattr(value[key_id], '__iter__'):
+                    if isinstance(value[key_id], list):
                         # for compatibility with sequence of ids (like metric)
-                        confs = value[key_id]
+                        confs = [i.split('__')[-1] for i in value[key_id]]
                     else:
-                        confs = [value[key_id]]
+                        confs = [value[key_id].split('__')[-1]]
                     for conf in confs:
                         if conf not in p[key]:
-                            raise ValueError(f"Unknown {key} configuration: {conf}.")
+                            raise ValueError(f"Unknown configuration: {key}__{conf}.")
+                        elif p[key][conf]['priority'] == 0 \
+                                and p[section_id][conf_id]['priority'] != 0:
+                            raise ValueError(f"Zero priority configuration {key}__{conf} "
+                                             f"can`t be used in {section_id}__{conf_id}__{subkey}.")
 
-                    # Substitute either id(s), or conf.
-                    if key_id.endswith('_id'):
-                        ids[key].update(confs)
-                    else:
-                        # Set inplace with `init` copy (contain mutable).
-                        # [alternative] not copy, so will always contain fresh 'object'
-                        #     currently only template is copy => for kw_args without factory
-                        #     kwargs with factory better via separate storage.
-                        #     It is also possible to resolve `init`/`storage` to skip `objects`
-                        #     but in that case we need to fix structure => less flexible.
-                        if len(confs) > 1:
-                            value[key_id] = copy.deepcopy([p[key][conf]['init'] for conf in confs])
-                        else:
-                            value[key_id] = copy.deepcopy(p[key][confs[0]]['init'])
+                    # Substitute id(s).
+                    ids[key].update(confs)
+
+                    # [deprecated] Resolve in Producer.
+                    #   there are more reliable and consistent.
+                    # ACTUALLy ids can`t contains only names.
+                    # # Substitute either id(s), or conf.
+                    # if key_id.endswith('_id'):
+                    #     ids[key].update(confs)
+                    # else:
+                    #     # Set reference to `init`,
+                    #     # could be problem if object not ready.
+                    #     if len(confs) > 1:
+                    #         value[key_id] = [p[key][conf]['init'] for conf in confs]
+                    #     else:
+                    #         value[key_id] = p[key][confs[0]]['init']
         return None
-
-    def _merge_default(self, p, dp):
-        """Add skipped key from default.
-
-        * Copy skipped sections from dp.
-        * Copy skipped subkeys for existed in dp conf, zero position if
-        multiple.
-        """
-        for section_id in dp:
-            if section_id not in p:
-                # Copy skipped section_ids from dp.
-                p[section_id] = copy.deepcopy(dp[section_id])
-            else:
-                # Copy skipped subkeys for existed in dp conf(zero position).
-                # Get zero position dp conf
-                dp_conf_id = list(dp[section_id].keys())
-                for conf_id, conf in p[section_id].items():
-                    for subkey in dp[section_id][dp_conf_id].keys():
-                        if subkey not in conf:
-                            conf[subkey] = copy.deepcopy(
-                                dp[section_id][dp_conf_id][subkey])
-        return p
-
-    # [future]
-    def _find_new_keys(self, p, dp):
-        """Find keys that not exist in dp."""
-        new_keys = set()
-        for key in list(p.keys()):
-            if key not in dp:
-                new_keys.add(key)
-        if new_keys:
-            # user can create configuration for arbitrary param
-            # check if dict type
-            for key in new_keys:
-                if not isinstance(p[key], dict):
-                    raise TypeError(f"Custom params[{key}]"
-                                    f" should be the dict instance.")
 
     def _priority_arrange(self, res):
         """Sort configuration by `priority` sub-key."""
@@ -363,11 +402,15 @@ class ConfHandler(object):
         for key in res:
             for subkey in res[key]:
                 val = res[key][subkey]
-                # TODO: [beta]
-                # name = f'{key}__{subkey}'
-                name = subkey
-                priority = val.get('priority', 0)
-                heapq.heappush(min_heap, (priority, (name, val)))
+                name = f'{key}__{subkey}'
+                # [alternative]
+                # name = subkey
+                priority = val.get('priority', 1)
+                if isinstance(priority, int) or priority<0:
+                    raise ValueError('Configuration priority should'
+                                     ' be non-negative number.')
+                if priority:
+                    heapq.heappush(min_heap, (priority, (name, val)))
         sorted_ = heapq.nsmallest(len(min_heap), min_heap)
         return list(zip(*sorted_))[1]
 
