@@ -12,7 +12,11 @@ techniques.
 
 `Dataset` class intended to be used in `mlshell.Workflow`.
 All data-specific methods put there, so no need to edit `Workflow` class for new
-data format, only `Dataset` endpoints realization.
+data format, only `Dataset` interface realization.
+
+See also
+--------
+:class:`mlshell.Workflow` docstring for dataset prerequisites.
 
 TODO: check what await for.
 To use in Workfloe:
@@ -23,16 +27,29 @@ dump
 split
 ...
 
-See also
---------
-:class:`mlshell.Workflow` docstring for dataset prerequisites.
+TODO: check
+* categoric_ind_name/numeric_ind_name move under raw_names
+* [deprecated] If None, auto add zero values under 'target' id.
+        try:
+            targets_df = raw[target_names]
+            targets = targets_df.values
+        except KeyError as e:
+            # Handle test data without targets.
+            self.logger.warning("Warning: no target column(s) '{}' in df,"
+                                " use 0 values.".format(target_names))
+            targets = np.zeros((raw.shape[0], len(target_names)),
+                               dtype=int,
+                               order="C")
+            raw[target_names] = pd.DataFrame(targets)
+* [deprecated] atavism.
+targets = targets_df.values.astype(int)  # cast to int
+* keys change
+'index' => 'indices'
+'index_name' => 'index' , also made list ['label']
+'categor_features' => 'categoric_features'
+
 
 """
-
-#[deprecated] good choice
-# alternative if attribute for train/test we will inherent x,y,classes => complicated, need oo clean)
-# need for ram economy, we can make it as dict key
-# But: multiple calls
 
 
 from mlshell.libs import *
@@ -42,19 +59,52 @@ import mlshell
 class Dataset(dict):
     """Unified data class.
 
-    Provides inteface to work with arbitrary data.
+    Implements interface to access arbitrary data.
     Interface: get_x, get_y, get_classes, dump, split
 
-    In implementation self
-    {
-        'data': data,
-        'raw_names':
-    }
+    Attributes
+    ----------
+    data : pd.DataFrame
+        Dataframe.
+    raw_names : dict
+        Contains index/targets/features identifiers:
+        {
+            'index': list
+                List of index label(s).
+            'features': list
+                List of feature label(s).
+            'categoric_features': list
+                List of categorical feature label(s).
+            'targets': list
+                List of target label(s),
+            'indices': list
+                List of rows indices.
+            'pos_labels': list
+                List of "positive" label(s) in target(s), classification only.
+            categoric_ind_name : dict
+                {'column_index': ('feature_name', ['cat1', 'cat2'])}
+                Dictionary with categorical feature indices as key, and tuple
+                ('feature_name', categories) as value.
+            numeric_ind_name : dict {'columns_index':('feature_name',)}
+                Dictionary with numeric features indices as key, and tuple
+                ('feature_name', ) as value.)}
+        }
+    train_index : array-like
+        Train indices.
+    test_index : array-like
+        Test indices.
+
 
     Parameters
     ----------
-    *args
-    **kwrags
+    *args : list
+        Passed to parent class constructor.
+    **kwrags : dict
+        Passed to parent class constructor.
+
+    Notes
+    -----
+    Inherited from dict class, so attributes section describes keys.
 
     """
     _required_parameters = []
@@ -63,7 +113,6 @@ class Dataset(dict):
         super().__init__(*args, **kwargs)
 
     def __hash__(self):
-        """Hash value of dataset."""
         return pd.util.hash_pandas_object(self['data']).sum()
 
     def get_x(self):
@@ -111,9 +160,13 @@ class Dataset(dict):
 
         Keys
         ----
-        pos_labels : list, optional (default=None)
-            Todo
-            if None, last label in np.unique(target) for each target is used.
+        data
+        raw_names : dict
+            pos_labels : list
+                Classification only, list of "positive" labels for targets.
+                Could be used for threshold analysis (roc_curve) and metric evaluation
+                for classifiers supported predict_proba. If empty, last label in
+                np.unique(target) for each target is used.
 
         Returns
         -------
@@ -124,7 +177,7 @@ class Dataset(dict):
              TODO:
 
         """
-        df = ['data']
+        df = self['data']
         raw_names = self['raw_names']
         pos_labels = raw_names.get('pos_labels', [])
 
@@ -217,7 +270,6 @@ class Dataset(dict):
         return
 
 
-
 class DataIO(object):
     """Get raw data from database.
 
@@ -282,19 +334,17 @@ class DataIO(object):
             if nrows > lines:
                 nrows = None
             elif random_skip:
-                # skiprows index strat from 0,
-                # headers should be, otherwise return nrows+1.
+                # skiprows index start from 0.
+                # If no headers, returns nrows+1.
                 random_state = sklearn.utils.check_random_state(random_state)
                 skiprows = random_state.choice(range(1, lines),
                                                size=lines - nrows - 1,
                                                replace=False, p=None)
             kwargs['skiprows'] = skiprows
             kwargs['nrows'] = nrows
-
         with open(filename, 'r') as f:
             raw = pd.read_csv(f, **kwargs)
         self.logger.info("Data loaded from:\n    {}".format(filename))
-
         dataset['data'] = raw
         return dataset
 
@@ -311,8 +361,8 @@ class DataIO(object):
         prefix : str
             File identifier, added to filename.
         fformat : 'pickle'/'hr', optional default('pickle')
-            If 'pickle', dump dataset via dill lib.
-            If 'hr' try to decompose in csv/json (only for dictionary).
+            If 'pickle', dump dataset via dill lib. If 'hr' try to decompose
+            in human-readable csv/json (only for dictionary).
         cachedir : str, optional(default=None)
             Absolute path to dir for cache.
             If None, "project_path/results/cache/data" is used.
@@ -324,21 +374,16 @@ class DataIO(object):
         dataset : pickable
             Unchanged input for compliance with producer logic.
 
-        Notes
-        -----
-        'hr' means human-readable
-
         """
         if not cachedir:
             cachedir = f"{self.project_path}/results/cache/data"
         if not os.path.exists(cachedir):
-            # create temp dir for cache if not exist
+            # Create temp dir for cache if not exist.
             os.makedirs(cachedir)
         for filename in glob.glob(f"{cachedir}/{prefix}*"):
             os.remove(filename)
         fps = set()
         if fformat == 'pickle':
-            # pickle
             filepath = f'{cachedir}/{prefix}_.dump'
             fps.add(filepath)
             dill.dump(dataset, filepath, **kwargs)
@@ -358,7 +403,7 @@ class DataIO(object):
 
         Parameters
         ----------
-        dataset : pickable
+        dataset : picklable object
             Updated for 'hr', ignored for 'pickle'.
         prefix : str
             File identifier, added to filename.
@@ -373,7 +418,7 @@ class DataIO(object):
 
         Returns
         -------
-        dataset : pickable
+        dataset : picklable object
             Loaded cache.
 
         """
@@ -426,12 +471,12 @@ class DataIO(object):
                 with open(filepath, 'w', newline='') as f:
                     pd.DataFrame(val).to_csv(f, mode='w', header=True,
                                              index=True, line_terminator='\n')
-                # np.savetxt(filepath, val, delimiter=",")
+                # [alternative] np.savetxt(filepath, val, delimiter=",")
             else:
                 filepath = f'{filedir}/{prefix}_{key}_.json'
                 filenames.add(filepath)
                 with open(filepath, 'w') as f:
-                    # items() preserve first level dic keys as int
+                    # items() preserve first level dic keys as int.
                     json.dump(list(val.items()), f)
         return filenames
 
@@ -471,7 +516,7 @@ class DataIO(object):
 class DataPreprocessor(object):
     """Transform raw data in compliance with `Dataset` class.
 
-    Interface: preprocess, info, unify, split, check.
+    Interface: preprocess, info, split.
 
     Parameters
     ----------
@@ -496,19 +541,19 @@ class DataPreprocessor(object):
 
         Parameters
         ----------
-        dataset : dict
+        dataset : dict {'data':raw}
             Raw dataset.
         target_names: list, None, optional (default=None)
             List of target identifiers in raw dataset.
-            If None, auto add zero values under 'target' id.
-            TODO: better not to auto add.
+            If None, ['target'] is used.
         categor_names: list, None, optional (default=None)
             List of categoric features(also binary) identifiers in raw dataset.
             If None, empty list.
         pos_labels: list, None, optional (default=None)
-            Classification only, list of targets pos labels
-            # TODO: what for?
-            If None, empty list.
+            Classification only, list of "positive" labels for targets.
+            Could be used for threshold analysis (roc_curve) and metric evaluation
+            for classifiers supported predict_proba. If None, last label in
+            np.unique(target) for each target is used.
         **kwargs : kwargs
             Additional parameters to add in dataset.
 
@@ -517,10 +562,33 @@ class DataPreprocessor(object):
         dataset : dict
             Resulted dataset.
             Key 'data' updated.
-                TODO: it is better to move unify to make_features.
-            Keys added:
-            'raw_names' : {}
-                TODO: description after change.
+            Key added:
+            'raw_names' : {
+                'index': list
+                    List of index label(s).
+                'features': list
+                    List of feature label(s).
+                'categoric_features': list
+                    List of categorical feature label(s).
+                'targets': list
+                    List of target label(s),
+                'indices': list
+                    List of rows indices.
+                'pos_labels': list
+                    List of "positive" label(s) in target(s).
+                categoric_ind_name : dict
+                    {'column_index': ('feature_name', ['cat1', 'cat2'])}
+                    Dictionary with categorical feature indices as key, and tuple
+                    ('feature_name', categories) as value.
+                numeric_ind_name : dict {'columns_index':('feature_name',)}
+                    Dictionary with numeric features indices as key, and tuple
+                    ('feature_name', ) as value.)}
+            }
+
+        Notes
+        -----
+        Don`t change dataframe shape or index/columns names after `raw_names`
+        generating.
 
         """
         self.logger.info("\u25CF \u25B6 PREPROCESS DATA")
@@ -533,13 +601,18 @@ class DataPreprocessor(object):
             pos_labels = []
         index = raw.index
         targets = self._make_targets(raw, target_names)
-        features, features_names = self._make_features(raw, target_names)
-        raw_names = {'index': list(index),
-                     'index_name': index.name,
-                     'targets': target_names,
-                     'features': list(features_names),
-                     'categor_features': categor_names,
-                     'pos_labels': pos_labels}
+        features, features_names, categoric_ind_name, numeric_ind_name\
+            = self._make_features(raw, target_names, categor_names)
+        raw_names = {
+            'index': index.name,
+            'features': list(features_names),
+            'categoric_features': categor_names,
+            'targets': target_names,
+            'indices': list(index),
+            'categoric_ind_name': categoric_ind_name,
+            'numeric_ind_name': categoric_ind_name,
+            'pos_labels': pos_labels,
+        }
         data = self._combine(index, targets, features, raw_names)
         dataset.update({'data': data,
                         'raw_names': raw_names,
@@ -570,53 +643,37 @@ class DataPreprocessor(object):
         self._check_gaps(dataset['data'], **kwargs)
         return dataset
 
-    def unify(self, dataset, **kwargs):
-        """Unify input dataset.
-
+    def _unify_features(self, data, categor_names):
+        """Unify input dataframe.
 
         Parameters
         ----------
-        dataset : dict
-            Dataset to unify.
-
-        **kwargs : kwargs
-            Additional parameters to pass in low-level functions.
-
-        Notes
-        -----
-        python float = np.float = C double
-        = np.float64 = np.double(64 bit processor)).
+        data : pd.DataFrame
+            Data to unify.
+        categor_names: list
+            List of categorical features (includes binary) column names in data.
 
         Returns
         -------
-        dataset: dict
-            Resulted Dataset.
-            Key 'data' updated:
+        data: pd.DataFrame
+            Updates:
             * fill gaps.
                 if gap in categorical => fill 'unknown'
                 if gap in non-categor => np.nan
             * cast categorical features to str dtype, and apply Ordinalencoder.
             * cast the whole dataframe to np.float64.
-
-            TODO: is it possible to deprecate or move to preprocess?
-                better move to raw_names and maybe reformat.
-            Keys added:
-            * 'categoric_ind_name' : {'column_index': ('feature_name', ['cat1', 'cat2'])}
-            * 'numeric_ind_name' : {'column_index':('feature_name',)}
-            dictionaries with feature indices as key, and tuple as value,
-            where 'index' = column index in dataframe when drop targets.
+        categoric_ind_name : dict {'column_index': ('feature_name', ['cat1', 'cat2'])}
+            Dictionary with categorical feature indices as key, and tuple
+            ('feature_name', categories) as value.
+        numeric_ind_name : dict {'columns_index':('feature_name',)}
+            Dictionary with numeric features indices as key, and tuple
+            ('feature_name', ) as value.
 
         """
-        data = dataset['data']
-        raw_names = dataset['raw_names']
         categoric_ind_name = {}
         numeric_ind_name = {}
-        count = 0
         for ind, column_name in enumerate(data):
-            if column_name in raw_names['targets']:
-                count += 1
-                continue
-            if column_name in raw_names['categor_features']:
+            if column_name in categor_names:
                 # Fill gaps with 'unknown', inplace unreliable (copy!)
                 data[column_name] = data[column_name]\
                     .fillna(value='unknown', method=None, axis=None,
@@ -630,24 +687,22 @@ class DataPreprocessor(object):
                                    .values.reshape(-1, 1))
                 # Generate {index: ('feature_id', ['B','A','C'])}.
                 # tolist need for 'hr' cache dump.
-                categoric_ind_name[ind-count] = (column_name,
-                                                 encoder.categories_[0].tolist())
+                categoric_ind_name[ind] = (column_name,
+                                           encoder.categories_[0].tolist())
             else:
                 # Fill gaps with np.nan.
                 data[column_name].fillna(value=np.nan, method=None, axis=None,
-                                         inplace=True, limit=None, downcast=None)
+                                         inplace=True, downcast=None)
                 # Generate {'index': ('feature_id',)}.
-                numeric_ind_name[ind-count] = (column_name,)
-        # cast to np.float64 without copy
+                numeric_ind_name[ind] = (column_name,)
+        # Cast to np.float64 without copy.
+        # python float = np.float = C double =
+        # np.float64 = np.double(64 bit processor)).
         # [alternative] sklearn.utils.as_float_array / assert_all_finite
         data = data.astype(np.float64, copy=False, errors='ignore')
-
-        dataset.update({'data': data,
-                        'categoric_ind_name': categoric_ind_name,
-                        'numeric_ind_name': numeric_ind_name})
-        # additional check
-        dataset = self._check_numeric_types(dataset)
-        return dataset
+        # Additional check.
+        self._check_numeric_types(data, categor_names)
+        return data, categoric_ind_name, numeric_ind_name
 
     # @memory_profiler
     def split(self, dataset, **kwargs):
@@ -679,7 +734,7 @@ class DataPreprocessor(object):
         data = dataset['data']
 
         if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
-            or kwargs['train_size'] is None and kwargs['test_size'] == 0):
+                or kwargs['train_size'] is None and kwargs['test_size'] == 0):
             train = test = data
             train_index, test_index = data.index
         else:
@@ -689,115 +744,139 @@ class DataPreprocessor(object):
                 kwargs.pop(kw)
             train, test, train_index, test_index = \
                 sklearn.model_selection.train_test_split(
-                data, data.index.values, **kwargs)
+                    data, data.index.values, **kwargs)
 
-        # add to data
+        # Add to dataset.
         dataset.update({'train_index': train_index,
                         'test_index': test_index})
         return dataset
 
     def _make_targets(self, raw, target_names):
         """Targets preprocessing."""
-        try:
-            targets_df = raw[target_names]
-            targets = targets_df.values
-            # TODO: test that there is no consequences.
-            # [deprecated] atavism.
-            # targets = targets_df.values.astype(int)  # cast to int
-        except KeyError as e:
-            # handle test data without targets
-            self.logger.warning("Warning: no target column(s) '{}' in df,"
-                                " use 0 values.".format(target_names))
-            targets = np.zeros((raw.shape[0], len(target_names)),
-                               dtype=int,
-                               order="C")
-            raw[target_names] = pd.DataFrame(targets)
-
+        targets_df = raw[target_names]
+        targets = targets_df.values
         return targets
 
-    def _make_features(self, raw, target_names):
+    def _make_features(self, raw, target_names, categor_names):
         """Features preprocessing."""
         features_df = raw.drop(target_names, axis=1)
-        raw_features_names = features_df.columns
+        features_names = features_df.columns
+        features_df, categoric_ind_name, numeric_ind_name \
+            = self._unify_features(features_df, categor_names)
         features = features_df.values
-        return features, raw_features_names
+        return features, features_names, categoric_ind_name, numeric_ind_name
 
     def _combine(self, index, targets, features, raw_names):
         """Combine preprocessed sub-data."""
-        # [deprecated] preserve original
-        # columns = [f'feature_categor_{i}__{raw_name}' if raw_name in raw_names['categor_features']
-        #            else f'feature_{i}__{raw_name}'
-        #            for i, raw_name in enumerate(raw_names['features'])]
         columns = raw_names['features']
         df = pd.DataFrame(
             data=features,
             index=index,
             columns=columns,
             copy=False,
-        ).rename_axis(raw_names['index_name'])
+        ).rename_axis(raw_names['index'])
         df.insert(loc=0, column='targets', value=targets)
         return df
 
-    def _check_duplicates(self, data, del_duplicates=None):
-        """Check duplicates rows in dataframe."""
+    def _check_duplicates(self, data, del_duplicates=False):
+        """Check duplicates rows in dataframe.
+
+        Parameters
+        ----------
+        data : pandas.DataFrame
+            Dataframe to check.
+        del_duplicates : bool
+            If True, delete rows with duplicated.
+            If False, do nothing.
+
+        Notes
+        -----
+        Use del_duplicates=True only before generating dataset `raw_names`.
+
+        """
         # Duplicate rows index mask.
         mask = data.duplicated(subset=None, keep='first')
         dupl_n = np.sum(mask)
         if dupl_n:
-            self.logger.warning('Warning: {} duplicates rows found,\n'
-                                '    see debug.log for details.'.format(dupl_n))
+            self.logger.warning(f"Warning: {dupl_n} duplicates rows found,\n"
+                                "    see debug.log for details.")
             # Count unique duplicated rows.
             rows_count = data[mask].groupby(data.columns.tolist())\
                 .size().reset_index().rename(columns={0: 'count'})
-            rows_count.sort_values(by=['count'], axis=0, ascending=False, inplace=True)
-            with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-                self.logger.debug('Duplicates found\n{}\n'
-                                  .format(tabulate.tabulate(rows_count, headers='keys', tablefmt='psql')))
+            rows_count.sort_values(by=['count'], axis=0,
+                                   ascending=False, inplace=True)
+            with pd.option_context('display.max_rows', None,
+                                   'display.max_columns', None):
+                pprint = tabulate.tabulate(rows_count, headers='keys',
+                                           tablefmt='psql')
+                self.logger.debug(f"Duplicates found\n{pprint}")
 
         if del_duplicates:
-            # Delete duplicates.
+            # Delete duplicates (without index reset).
             size_before = data.size
             data.drop_duplicates(keep='first', inplace=True)
-            # TODO: if do befor preprocess is OK.
-            # [deprected] not reset index, otherwise needs update raw_names)
-            # data.reset_index(drop=True, inplace=True)
             size_after = data.size
             if size_before - size_after != 0:
-                self.logger.warning('Warning: delete duplicates rows ({} values)'.format(size_before - size_after))
+                self.logger.warning(f"Warning: delete duplicates rows "
+                                    f"({size_before - size_after} values).")
+        return None
 
-    def _check_gaps(self, data, **kwargs):
-        """Check gaps in dataframe."""
+    def _check_gaps(self, data, del_gaps=False, nogap_columns=None):
+        """Check gaps in dataframe.
+
+        Parameters
+        ----------
+        data : pandas.DataFrame
+            Dataframe to check.
+        del_gaps : bool
+            If True, delete rows with gaps from `nongap_columns` list.
+            If False, raise Exception when `nongap_columns` contain gaps.
+        nogap_columns : list ['column_1', ..]
+            Columns where gaps are forbidden. if None, empty.
+
+        Notes
+        -----
+        Use del_geps=True only before generating dataset `raw_names`.
+
+        """
         gaps_number = data.size - data.count().sum()
         # log
         columns_with_gaps_dic = {}
         if gaps_number > 0:
             for column_name in data:
-                column_gaps_namber = data[column_name].size - data[column_name].count()
+                column_gaps_namber = data[column_name].size \
+                                     - data[column_name].count()
                 if column_gaps_namber > 0:
                     columns_with_gaps_dic[column_name] = column_gaps_namber
             self.logger.warning('Warning: gaps found: {} {:.3f}%,\n'
-                                '    see debug.log for details.'.format(gaps_number, gaps_number / data.size))
-            self.logger.debug('Gaps per column:\n{}'.format(jsbeautifier.beautify(str(columns_with_gaps_dic))))
+                                '    see debug.log for details.'
+                                .format(gaps_number, gaps_number / data.size))
+            pprint = jsbeautifier.beautify(str(columns_with_gaps_dic))
+            self.logger.debug(f"Gaps per column:\n{pprint}")
 
-        if 'targets' in columns_with_gaps_dic:
-            raise MyException("MyError: gaps in targets")
-            # delete rows with gaps in targets
-            # data.dropna(self, axis=0, how='any', thresh=None, subset=[column_name], inplace=True)
+        subset = [column_name for column_name in nogap_columns
+                  if column_name in columns_with_gaps_dic]
+        if del_gaps and subset:
+            # Delete rows with gaps in specified columns.
+            data.dropna(axis=0, how='any', thresh=None,
+                        subset=[subset], inplace=True)
+        elif subset:
+            raise ValueError(f"Gaps in {subset}.")
+        return None
 
-    def _check_numeric_types(self, dataset):
+    def _check_numeric_types(self, data, categor_names):
         """Check that all non-categorical features are of numeric type."""
-        data = dataset['data']
-        raw_names = dataset['raw_names']
         dtypes = data.dtypes
         misstype = []
         for ind, column_name in enumerate(data):
-            if column_name not in raw_names['categor_features']:
+            if column_name not in categor_names:
                 if not np.issubdtype(dtypes[column_name], np.number):
                     misstype.append(column_name)
         if misstype:
-            raise ValueError("Input data non-categoric columns"
-                             " should be subtype of np.number, check:\n    {}".format(misstype))
-        return dataset
+            raise ValueError(f"Input data non-categoric columns should be "
+                             f"subtype of np.number, check:\n"
+                             f"    {misstype}")
+        return None
 
 
 class DataProducer(mlshell.Producer, DataIO, DataPreprocessor):

@@ -216,7 +216,7 @@ class ScorerProducer(mlshell.Producer):
                     continue
                 # [...,i] equal to [:,i]/[:,:,i]/.. (for multi-output target)
                 if not temp['predict_proba']:
-                    # Pipeline assume that there are as much classes as in train was.
+                    # Pipeline assume that there are as much classes as in trainset.
                     pos_labels_ind = operator.itemgetter('pos_labels_ind')(train.get_classes())
                     # For multi-output return list of arrays.
                     pp_train = pipeline.predict_proba(x_train)
