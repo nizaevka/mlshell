@@ -11,9 +11,9 @@ class Producer(object):
 
     Parameters
     ----------
-    project_path: str.
+    project_path: str
         Absolute path to current project dir (with conf.py).
-    logger : logger object.
+    logger : logger object
         Logs.
 
     """
@@ -31,18 +31,18 @@ class Producer(object):
 
         Parameters
         ----------
-        init: object.
+        init: object
             Will be passed as arg in each step and get back as result.
 
-        steps : list of tuples ('method_id', {**kwargs})..
+        steps : list of tuples ('method_id', {**kwargs})
             List of `self` methods to run consecutive with kwargs.
 
-        objects : dict {'section_id__config__id', object,}.
+        objects : dict {'section_id__config__id', object,}
             Dictionary with resulted objects from previous `configs` execution.
 
         Returns
         -------
-        configs : list of tuple [('section_id__config__id', config), ...].
+        configs : list of tuple [('section_id__config__id', config), ...]
             List of configurations, prepared for execution.
 
         """

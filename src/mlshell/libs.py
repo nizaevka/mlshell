@@ -28,6 +28,7 @@ import operator
 import heapq
 import inspect
 import collections
+import dill
 from typing import List, Optional
 
 # third-party module or package

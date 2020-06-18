@@ -60,9 +60,13 @@ def checker(function_to_decorate, options=None):
 
 
 class Workflow(mlshell.Producer):
-    """Class for ml workflow."""
-    # TODO:
-    # _required_parameters = [,]
+    """Class for ml workflow.
+
+    Decription what await from dataset/pipeline/metrics structure.
+
+    """
+
+    _required_parameters = []
 
     def __init__(self, project_path='', logger=None, endpoint_id='default_workflow',
                  datasets=None, pipelines=None, metrics=None, params=None):
@@ -600,6 +604,17 @@ class Workflow(mlshell.Producer):
 
         pipeline = self.pipelines[pipeline_id]
         dataset = self.datasets[dataset_id]
+
+        # Create base_plot
+        # [alternative] better df
+        # base_plot = targets
+        # preserve original index
+        # base_plot = pd.Series(index=raw.index.values,
+        #                       data=np.arange(1, targets.shape[0]+1)).rename_axis(raw.index.name)
+        # [deprecated] move to gui
+        # base_plot = pd.DataFrame(index=raw.index.values,
+        #                          data={target_name: np.arange(1, targets.shape[0]+1)}).rename_axis(raw.index.name)
+
 
         # we need only hp_grid flat:
         # either hp here in args

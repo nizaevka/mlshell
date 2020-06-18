@@ -8,6 +8,7 @@ verify_ssl = true
 [packages]
 mlshell = {editable = true,extras = ["dev"],path = "."}
 sklearn = "*"
+dill = "*"
 
 [requires]
 python_version = "3.7"

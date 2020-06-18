@@ -47,23 +47,23 @@ init : class or instance, optional (default={})
     Initial state for constructed object. Will be passed consecutive in steps
     as argument. If set as class will be auto initialized: `init()`.
 
-producer : class or instance, optional (default=mlshell.Producer).
+producer : class or instance, optional (default=mlshell.Producer)
     Factory to construct an object:`producer.produce(`init`,`steps`,`objects`)`
     will be called, where `objects` is dictionary with previously created
     objects {'section_id__configuration_id': object}. If set as class will be
     auto initialized: `producer(project_path, logger)`.
 
-patch : dict {'method_id' : function}, optional (default={}).
+patch : dict {'method_id' : function}, optional (default={})
     Monkey-patching `producer` object with custom functions.
 
-steps : list of tuples ('method_id', {**kwargs}), optional (default=[]).
+steps : list of tuples ('method_id', {**kwargs}), optional (default=[])
     List of class methods to run consecutive with kwargs.
     Each step should be a tuple: `('method_id', {kwargs to use})`,
     where 'method_id' should match to `producer` functions' names.
     It is possible to omit kwargs, in that case each step executed with kwargs
     set default in corresponding producer method (see `producer` interface).
 
-    **kwargs : dict {'kwarg_id': value, ...}, optional (default={}).
+    **kwargs : dict {'kwarg_id': value, ...}, optional (default={})
         Arguments depends on workflow methods.
 
         It is possible to create separate configuration section for any argument.
@@ -82,17 +82,17 @@ steps : list of tuples ('method_id', {**kwargs}), optional (default=[]).
         If fails to find resolution, `value` is remained None. In case of
         resolution plurality, ValueError is raised.
 
-priority : non-negative integer, optional (default=1).
+priority : non-negative integer, optional (default=1)
     Priority of configuration execution. The more the higher priority.
     For two conf with same priority order is not guaranteed.
     If zero, not execute configuration.
 
-global : dict {'kwarg_name': value, ...}, optional (default={}).
+global : dict {'kwarg_name': value, ...}, optional (default={})
     Specify values to resolve None for arbitrary kwargs. This is convenient for
     example when we use the same `pipeline` in all methods. It is not rewrite
     not-None values.
 
-**keys : arbitrary objects, optional (default={}).
+**keys : dict {'kwarg_name': value, ...}, optional (default={})
     All additional keys in configuration are moved to `global` automatically.
     If is useful if mostly rely on default configuration
 
@@ -136,9 +136,9 @@ class ConfHandler(object):
 
     Parameters
     ----------
-    project_path: str.
+    project_path: str
         Absolute path to current project dir (with conf.py).
-    logger : logger object.
+    logger : logger object
         Logs.
 
     See Also
@@ -158,10 +158,10 @@ class ConfHandler(object):
 
         Parameters
         ----------
-        conf : dict or None.
+        conf : dict or None
             Set of configurations {'section_id': {'configuration_id': configuration,},}.
             If None, try to read `conf` from `project_path/conf.py`.
-        default_conf : dict .
+        default_conf : dict
             Set of default configurations. {'section_id': {'configuration_id': configuration, },}
             If None, read from `mlshell.DEFAULT_PARAMS`.
 
@@ -209,12 +209,12 @@ class ConfHandler(object):
 
         Parameters
         ----------
-        configs : list of tuple [('section_id__config__id', config), ...].
+        configs : list of tuple [('section_id__config__id', config), ...]
             List of configurations, prepared for execution.
 
         Returns
         -------
-        objects : dict {'section_id__config__id', object,}.
+        objects : dict {'section_id__config__id', object,}
             Dictionary with resulted objects from `configs` execution.
 
         Notes
@@ -438,9 +438,9 @@ class ConfHandler(object):
     def _patch(self, patch, producer):
         """Monkey-patching producer.
 
-        producer : class object.
+        producer : class object
             Object to patch.
-        patch : dict {'method_id' : function/existed 'method_id' }.
+        patch : dict {'method_id' : function/existed 'method_id' }
             Functions to add/rewrite.
 
         """

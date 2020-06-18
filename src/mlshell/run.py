@@ -11,14 +11,14 @@ def run(conf, default_conf=None, project_path=None, logger=None):
 
     Parameters
     ----------
-    conf : dict.
+    conf : dict
         Configuration to pass in `mlshell.ConfHandler().read()`.
-    default_conf : None, dict, optional (default=None).
+    default_conf : None, dict, optional (default=None)
         Default configurations to pass in `ConfHandler().read()`.
-    project_path: str, optional (default='').
+    project_path: str, optional (default='')
         Absolute path to current project dir.
         If None, auto detected by `mlshell.find_path()`.
-    logger : None, logger object (default=None).
+    logger : None, logger object (default=None)
         If None, `mlshell.logger.CreateLogger()` will be used with script name.
 
     Returns
