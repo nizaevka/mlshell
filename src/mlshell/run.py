@@ -48,3 +48,7 @@ def run(conf, default_conf=None, project_path=None, logger=None):
     configs = handler.read(conf=conf, default_conf=default_conf)
     objects = handler.exec(configs)
     return objects
+
+
+if __name__ == '__main__':
+    pass

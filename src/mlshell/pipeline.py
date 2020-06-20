@@ -1,6 +1,21 @@
-"""
-Pipeline should contain:
+""""
+The :mod:`mlshell.pipeline` contains examples of `Pipeline` class to create
+empty pipeline object and `PipelineProducer` class to fulfill it.
 
+`Pipeline` class proposes unified interface to work with underlying pipeline.
+Intended to be used in `mlshell.Workflow`. For new pipeline formats no need to
+edit `Workflow` class, only update `Pipeline` interface logic.
+
+`PipelineProducer` class specifies methods to create/load pipeline.
+Current implementation provides sklearn.pipeline.Pipeline(steps) model creation
+via steps and model loading via joblib.
+
+See also
+--------
+:class:`mlshell.Workflow` docstring for pipeline prerequisites.
+
+TODO:
+Pipeline should contain:
 fit():
     .fit()
     .set_params()
@@ -16,7 +31,111 @@ from mlshell.libs import *
 import mlshell
 
 
-class PipeProducer(mlshell.Producer):
+class Pipeline(object):
+    """Unified pipeline interface.
+
+    Implements interface to access arbitrary pipeline.
+    Interface: is_classifier, is_regressor, resolve, dump and all underlying
+        pipeline object methods.
+
+    Attributes
+    ----------
+    pipeline : object, optional (default=None)
+        Underlying pipeline.
+    dataset_id : str, optional (default=None),
+        If pipeline is fitted, train dataset identifier, otherwise None.
+
+    Notes
+    -----
+    All unknown methods call redirects to underlying pipeline object.
+
+    """
+    def __init__(self, pipeline=None, dataset_id=None):
+        """
+
+        """
+        self.pipeline = pipeline
+        self.dataset_id = dataset_id
+        # TODO [code-review]: maybe better internal storage(actuaaly can do both)
+        # Need only to add dataset_id to name for fitted pipeline when dump on disk.
+        # Can be skipped.
+
+        # [deprecated] move out to optimizer
+        #     otherwise requires create separate for each dataset.
+        # self.optimizers = []
+        # self.best_params_ = {}
+        # self.best_score_ = float("-inf")
+
+    def __getattr__(self, name):
+        """Redirect unknown methods to pipeline object."""
+        def wrapper(*args, **kwargs):
+            getattr(self.pipeline, name)(*args, **kwargs)
+        return wrapper
+
+    def __hash__(self):
+        return str(self.pipeline.get_params())
+
+    def fit(self, *args, **kwargs):
+        """Fit pipeline."""
+        self.dataset_id = kwargs.pop('dataset_id', None)
+        self.pipeline.fit(*args, **kwargs)
+
+    def set_params(self, *args, **kwargs):
+        """Set pipeline params."""
+        self.dataset_id = None
+        self.pipeline.set_params(*args, **kwargs)
+
+    def is_classifier(self):
+        """Check if pipeline classifier."""
+        return sklearn.base.is_classifier(self.pipeline)
+
+    def is_regressor(self):
+        """Check if pipeline regressor."""
+        return sklearn.base.is_regressor(self.pipeline)
+
+    def resolve(self, hp_name, dataset, resolver=None, **kwargs):
+        """Resolve hyperparameter based on dataset value.
+
+        For example, categorical features indices are dataset dependent.
+        Resolve lets to set it before fit/optimize step.
+
+        Parameters
+        ----------
+        hp_name : str
+            Hyperparameter to resolve.
+        dataset : mlshell.Dataset or similar
+            Current data.
+        resolver : mlshell.HpResolver or csimilar, optional (default=None)
+            Specific class to resolve `hp_name`.
+        **kwargs: : dict
+            Additional parameters to pass in `resolver`.resolve().
+
+        Returns
+        -------
+
+        """
+        if not resolver:
+            resolver = kwargs.get('resolve', {}).get(hp_name, {}).get('resolver', mlshell.HpResolver)
+        # [deprecated] need all level kwargs
+        # sub_kwargs = kwargs.get('resolve', {}).get(hp_name, {})
+        return resolver().resolve(self.pipeline, dataset, hp_name, **kwargs)
+
+    def dump(self, file):
+        """Dump pipeline on disk.
+
+        Parameters
+        ----------
+        file
+
+        Returns
+        -------
+
+        """
+        joblib.dump(self.pipeline, file)
+        return
+
+
+class PipelineProducer(mlshell.Producer):
     def __init__(self, project_path='', logger=None):
         self.logger = logger if logger else logging.Logger(__class__.__name__)
         self.project_path = project_path
@@ -114,65 +233,6 @@ class PipeProducer(mlshell.Producer):
             steps = clss(**kwargs).get_steps()
         return steps
 
-
-# [deprecated] not work
-# def set_base(pipeline):
-#     class Pipeline(pipeline):
-#   return Pipeline
-
-
-class Pipeline(object):
-    def __init__(self, pipeline=None):
-        """
-
-        Attributes:
-            pipeline:
-                Object for which wrapper is created.
-        """
-        # not sure if self.fit will change self.pipeline [bad practice i think]
-        self.pipeline = pipeline
-        # Need only to add dataset_id to name for fitted pipeline when dump on disk.
-        # Can be skipped.
-        # TODO [code-review]: maybe better internal storage(actuaaly can do both)
-        self.dataset_id = None
-
-        # [deprecated] move out to optimizer
-        # self.optimizers = []
-        # self.best_params_ = {}
-        # self.best_score_ = float("-inf")
-
-    def __getattr__(self, name):
-        """Redirect unknown methods to pipeline object."""
-        def wrapper(*args, **kwargs):
-            getattr(self.pipeline, name)(*args, **kwargs)
-        return wrapper
-
-    def __hash__(self):
-        return str(self.pipeline.get_params())
-
-    def fit(self, *args, **kwargs):
-        self.dataset_id = kwargs.pop('dataset_id', None)
-        self.pipeline.fit(*args, **kwargs)
-
-    def set_params(self, *args, **kwargs):
-        self.dataset_id = None
-        self.pipeline.set_params(*args, **kwargs)
-
-    def is_classifier(self):
-        return sklearn.base.is_classifier(self.pipeline)
-
-    def is_regressor(self):
-        return sklearn.base.is_regressor(self.pipeline)
-
-    def resolve(self, hp_name, dataset, **kwargs):
-        resolver = kwargs.get('resolve', {}).get(hp_name, {}).get('resolver', mlshell.HpResolver)
-        # [deprecated] need all level kwargs
-        # sub_kwargs = kwargs.get('resolve', {}).get(hp_name, {})
-        return resolver().resolve(self.pipeline, dataset, hp_name, **kwargs)
-
-    def dump(self, file):
-        joblib.dump(self.pipeline, file)
-        return
 
 # [deprecated] move out
 #    def update_params(self, optimizer):

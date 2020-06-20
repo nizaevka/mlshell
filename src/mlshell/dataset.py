@@ -1,25 +1,26 @@
 """"
 The :mod:`mlshell.dataset` contains examples for `Dataset` class to create
-template and `DataProducer` class to fulfills it.
+empty data object and `DataProducer` class to fulfill it.
 
-For convenience `DataProducer` methods divided on:
+`Dataset` class proposes unified interface to interact with underlying data.
+Intended to be used in `mlshell.Workflow`. For new data formats no need to edit
+`Workflow` class, only update `Dataset` interface logic. Current realization
+based on dictionary.
+
+`DataProducer` methods for convenience divided on:
 * `DataIO` class to define IO related methods.
-Implements reading from csv-file, also methods to pickle/unpickle dataset
-after/before preprocessing.
-* `DataPreprocessor` class for preprocessing data to final state.
-Implements data transformation in compliance to `Dataset` and common exploration
-techniques.
-
-`Dataset` class intended to be used in `mlshell.Workflow`.
-All data-specific methods put there, so no need to edit `Workflow` class for new
-data format, only `Dataset` interface realization.
+Currently implements reading from csv-file and methods to cache on disk
+dataset intermediate state (pickle/unpickle).
+* `DataPreprocessor` class to preprocess data to final state.
+Implements data transformation in compliance to `Dataset` and common
+exploration techniques.
 
 See also
 --------
 :class:`mlshell.Workflow` docstring for dataset prerequisites.
 
 TODO: check what await for.
-To use in Workfloe:
+To use in Workflow:
 get_x
 get_y
 get_classes
@@ -48,26 +49,35 @@ targets = targets_df.values.astype(int)  # cast to int
 'index_name' => 'index' , also made list ['label']
 'categor_features' => 'categoric_features'
 
-
 """
 
 
-from mlshell.libs import *
+import copy
+import glob
+import json
+import os
+
+import dill
+import jsbeautifier
+import numpy as np
+import pandas as pd
+import sklearn
 import mlshell
+import tabulate
 
 
 class Dataset(dict):
-    """Unified data class.
+    """Unified data interface.
 
     Implements interface to access arbitrary data.
-    Interface: get_x, get_y, get_classes, dump, split
+    Interface: get_x, get_y, get_classes, dump_prediction, split.
 
     Attributes
     ----------
     data : pd.DataFrame
-        Dataframe.
+        Underlying data.
     raw_names : dict
-        Contains index/targets/features identifiers:
+        Includes index/targets/features identifiers:
         {
             'index': list
                 List of index label(s).
@@ -79,21 +89,21 @@ class Dataset(dict):
                 List of target label(s),
             'indices': list
                 List of rows indices.
-            'pos_labels': list
+            'pos_labels': list, optional
                 List of "positive" label(s) in target(s), classification only.
-            categoric_ind_name : dict
+            categoric_ind_name : dict, optional
                 {'column_index': ('feature_name', ['cat1', 'cat2'])}
                 Dictionary with categorical feature indices as key, and tuple
                 ('feature_name', categories) as value.
-            numeric_ind_name : dict {'columns_index':('feature_name',)}
+            numeric_ind_name : dict, optional
+                {'columns_index':('feature_name',)}
                 Dictionary with numeric features indices as key, and tuple
                 ('feature_name', ) as value.)}
         }
-    train_index : array-like
+    train_index : array-like, optional
         Train indices.
-    test_index : array-like
+    test_index : array-like, optional
         Test indices.
-
 
     Parameters
     ----------
@@ -106,6 +116,7 @@ class Dataset(dict):
     -----
     Inherited from dict class, so attributes section describes keys.
 
+
     """
     _required_parameters = []
 
@@ -117,13 +128,6 @@ class Dataset(dict):
 
     def get_x(self):
         """Extract features from dataset.
-
-        Keys
-        ----
-        data : pandas.DataFrame
-            Data to split.
-        raw_names : dict {'features' : ['column_1', columns_2', ..]}
-            Dictionary with features column names.
 
         Returns
         -------
@@ -138,13 +142,6 @@ class Dataset(dict):
     def get_y(self):
         """Extract targets from dataset.
 
-        Keys
-        ----
-        data : pandas.DataFrame
-            Data to split.
-        raw_names : dict {'targets' : ['columns_1', columns_2', ..]}
-            Dictionary with targets column names.
-
         Returns
         -------
         targets : pd.DataFrame
@@ -156,25 +153,21 @@ class Dataset(dict):
         return df[raw_names['targets']]
 
     def get_classes(self):
-        """Extract classes and pos label index from classification dataset.
-
-        Keys
-        ----
-        data
-        raw_names : dict
-            pos_labels : list
-                Classification only, list of "positive" labels for targets.
-                Could be used for threshold analysis (roc_curve) and metric evaluation
-                for classifiers supported predict_proba. If empty, last label in
-                np.unique(target) for each target is used.
+        """Extract classes and positive label index from dataset,
+         classification only.
 
         Returns
         -------
         result : dict
-            {'classes': classes,
-             'pos_labels': pos_labels,
-             'pos_labels_ind': pos_labels_ind}
-             TODO:
+            {
+                'classes': list
+                    List of labels for each target.
+                'pos_labels': pos_labels,
+                    List of positive labels for each target.
+                'pos_labels_ind': pos_labels_ind
+                    List of positive labels index in np.unique(target) for each
+                    target.
+            }
 
         """
         df = self['data']
@@ -203,15 +196,6 @@ class Dataset(dict):
     def split(self):
         """Split dataset on train and test.
 
-        Keys
-        ----
-        data : pandas.DataFrame
-            Data to split.
-        train_index : array-like
-            Train indices in data.
-        test_index : array-like
-            Test indices in data.
-
         Returns
         -------
         train : Dataset
@@ -230,50 +214,39 @@ class Dataset(dict):
         test_index = self.get('test_index', None)
         if train_index is None and test_index is None:
             train_index = test_index = df.index
-
-        # Inherit keys frow, except 'data'.
+        # Inherit keys, except 'data'.
         train = Dataset(dict(self, **{'data': df.loc[train_index]}))
         test = Dataset(dict(self, **{'data': df.loc[test_index]}))
-
         return train, test
 
-    # TODO: Move out or reformat.
-    def dump(self, filepath, obj, **kwargs):
-        """Dump predictions to disk.
-
+    def dump_prediction(self, filepath, y_pred, **kwargs):
+        """Dump columns to disk.
 
         Parameters
         ----------
         filepath: str
-            Target file path without extension.
-        obj: object
-            Object to dump.
-        **kwargs
-
-        Returns
-        -------
+            Target filepath without extension.
+        y_pred: array-like
+            pipeline.predict() result.
+        **kwargs: dict
+        `   Additional kwargs to pass in .to_csv(**kwargs).
 
         """
-        # [deprecated]
-        # raw_names = self.get('raw_names')
-        if kwargs['template']:
-            # recover original index and names
-            obj = pd.DataFrame(index=template.index.values,
-                               data={zip(template.columns, obj)}).rename_axis(template.index.name)
-            # [deprecated] not enough abstract
-            # df = pd.DataFrame(index=self.get('data').index.values,
-            #                data={raw_names['targets'][0]: y_pred}).rename_axis(raw_names['index'])
-
+        y_true = self.get_y()
+        # Recover original index and names.
+        obj = pd.DataFrame(index=y_true.index.values,
+                           data={zip(y_true.columns, y_pred)})\
+            .rename_axis(y_true.index.name)
         with open(f"{filepath}.csv", 'w', newline='') as f:
             obj.to_csv(f, mode='w', header=True,
-                       index=True, sep=',', line_terminator='\n')  # only LF
-        return
+                       index=True, sep=',', line_terminator='\n', **kwargs)
+        return None
 
 
 class DataIO(object):
     """Get raw data from database.
 
-    Interface: get, dump_cache, load_cache
+    Interface: get, dump_cache, load_cache.
 
     Parameters
     ----------
@@ -367,7 +340,7 @@ class DataIO(object):
             Absolute path to dir for cache.
             If None, "project_path/results/cache/data" is used.
         **kwargs : kwargs
-            Additional parameters to pass in dill.dump.\
+            Additional parameters to pass in .dump().
 
         Returns
         -------
@@ -388,7 +361,7 @@ class DataIO(object):
             fps.add(filepath)
             dill.dump(dataset, filepath, **kwargs)
         elif fformat == 'hr':
-            filepaths = self._hr_dump(dataset, cachedir, prefix)
+            filepaths = self._hr_dump(dataset, cachedir, prefix, **kwargs)
             fps.add(filepaths)
         else:
             raise ValueError(f"Unknown 'fformat' {fformat}.")
@@ -414,7 +387,7 @@ class DataIO(object):
             Absolute path to dir for cache.
             If None, "project_path/results/cache/data" is used.
         **kwargs : kwargs
-            Additional parameters to pass in dill.dump.
+            Additional parameters to pass in .load().
 
         Returns
         -------
@@ -422,19 +395,20 @@ class DataIO(object):
             Loaded cache.
 
         """
-        cachedir = f"{self.project_path}/results/cache/data"
+        if not cachedir:
+            cachedir = f"{self.project_path}/results/cache/data"
         if fformat == 'pickle':
             filepath = f'{cachedir}/{prefix}_.dump'
-            dataset = dill.load(filepath)
+            dataset = dill.load(filepath, **kwargs)
         elif fformat == 'hr':
-            ob = self._hr_load(cachedir, prefix)
+            ob = self._hr_load(cachedir, prefix, **kwargs)
             dataset.update(ob)
         else:
             raise ValueError(f"Unknown 'fformat' {fformat}.")
         self.logger.warning(f"Warning: use cache file(s):\n    {cachedir}")
         return dataset
 
-    def _hr_dump(self, ob, filedir, prefix):
+    def _hr_dump(self, ob, filedir, prefix, **kwargs):
         """Dump an dictionary to a file(s) in human-readable format.
 
         Traverse dictionary items and dump pandas/numpy object to separate
@@ -448,6 +422,8 @@ class DataIO(object):
             Dump directory.
         prefix : str
             Prefix for files names.
+        **kwargs : dict {'json':kwargs, 'csv':kwargs}
+            Additional parameters to pass in low-level functions.
 
         Returns
         -------
@@ -464,23 +440,25 @@ class DataIO(object):
                 filenames.add(filepath)
                 with open(filepath, 'w', newline='') as f:
                     val.to_csv(f, mode='w', header=True,
-                               index=True, line_terminator='\n')
+                               index=True, line_terminator='\n',
+                               **kwargs['csv'])
             elif isinstance(ob[key], np.ndarray):
                 filepath = f'{filedir}/{prefix}_{key}_.csv'
                 filenames.add(filepath)
                 with open(filepath, 'w', newline='') as f:
                     pd.DataFrame(val).to_csv(f, mode='w', header=True,
-                                             index=True, line_terminator='\n')
+                                             index=True, line_terminator='\n',
+                                             **kwargs['csv'])
                 # [alternative] np.savetxt(filepath, val, delimiter=",")
             else:
                 filepath = f'{filedir}/{prefix}_{key}_.json'
                 filenames.add(filepath)
                 with open(filepath, 'w') as f:
                     # items() preserve first level dic keys as int.
-                    json.dump(list(val.items()), f)
+                    json.dump(list(val.items()), f, **kwargs['json'])
         return filenames
 
-    def _hr_load(self, filedir, prefix):
+    def _hr_load(self, filedir, prefix, **kwargs):
         """Load an object from file(s) and compose in dictionary.
 
         Parameters
@@ -489,6 +467,8 @@ class DataIO(object):
             Load directory.
         prefix : str
             Prefix for target files names.
+        **kwargs : dict {'json':kwargs, 'csv':kwargs}
+            Additional parameters to pass in low-level functions.
 
         Returns
         -------
@@ -505,11 +485,12 @@ class DataIO(object):
             key = '_'.join(filepath.split('_')[1:-1])
             if filepath.endswith('.csv'):
                 with open(filepath, 'r') as f:
-                    ob[key] = pd.read_csv(f, sep=",", index_col=0)
+                    ob[key] = pd.read_csv(f, sep=",",
+                                          index_col=0, **kwargs['csv'])
             else:
                 with open(filepath, 'r') as f:
                     # [alternative] object_hook=json_keys2int)
-                    ob[key] = dict(json.load(f))
+                    ob[key] = dict(json.load(f, **kwargs['json']))
         return ob
 
 
@@ -551,9 +532,9 @@ class DataPreprocessor(object):
             If None, empty list.
         pos_labels: list, None, optional (default=None)
             Classification only, list of "positive" labels for targets.
-            Could be used for threshold analysis (roc_curve) and metric evaluation
-            for classifiers supported predict_proba. If None, last label in
-            np.unique(target) for each target is used.
+            Could be used for threshold analysis (roc_curve) and metrics
+            evaluation if classifiers supported predict_proba. If None, last
+            label in np.unique(target) for each target is used.
         **kwargs : kwargs
             Additional parameters to add in dataset.
 
@@ -578,8 +559,8 @@ class DataPreprocessor(object):
                     List of "positive" label(s) in target(s).
                 categoric_ind_name : dict
                     {'column_index': ('feature_name', ['cat1', 'cat2'])}
-                    Dictionary with categorical feature indices as key, and tuple
-                    ('feature_name', categories) as value.
+                    Dictionary with categorical feature indices as key, and
+                    tuple ('feature_name', categories) as value.
                 numeric_ind_name : dict {'columns_index':('feature_name',)}
                     Dictionary with numeric features indices as key, and tuple
                     ('feature_name', ) as value.)}
@@ -651,7 +632,7 @@ class DataPreprocessor(object):
         data : pd.DataFrame
             Data to unify.
         categor_names: list
-            List of categorical features (includes binary) column names in data.
+            List of categorical features (and binary) column names in data.
 
         Returns
         -------
@@ -662,7 +643,8 @@ class DataPreprocessor(object):
                 if gap in non-categor => np.nan
             * cast categorical features to str dtype, and apply Ordinalencoder.
             * cast the whole dataframe to np.float64.
-        categoric_ind_name : dict {'column_index': ('feature_name', ['cat1', 'cat2'])}
+        categoric_ind_name : dict
+            {'column_index': ('feature_name', ['cat1', 'cat2'])}
             Dictionary with categorical feature indices as key, and tuple
             ('feature_name', categories) as value.
         numeric_ind_name : dict {'columns_index':('feature_name',)}
@@ -681,7 +663,8 @@ class DataPreprocessor(object):
                 # Cast dtype to str (copy!).
                 data[column_name] = data[column_name].astype(str)
                 # Encode
-                encoder = sklearn.preprocessing.OrdinalEncoder(categories='auto')
+                encoder = sklearn.preprocessing.\
+                    OrdinalEncoder(categories='auto')
                 data[column_name] = encoder\
                     .fit_transform(data[column_name]
                                    .values.reshape(-1, 1))
@@ -735,8 +718,8 @@ class DataPreprocessor(object):
 
         if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
                 or kwargs['train_size'] is None and kwargs['test_size'] == 0):
-            train = test = data
-            train_index, test_index = data.index
+            # train = test = data
+            train_index = test_index = data.index
         else:
             shell_kw = ['func']
             kwargs = copy.deepcopy(kwargs)

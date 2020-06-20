@@ -43,9 +43,12 @@ WORKFLOW = {
                 'fit_params': {},
                 'resolve_params': {
                     'estimate__apply_threshold__threshold': {
-                        'resolver': None,  # if None, use pipeline default resolver
+                        'resolver': None,
                         'samples': 10,
                         'plot_flag': False,
+                        # TODO: what if different cv?
+                        'fit_params': {},
+                        'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
                     },
                 },
             },),

@@ -51,7 +51,8 @@ class Producer(object):
             method = step[0]
             kwargs = step[1] if len(step) > 1 else {}
             if not isinstance(kwargs, dict):
-                raise ValueError(f'Value under {method} should be a dictionary.')
+                raise ValueError(f'Value under {method} '
+                                 f'should be a dictionary.')
             kwargs = self._fill_object(kwargs, objects)
             res = getattr(self, method)(res, objects=objects, **kwargs)
         res = self._check(res)

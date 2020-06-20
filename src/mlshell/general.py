@@ -523,11 +523,15 @@ class Workflow(mlshell.Producer):
             os.makedirs(dirpath)
 
         fit_dataset_id = getattr(pipeline, 'dataset_id', None)
-        best_score = str(self._runs.get((pipeline_id, fit_dataset_id), {}).get('best_score_', '')).lower()
-        filepath = f"{dirpath}/{self.endpoint_id}_{pipeline_id}_{fit_dataset_id}_" \
-                   f"{best_score}_{hash(self)}_{hash(pipeline)}_{hash(self.datasets[fit_dataset_id])}_dump.model"
+        best_score = str(self._runs
+                         .get((pipeline_id, fit_dataset_id), {})
+                         .get('best_score_', '')).lower()
+        filepath = f"{dirpath}/{self.endpoint_id}_{pipeline_id}_" \
+                   f"{fit_dataset_id}_{best_score}_{hash(self)}_" \
+                   f"{hash(pipeline)}_{hash(self.datasets[fit_dataset_id])}_" \
+                   f"dump.model"
         if not os.path.exists(filepath):
-            # prevent double dumping
+            # Prevent double dumping.
             pipeline.dump(filepath)
             self.logger.log(25, 'Save fitted model to file:\n  {}'.format(filepath))
         else:
@@ -557,7 +561,7 @@ class Workflow(mlshell.Producer):
 
     # =============================================== predict ==========================================================
     # @memory_profiler
-    def predict(self, pipeline_id, dataset_id, dirpath=None, template=None):
+    def predict(self, pipeline_id, dataset_id, dirpath=None):
         """Predict on new dataset.
 
         Args:
@@ -581,9 +585,7 @@ class Workflow(mlshell.Producer):
 
         y_pred = pipeline.predict(x)
 
-        # dump to disk in predictions dir
-        if not template:
-            template = test.get_y()
+        # Dump to disk in predictions dir.
         if not dirpath:
             dirpath = '{}/results/models'.format(self.project_path)
         if not os.path.exists(dirpath):
@@ -595,7 +597,7 @@ class Workflow(mlshell.Producer):
                    f"{best_score}_{hash(self)}_{hash(pipeline)}_{hash(self.datasets[fit_dataset_id])}_" \
                    f"{dataset_id}_{hash(self.datasets[dataset_id])}_predictions"
 
-        dataset.dump(filepath, y_pred, template)
+        test.dump(filepath, y_pred)
         self.logger.log(25, f"Save predictions dataset {dataset_id} to file:\n    {filepath}")
 
     # =============================================== gui param ========================================================

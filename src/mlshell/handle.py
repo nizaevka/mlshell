@@ -1,8 +1,8 @@
 """The module contains class to read and execute configuration(s).
 
 Configuration is a python dictionary.
-Configuration could be passed to `mlshell.run` function or user-defined handler,
-where `mlshell.ConfHandler` built objects and executes its endpoints.
+Configuration could be passed to `mlshell.run` function or user-defined
+handler, where `mlshell.ConfHandler` built objects and executes its endpoints.
 Configuration support multiple sections. Each section specify set of
 sub-configurations.
 Each sub-configuration provide steps to construct an object, that can be
@@ -66,10 +66,10 @@ steps : list of tuples ('method_id', {**kwargs}), optional (default=[])
     **kwargs : dict {'kwarg_id': value, ...}, optional (default={})
         Arguments depends on workflow methods.
 
-        It is possible to create separate configuration section for any argument.
+        It is possible to create separate  section for any argument.
         Set `section_id__configuration_id` for kwarg value, then it would be
         auto-filled with corresponding section `objects` before step execution.
-        To prevent auto `object` substitution, use special '_id' postfix to `kwarg_id`.
+        To prevent auto substitution, use special '_id' postfix to `kwarg_id`.
         It is also possible to set list of `section_id__configuration_id`s.
 
 
@@ -121,12 +121,15 @@ TODO:
 """
 
 
+import collections
+import copy
+import heapq
 import importlib.util
+import inspect
 import sys
-import logging
-from mlshell.libs import copy, np, rd, heapq, inspect, collections
-import mlshell.default
 import types
+
+import mlshell.default
 
 
 class ConfHandler(object):
@@ -149,7 +152,7 @@ class ConfHandler(object):
     """
     _required_parameters = ['project_path', 'logger']
 
-    def __init__(self, project_path, logger, **kwargs):
+    def __init__(self, project_path, logger):
         self.logger = logger
         self.project_path = project_path
 
@@ -159,10 +162,12 @@ class ConfHandler(object):
         Parameters
         ----------
         conf : dict or None
-            Set of configurations {'section_id': {'configuration_id': configuration,},}.
+            Set of configurations:
+            {'section_id': {'configuration_id': configuration,},}.
             If None, try to read `conf` from `project_path/conf.py`.
         default_conf : dict
-            Set of default configurations. {'section_id': {'configuration_id': configuration, },}
+            Set of default configurations:
+            {'section_id': {'configuration_id': configuration, },}
             If None, read from `mlshell.DEFAULT_PARAMS`.
 
         Returns
@@ -182,14 +187,15 @@ class ConfHandler(object):
         If no section => remain None.
         If found section:
             If more then one configurations in section => ValueError.
-            If `kwarg_id` contains postfix '_id', substitute None
-            `section_id__configuration_id`, otherwise with configuration object.
+            If `kwarg_id` contains postfix '_id', substitute None with
+            `section_id__configuration_id`, otherwise with conf. object.
 
         """
         self.logger.info("\u25CF READ CONFIGURATION")
         if conf is None:
-            dir_name = self.project_path.split('/')[-1]
-            spec = importlib.util.spec_from_file_location(f'conf', f"{self.project_path}/conf.py")
+            # dir_name = self.project_path.split('/')[-1]
+            spec = importlib.util.spec_from_file_location(
+                f'conf', f"{self.project_path}/conf.py")
             conf_file = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(conf_file)
             # Otherwise problem with pickle, depends on the module path.
@@ -205,7 +211,7 @@ class ConfHandler(object):
 
         For each configuration:
         * call `producer`.produce(`init`, `steps`, `objects`).
-        * store result in `objects` storage under `section_id__configuration_id`.
+        * store result under `section_id__configuration_id` in `objects`.
 
         Parameters
         ----------
@@ -223,7 +229,6 @@ class ConfHandler(object):
 
         Default values for skipped config keys:
         {'init': {}, 'steps': [], 'producer': mlshell.Producer, 'patch': {},}
-
 
         """
         objects = {}
@@ -297,16 +302,14 @@ class ConfHandler(object):
                                     f" should be the dict instance.")
 
     def _resolve_none(self, p, section_id, conf_id, ids):
-        """Auto resolution for None parameters in endpoint section.
-
-        [alternative] update with global when call step.
-
-        """
+        """Auto resolution for None parameters in endpoint section."""
+        # [alternative] update with global when call step.
         # Assemble unknown keys to global.
         for key in p[section_id][conf_id]:
             if key not in ['init', 'producer', 'global',
                            'patch', 'steps', 'priority']:
-                p[section_id][conf_id]['global'].update({key: p[section_id][conf_id].pop(key)})
+                p[section_id][conf_id]['global']\
+                    .update({key: p[section_id][conf_id].pop(key)})
 
         # Keys resolved via global.
         # (exist in global and no separate conf).
@@ -351,49 +354,58 @@ class ConfHandler(object):
                 elif f"{key}_id" in value:
                     key_id = f"{key}_id"
                 if key_id:
-                    # If None use global.
-                    if not value[key_id]:
-                        # If global None use from conf (if only one provided)
-                        # for metrics not None is guaranteed before.
-                        if not glob_val:
-                            if len(p[key]) > 1:
-                                raise ValueError(
-                                    f"Multiple {key} configurations provided, specify key:\n"
-                                    f"    'endpoint:{conf_id}:{subkey}:{key_id}' or 'endpoint:{conf_id}:global:{key_id}'.")
-                            else:
-                                glob_val = f"{key}__{list(p[key].keys())[0]}"
-                        value[key_id] = glob_val
+                    self._substitute(p, section_id, conf_id, ids,
+                                     key, glob_val, subkey, value, key_id)
+        return None
 
-                    # Check if conf available.
-                    if isinstance(value[key_id], list):
-                        # for compatibility with sequence of ids (like metric)
-                        confs = [i.split('__')[-1] for i in value[key_id]]
-                    else:
-                        confs = [value[key_id].split('__')[-1]]
-                    for conf in confs:
-                        if conf not in p[key]:
-                            raise ValueError(f"Unknown configuration: {key}__{conf}.")
-                        elif p[key][conf]['priority'] == 0 \
-                                and p[section_id][conf_id]['priority'] != 0:
-                            raise ValueError(f"Zero priority configuration {key}__{conf} "
-                                             f"can`t be used in {section_id}__{conf_id}__{subkey}.")
+    def _substitute(self, p, section_id, conf_id, ids,
+                    key, glob_val, subkey, value, key_id):
+        # If None use global.
+        if not value[key_id]:
+            # If global None use from conf (if only one provided)
+            # for metrics not None is guaranteed before.
+            if not glob_val:
+                if len(p[key]) > 1:
+                    raise ValueError(
+                        f"Multiple {key} configurations provided,"
+                        f" specify key:\n"
+                        f"    '{section_id}:{conf_id}:{subkey}:{key_id}'"
+                        f" or '{section_id}:{conf_id}:global:{key_id}'.")
+                else:
+                    glob_val = f"{key}__{list(p[key].keys())[0]}"
+            value[key_id] = glob_val
 
-                    # Substitute id(s).
-                    ids[key].update(confs)
+        # Check if conf available.
+        if isinstance(value[key_id], list):
+            # for compatibility with sequence of ids (like metric)
+            confs = [i.split('__')[-1] for i in value[key_id]]
+        else:
+            confs = [value[key_id].split('__')[-1]]
+        for conf in confs:
+            if conf not in p[key]:
+                raise ValueError(f"Unknown configuration: {key}__{conf}.")
+            elif p[key][conf]['priority'] == 0 \
+                    and p[section_id][conf_id]['priority'] != 0:
+                raise ValueError(f"Zero priority configuration {key}__{conf} "
+                                 f"can`t be used in:\n"
+                                 f"    {section_id}__{conf_id}__{subkey}.")
 
-                    # [deprecated] Resolve in Producer.
-                    #   there are more reliable and consistent.
-                    # ACTUALLy ids can`t contains only names.
-                    # # Substitute either id(s), or conf.
-                    # if key_id.endswith('_id'):
-                    #     ids[key].update(confs)
-                    # else:
-                    #     # Set reference to `init`,
-                    #     # could be problem if object not ready.
-                    #     if len(confs) > 1:
-                    #         value[key_id] = [p[key][conf]['init'] for conf in confs]
-                    #     else:
-                    #         value[key_id] = p[key][confs[0]]['init']
+        # Substitute id(s).
+        ids[key].update(confs)
+
+        # [deprecated] Resolve in Producer.
+        #   there are more reliable and consistent.
+        # ACTUALLy ids can`t contains only names.
+        # # Substitute either id(s), or conf.
+        # if key_id.endswith('_id'):
+        #     ids[key].update(confs)
+        # else:
+        #     # Set reference to `init`,
+        #     # could be problem if object not ready.
+        #     if len(confs) > 1:
+        #         value[key_id] = [p[key][conf]['init'] for conf in confs]
+        #     else:
+        #         value[key_id] = p[key][confs[0]]['init']
         return None
 
     def _priority_arrange(self, res):
@@ -406,7 +418,7 @@ class ConfHandler(object):
                 # [alternative]
                 # name = subkey
                 priority = val.get('priority', 1)
-                if isinstance(priority, int) or priority<0:
+                if isinstance(priority, int) or priority < 0:
                     raise ValueError('Configuration priority should'
                                      ' be non-negative number.')
                 if priority:
@@ -431,7 +443,8 @@ class ConfHandler(object):
         if inspect.isclass(init):
             init = init()
         if inspect.isclass(producer):
-            producer = producer(project_path=self.project_path, logger=self.logger)
+            producer = producer(project_path=self.project_path,
+                                logger=self.logger)
         producer = self._patch(patch, producer)
         return producer.produce(init, steps, objects)
 
