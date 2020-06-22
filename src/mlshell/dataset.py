@@ -9,8 +9,7 @@ based on dictionary.
 
 `DataProducer` methods for convenience divided on:
 * `DataIO` class to define IO related methods.
-Currently implements reading from csv-file and methods to cache on disk
-dataset intermediate state (pickle/unpickle).
+Currently implements reading from csv-file.
 * `DataPreprocessor` class to preprocess data to final state.
 Implements data transformation in compliance to `Dataset` and common
 exploration techniques.
@@ -27,6 +26,11 @@ get_classes
 dump
 split
 ...
+
+TODO:
+* categoric_ind_name/numeric_ind_name used in resolver if hp_name exist and set
+'auto'/['auto']
+
 
 TODO: check
 * categoric_ind_name/numeric_ind_name move under raw_names
@@ -53,17 +57,15 @@ targets = targets_df.values.astype(int)  # cast to int
 
 
 import copy
-import glob
-import json
-import os
 
-import dill
 import jsbeautifier
 import numpy as np
 import pandas as pd
 import sklearn
 import mlshell
 import tabulate
+
+__all__ = ['Dataset', 'DataIO', 'DataPreprocessor', 'DatasetProducer']
 
 
 class Dataset(dict):
@@ -246,7 +248,7 @@ class Dataset(dict):
 class DataIO(object):
     """Get raw data from database.
 
-    Interface: get, dump_cache, load_cache.
+    Interface: get.
 
     Parameters
     ----------
@@ -264,16 +266,16 @@ class DataIO(object):
 
     # @time_profiler
     # @memory_profiler
-    def get(self, dataset, filename='data/train.csv',
-            random_skip=False, random_state=None, **kwargs):
-        """Get data from csv-file.
+    def load(self, dataset, filepath='data/train.csv',
+             random_skip=False, random_state=None, **kwargs):
+        """Load data from csv-file.
 
         Parameters
         ----------
-        dataset : dict
+        dataset : Dataset
             Template for dataset.
-        filename : str, optional (default='data/train.csv')
-            Path to csv file reslative to `project_dir`.
+        filepath : str, optional (default='data/train.csv')
+            Path to csv file relative to `project_dir`.
         random_skip : bool, optional (default=False)
             If True randomly skip rows while read file, remains 'nrow' lines.
             Rewrite `skiprows` kwarg.
@@ -284,8 +286,8 @@ class DataIO(object):
 
         Returns
         -------
-        dataset : dict
-            {'data': pandas.Dataframe}.
+        dataset : Dataset
+            Key added {'data': pandas.DataFrame}.
 
         Notes:
         ------
@@ -293,9 +295,9 @@ class DataIO(object):
 
         """
         self.logger.info("\u25CF \u25B6 LOAD DATA")
-        filename = "{}/{}".format(self.project_path, filename)
+        filepath = "{}/{}".format(self.project_path, filepath)
         # count lines
-        with open(filename, 'r') as f:
+        with open(filepath, 'r') as f:
             lines = sum(1 for _ in f)
 
         if 'skiprows' in kwargs and random_skip:
@@ -315,183 +317,11 @@ class DataIO(object):
                                                replace=False, p=None)
             kwargs['skiprows'] = skiprows
             kwargs['nrows'] = nrows
-        with open(filename, 'r') as f:
+        with open(filepath, 'r') as f:
             raw = pd.read_csv(f, **kwargs)
-        self.logger.info("Data loaded from:\n    {}".format(filename))
+        self.logger.info("Data loaded from:\n    {}".format(filepath))
         dataset['data'] = raw
         return dataset
-
-    def dump_cache(self, dataset, prefix,
-                   fformat='pickle',
-                   cachedir=None,
-                   **kwargs):
-        """Dump intermediate state of dataset to disk.
-
-        Parameters
-        ----------
-        dataset : pickable
-            Object to dump.
-        prefix : str
-            File identifier, added to filename.
-        fformat : 'pickle'/'hr', optional default('pickle')
-            If 'pickle', dump dataset via dill lib. If 'hr' try to decompose
-            in human-readable csv/json (only for dictionary).
-        cachedir : str, optional(default=None)
-            Absolute path to dir for cache.
-            If None, "project_path/results/cache/data" is used.
-        **kwargs : kwargs
-            Additional parameters to pass in .dump().
-
-        Returns
-        -------
-        dataset : pickable
-            Unchanged input for compliance with producer logic.
-
-        """
-        if not cachedir:
-            cachedir = f"{self.project_path}/results/cache/data"
-        if not os.path.exists(cachedir):
-            # Create temp dir for cache if not exist.
-            os.makedirs(cachedir)
-        for filename in glob.glob(f"{cachedir}/{prefix}*"):
-            os.remove(filename)
-        fps = set()
-        if fformat == 'pickle':
-            filepath = f'{cachedir}/{prefix}_.dump'
-            fps.add(filepath)
-            dill.dump(dataset, filepath, **kwargs)
-        elif fformat == 'hr':
-            filepaths = self._hr_dump(dataset, cachedir, prefix, **kwargs)
-            fps.add(filepaths)
-        else:
-            raise ValueError(f"Unknown 'fformat' {fformat}.")
-
-        self.logger.warning('Warning: update cache file(s):\n'
-                            '    {}'.format('\n    '.join(fps)))
-        return dataset
-
-    def load_cache(self, dataset, prefix,
-                   fformat='pickle', cachedir=None, **kwargs):
-        """Load intermediate state of dataset from disk.
-
-        Parameters
-        ----------
-        dataset : picklable object
-            Updated for 'hr', ignored for 'pickle'.
-        prefix : str
-            File identifier, added to filename.
-        fformat : 'pickle'/'hr', optional default('pickle')
-            If 'pickle', load dataset via dill lib.
-            If 'hr' try to compose csv/json files in a dictionary.
-        cachedir : str, optional(default=None)
-            Absolute path to dir for cache.
-            If None, "project_path/results/cache/data" is used.
-        **kwargs : kwargs
-            Additional parameters to pass in .load().
-
-        Returns
-        -------
-        dataset : picklable object
-            Loaded cache.
-
-        """
-        if not cachedir:
-            cachedir = f"{self.project_path}/results/cache/data"
-        if fformat == 'pickle':
-            filepath = f'{cachedir}/{prefix}_.dump'
-            dataset = dill.load(filepath, **kwargs)
-        elif fformat == 'hr':
-            ob = self._hr_load(cachedir, prefix, **kwargs)
-            dataset.update(ob)
-        else:
-            raise ValueError(f"Unknown 'fformat' {fformat}.")
-        self.logger.warning(f"Warning: use cache file(s):\n    {cachedir}")
-        return dataset
-
-    def _hr_dump(self, ob, filedir, prefix, **kwargs):
-        """Dump an dictionary to a file(s) in human-readable format.
-
-        Traverse dictionary items and dump pandas/numpy object to separate
-        csv-files, others to json-files.
-
-        Parameters
-        ----------
-        ob : dict
-            Object to dump.
-        filedir : str
-            Dump directory.
-        prefix : str
-            Prefix for files names.
-        **kwargs : dict {'json':kwargs, 'csv':kwargs}
-            Additional parameters to pass in low-level functions.
-
-        Returns
-        -------
-        filenames : set of str
-            Resulted filenames "prefix_key_.ext".
-
-        """
-        if not isinstance(ob, dict):
-            raise ValueError("Object should be a dictionary.")
-        filenames = set()
-        for key, val in ob.items():
-            if isinstance(ob[key], (pd.DataFrame, pd.Series)):
-                filepath = f'{filedir}/{prefix}_{key}_.csv'
-                filenames.add(filepath)
-                with open(filepath, 'w', newline='') as f:
-                    val.to_csv(f, mode='w', header=True,
-                               index=True, line_terminator='\n',
-                               **kwargs['csv'])
-            elif isinstance(ob[key], np.ndarray):
-                filepath = f'{filedir}/{prefix}_{key}_.csv'
-                filenames.add(filepath)
-                with open(filepath, 'w', newline='') as f:
-                    pd.DataFrame(val).to_csv(f, mode='w', header=True,
-                                             index=True, line_terminator='\n',
-                                             **kwargs['csv'])
-                # [alternative] np.savetxt(filepath, val, delimiter=",")
-            else:
-                filepath = f'{filedir}/{prefix}_{key}_.json'
-                filenames.add(filepath)
-                with open(filepath, 'w') as f:
-                    # items() preserve first level dic keys as int.
-                    json.dump(list(val.items()), f, **kwargs['json'])
-        return filenames
-
-    def _hr_load(self, filedir, prefix, **kwargs):
-        """Load an object from file(s) and compose in dictionary.
-
-        Parameters
-        ----------
-        filedir : str
-            Load directory.
-        prefix : str
-            Prefix for target files names.
-        **kwargs : dict {'json':kwargs, 'csv':kwargs}
-            Additional parameters to pass in low-level functions.
-
-        Returns
-        -------
-        ob : dict
-            Resulted object.
-
-        Notes
-        -----
-        Dictionary keys are gotten from filenames "prefix_key_.ext".
-
-        """
-        ob = {}
-        for filepath in glob.glob(f"{filedir}/{prefix}*"):
-            key = '_'.join(filepath.split('_')[1:-1])
-            if filepath.endswith('.csv'):
-                with open(filepath, 'r') as f:
-                    ob[key] = pd.read_csv(f, sep=",",
-                                          index_col=0, **kwargs['csv'])
-            else:
-                with open(filepath, 'r') as f:
-                    # [alternative] object_hook=json_keys2int)
-                    ob[key] = dict(json.load(f, **kwargs['json']))
-        return ob
 
 
 class DataPreprocessor(object):
@@ -522,7 +352,7 @@ class DataPreprocessor(object):
 
         Parameters
         ----------
-        dataset : dict {'data':raw}
+        dataset : Dataset {'data': pandas.DataFrame}
             Raw dataset.
         target_names: list, None, optional (default=None)
             List of target identifiers in raw dataset.
@@ -540,10 +370,8 @@ class DataPreprocessor(object):
 
         Returns
         -------
-        dataset : dict
-            Resulted dataset.
-            Key 'data' updated.
-            Key added:
+        dataset : Dataset
+            Resulted dataset. Key 'data' updated. Key added:
             'raw_names' : {
                 'index': list
                     List of index label(s).
@@ -609,20 +437,94 @@ class DataPreprocessor(object):
 
         Parameters
         ----------
-        dataset : dict
+        dataset : Dataset
             Dataset to explore.
         **kwargs : kwargs
             Additional parameters to pass in low-level functions.
 
         Returns
         -------
-        dataset : dict
-            Unchanged, for compliance with producer logic.
+        dataset : Dataset
+            For compliance with producer logic.
 
         """
         self._check_duplicates(dataset['data'], **kwargs)
         self._check_gaps(dataset['data'], **kwargs)
         return dataset
+
+    # @memory_profiler
+    def split(self, dataset, **kwargs):
+        """Split dataset on train, test.
+
+
+        Parameters
+        ----------
+        dataset : Dataset
+            Dataset to unify.
+
+        **kwargs : kwargs
+            Additional parameters to pass in `sklearn.model_selection.
+            train_test_split`.
+
+        Returns
+        -------
+        dataset : Dataset
+            Resulted dataset. Keys added:
+            {'train_index' : array-like train rows indices,
+             'test_index' : array-like test rows indices.}
+
+        Notes
+        -----
+        If split ``train_size`` set to 1.0, test=train used.
+
+        """
+        self.logger.info("\u25CF SPLIT DATA")
+        data = dataset['data']
+
+        if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
+                or kwargs['train_size'] is None and kwargs['test_size'] == 0):
+            # train = test = data
+            train_index = test_index = data.index
+        else:
+            shell_kw = ['func']
+            kwargs = copy.deepcopy(kwargs)
+            for kw in shell_kw:
+                kwargs.pop(kw)
+            train, test, train_index, test_index = \
+                sklearn.model_selection.train_test_split(
+                    data, data.index.values, **kwargs)
+
+        # Add to dataset.
+        dataset.update({'train_index': train_index,
+                        'test_index': test_index})
+        return dataset
+
+    def _make_targets(self, raw, target_names):
+        """Targets preprocessing."""
+        targets_df = raw[target_names]
+        targets = targets_df.values
+        return targets
+
+    def _make_features(self, raw, target_names, categor_names):
+        """Features preprocessing."""
+        features_df = raw.drop(target_names, axis=1)
+        features_names = features_df.columns
+        features_df, categoric_ind_name, numeric_ind_name \
+            = self._unify_features(features_df, categor_names)
+        features = features_df.values
+        return features, features_names, categoric_ind_name, numeric_ind_name
+
+    def _combine(self, index, targets, features, raw_names):
+        """Combine preprocessed sub-data."""
+        columns = raw_names['features']
+        df = pd.DataFrame(
+            data=features,
+            index=index,
+            columns=columns,
+            copy=False,
+        ).rename_axis(raw_names['index'])
+        df.insert(loc=0, column='targets', value=targets)
+        return df
 
     def _unify_features(self, data, categor_names):
         """Unify input dataframe.
@@ -687,80 +589,6 @@ class DataPreprocessor(object):
         self._check_numeric_types(data, categor_names)
         return data, categoric_ind_name, numeric_ind_name
 
-    # @memory_profiler
-    def split(self, dataset, **kwargs):
-        """Split dataset on train, test.
-
-
-        Parameters
-        ----------
-        dataset : dict
-            Dataset to unify.
-
-        **kwargs : kwargs
-            Additional parameters to pass in `sklearn.model_selection.
-            train_test_split`.
-
-        Returns
-        -------
-        dataset : dict
-            Resulted dataset. Keys added:
-            'train_index' : array-like train rows indices.
-            'test_index' : array-like test rows indices.
-
-        Notes
-        -----
-        If split ``train_size`` set to 1.0, test=train used.
-
-        """
-        self.logger.info("\u25CF SPLIT DATA")
-        data = dataset['data']
-
-        if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
-                or kwargs['train_size'] is None and kwargs['test_size'] == 0):
-            # train = test = data
-            train_index = test_index = data.index
-        else:
-            shell_kw = ['func']
-            kwargs = copy.deepcopy(kwargs)
-            for kw in shell_kw:
-                kwargs.pop(kw)
-            train, test, train_index, test_index = \
-                sklearn.model_selection.train_test_split(
-                    data, data.index.values, **kwargs)
-
-        # Add to dataset.
-        dataset.update({'train_index': train_index,
-                        'test_index': test_index})
-        return dataset
-
-    def _make_targets(self, raw, target_names):
-        """Targets preprocessing."""
-        targets_df = raw[target_names]
-        targets = targets_df.values
-        return targets
-
-    def _make_features(self, raw, target_names, categor_names):
-        """Features preprocessing."""
-        features_df = raw.drop(target_names, axis=1)
-        features_names = features_df.columns
-        features_df, categoric_ind_name, numeric_ind_name \
-            = self._unify_features(features_df, categor_names)
-        features = features_df.values
-        return features, features_names, categoric_ind_name, numeric_ind_name
-
-    def _combine(self, index, targets, features, raw_names):
-        """Combine preprocessed sub-data."""
-        columns = raw_names['features']
-        df = pd.DataFrame(
-            data=features,
-            index=index,
-            columns=columns,
-            copy=False,
-        ).rename_axis(raw_names['index'])
-        df.insert(loc=0, column='targets', value=targets)
-        return df
-
     def _check_duplicates(self, data, del_duplicates=False):
         """Check duplicates rows in dataframe.
 
@@ -823,7 +651,6 @@ class DataPreprocessor(object):
 
         """
         gaps_number = data.size - data.count().sum()
-        # log
         columns_with_gaps_dic = {}
         if gaps_number > 0:
             for column_name in data:
@@ -862,7 +689,7 @@ class DataPreprocessor(object):
         return None
 
 
-class DataProducer(mlshell.Producer, DataIO, DataPreprocessor):
+class DatasetProducer(mlshell.Producer, DataIO, DataPreprocessor):
     """Class includes methods to produce dataset.
 
     Parameters

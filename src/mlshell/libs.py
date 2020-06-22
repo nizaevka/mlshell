@@ -39,7 +39,7 @@ import numba as nb
 import jsbeautifier
 import seaborn as sns
 import tabulate
-from IPython import get_ipython
+
 import line_profiler
 from memory_profiler import profile as memory_profiler
 

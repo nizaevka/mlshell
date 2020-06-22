@@ -2,36 +2,81 @@ from mlshell.libs import *
 
 
 class HpResolver(object):
-    def __init__(self):
-        pass
+    """Include methods to resolve dataset-dependent hyperparameters.
 
-    def resolve(self, pipeline, dataset, name, **kwargs):
-        res = 'auto'
-        if name == 'process_parallel__pipeline_categoric__select_columns__kw_args':
+    Interface: resolve, th_resolver
+
+    Parameters
+    ----------
+    project_path: str
+        Absolute path to current project dir (with conf.py).
+    logger : logger object
+        Logs.
+
+    """
+    _required_parameters = ['project_path', 'logger']
+
+    def __init__(self, project_path, logger):
+        self.logger = logger
+        self.project_path = project_path
+
+    def resolve(self, hp_name, dataset, pipeline, **kwargs):
+        """Resolve hyperparameter value.
+
+        TODO: maybe better in dataset? but hp_name relate to pipeline
+
+        Parameters
+        ----------
+        hp_name : str
+            Hyperparameter identifier.
+        dataset : mlshell.Dataset interface object
+            Dataset to to extract from.
+        pipeline : object with sklearn.pipeline.Pipeline interface
+            Pipeline contain `hp_name` in get_params().
+        **kwargs : dict
+            Additional kwargs to pass in corresponding resolver endpoint.
+
+        Returns
+        -------
+        value : some object
+            Resolved value. If no resolver endpoint, return 'auto'
+
+        Notes
+        -----
+        Currently supported hp_name for mlshell.PipelineSteps:
+        'process_parallel__pipeline_categoric__select_columns__kwargs'
+            dataset['categoric_ind_name']/extract from dataset if absent.
+        'process_parallel__pipeline_numeric__select_columns__kwargs'
+            dataset['numeric_ind_name']/extract from dataset if empty.
+        'estimate__apply_threshold__threshold'
+            HpResolver.th_resolver()
+        'estimate__apply_threshold__kwargs'
+            dataset.get_classes()
+
+        """
+        if hp_name == 'process_parallel__pipeline_categoric__select_columns__kwargs':
             if 'categoric_ind_name' in dataset:
-                categoric_ind_name = dataset.get('categoric_ind_name', {})
+                categoric_ind_name = dataset['categoric_ind_name']
             else:
                 categoric_ind_name = self._extract_ind_name(dataset)[1]
-            res = {'indices': list(categoric_ind_name.keys())}
-        elif name == 'process_parallel__pipeline_numeric__select_columns__kw_args':
+            value = {'indices': list(categoric_ind_name.keys())}
+        elif hp_name == 'process_parallel__pipeline_numeric__select_columns__kwargs':
             if 'numeric_ind_name' in dataset:
-                res = {'indices': list(dataset.get('numeric_ind_name', {}).keys())}
+                value = {'indices': list(dataset['numeric_ind_name'].keys())}
             else:
-                res = self._extract_ind_name(dataset.get('data'))[2]
-        elif name == 'estimate__apply_threshold__threshold':
-            sub_kwargs = kwargs.get('resolve_params', {}).get(name, {})
-            res = self._th_resolver(pipeline, dataset, **sub_kwargs, **kwargs)
-        elif name == 'estimate__apply_threshold__kw_args':
-            res = dataset.get_classes()
-        # [deprecated] built-in auto good enough
-        # elif name == 'process_parallel__pipeline_categoric__encode_onehot__categories':
-        #     res = [list(range(len(i[1]))) for i in dataset.get('categoric_ind_name', {}).values()]
-        if res != 'auto':
-            print(f"Resolve hp: {name}")
-        return res
+                value = self._extract_ind_name(dataset.get('data'))[2]
+        elif hp_name == 'estimate__apply_threshold__threshold':
+            value = self.th_resolver(pipeline, dataset, **kwargs)
+        elif hp_name == 'estimate__apply_threshold__kwargs':
+            value = dataset.get_classes()
+        else:
+            value = 'auto'
+        if value != 'auto':
+            self.logger.info(f"Resolve hp: {hp_name}")
+        return value
 
     def _extract_ind_name(self, dataset):
-        """Extract categoric/numeric names and index in case if no unify applied."""
+        """Extract categoric/numeric names and index."""
         data = dataset.get('data')
         raw_names = dataset.get('raw_names')
         categoric_ind_name = {}
@@ -42,16 +87,18 @@ class HpResolver(object):
                 count += 1
                 continue
             if column_name in raw_names['categor_features']:
-                # loose categories names
-                categoric_ind_name[ind - count] = (column_name, np.unique(data[column_name]))
+                # Loose categories names.
+                categoric_ind_name[ind - count] = (column_name,
+                                                   np.unique(data[column_name]))
             else:
                 numeric_ind_name[ind - count] = (column_name,)
         return data, categoric_ind_name, numeric_ind_name
 
-    def _th_resolver(self, pipeline, dataset, cv=None, fit_params=None, plot_flag=False, samples=10, **kwargs):
-        classes, pos_labels, pos_labels_ind = operator.itemgetter('classes',
-                                                                'pos_labels',
-                                                                'pos_labels_ind')(dataset.get_classes())
+    def th_resolver(self, pipeline, dataset, cv=None, fit_params=None, plot_flag=False, samples=10):
+        classes, pos_labels, pos_labels_ind \
+            = operator.itemgetter('classes',
+                                  'pos_labels',
+                                  'pos_labels_ind')(dataset.get_classes())
         x = dataset.get_x()
         y = dataset.get_y()
         if fit_params is None:

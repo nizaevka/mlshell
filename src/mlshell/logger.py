@@ -1,23 +1,35 @@
-"""The :mod:`mlshell.logger_class` module includes CreateLogger class."""
+"""The :mod:`pycnfg.logger` module includes LoggerProducer class."""
 
-from mlshell.libs import os
-from mlshell.libs import sys
-from mlshell.libs import copy
+
+import copy
 import logging.config
+import os
+import sys
+
+import mlshell.pycnfg as pycnfg
 
 
 class LevelFilter(object):
+    """Custom filter for logger configuration."""
     def __init__(self, level=50):
         self._level = level
 
-    def filter(self, log_record):
-        if log_record.levelno <= self._level:
+    def filter(self, record):
+        if record.levelno <= self._level:
             return True
         else:
             return False
 
 
-_dict_log_config = {
+class CustomFormatter(logging.Formatter):
+    """Custom formatter for logger configuration."""
+    def format(self, record):
+        record.message.replace('|__ ', '\u25CF ')
+        record.message.replace('    |__ ', '\u25CF \u25B6 ')
+        return record
+
+
+CONFIG = {
     "version": 1,
     'filters': {
         'test_level_filter': {
@@ -28,24 +40,24 @@ _dict_log_config = {
     "handlers": {
         "test_handler": {
             "class": "logging.FileHandler",
-            "formatter": "message",
+            "formatter": "default",
             "filename": 'test.log',
             "level": 5,
             "filters": ['test_level_filter']
         },
         "debug_handler": {
             "class": "logging.handlers.RotatingFileHandler",
-            "maxBytes": 25000000,  # 25mb 25*10^6 byte
-            "backupCount": 3,      # amount of backup files
-            "formatter": "message",
-            "filename": 'debug.log',  # only for initialization, will be replaced
+            "maxBytes": 25000000,  # 25mb 25*10^6 byte.
+            "backupCount": 3,      # Amount of backup files.
+            "formatter": "default",
+            "filename": 'debug.log',  # Init only, will be replaced.
             "level": "DEBUG",
         },
         "info_handler": {
             "class": "logging.handlers.RotatingFileHandler",
             "maxBytes": 25000000,
             "backupCount": 5,
-            "formatter": "message",
+            "formatter": "default",
             "filename": 'info.log',
             "level": "INFO",  # 20
         },
@@ -53,37 +65,37 @@ _dict_log_config = {
             "class": "logging.handlers.RotatingFileHandler",
             "maxBytes": 25000000,
             "backupCount": 5,
-            "formatter": "message",
+            "formatter": "default",
             "filename": 'info.log',
             "level": 25,
         },
         "warning_handler": {
             "class": "logging.FileHandler",
-            "formatter": "json_message",
+            "formatter": "custom",
             "filename": 'warning.log',
             "level": "WARNING",  # 30
         },
         "error_handler": {
             "class": "logging.FileHandler",
-            "formatter": "json_message",
+            "formatter": "custom",
             "filename": 'error.log',
             "level": "ERROR",
         },
         "critical_handler": {
             "class": "logging.FileHandler",
-            "formatter": "json_message",
+            "formatter": "custom",
             "filename": 'critical.log',
             "level": "CRITICAL",
         },
         "console_handler": {
             "class": "logging.StreamHandler",
-            "formatter": "message",
+            "formatter": "default",
             "level": "INFO",
-            "stream": None,  # default in std.err (marked)
+            "stream": None,  # Default in std.err (marked).
         },
-        "http_handler": {   # ignore jsonFormatter (cause use LogRecord object)
+        "http_handler": {
             "class": "logging.handlers.HTTPHandler",
-            "formatter": "message",  # ignored
+            "formatter": "default",  # Ignore custom (as use LogRecord object).
             "level": "ERROR",
             "host": 'www.example.com',
             "url": 'https://wwww.example.com/address',
@@ -91,89 +103,121 @@ _dict_log_config = {
         },
     },
     "loggers": {
-        "mylogger": {
-            "handlers": ["test_handler", "debug_handler", "info_handler", "minimal_handler", "warning_handler",
-                         "error_handler", "critical_handler", "console_handler", "http_handler"],
-            "level": 1,  # => use handlers level
+        "logger": {
+            "handlers": ["test_handler", "debug_handler", "info_handler",
+                         "minimal_handler", "warning_handler", "error_handler",
+                         "critical_handler", "console_handler", "http_handler"],
+            "level": 1,  # => use handlers levels.
         },
     },
     "formatters": {
-        "json_message": {
-            # pip install pythonjsonlogger
-            # "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "format": "%(message)s%(delimeter)s",  # %(levelname)s:\n
-        },
-        "message": {
+        "default": {
             "format": "%(message)s%(delimeter)s"
         }
+        "custom": {
+            "()": CustomFormatter,
+            "format": "%(message)s%(delimeter)s",  # %(levelname)s:
+        },
     }
 }
-"""(dict): logger configuration for logging.config.dictConfig method"""
+"""(dict): Logger configuration for logging.config.dictConfig method."""
 
 
-class CreateLogger(object):
+class LoggerProducer(pycnfg.Producer):
     """Create logger object."""
-    def __init__(self, project_path, logger_name, **kwargs):
-        """Create logger and files.
 
-        use _dict_log_config for logger config
-        create dir from fullpath if not exist
-        create logger with name = last fullpath dir
-        create logs files "(logger_name)_(level).log"
+    def __init__(self, project_path):
+        self.project_path = project_path
+        TODO:
 
-        Args:
-            project_path (str): path to dir for logs files
-            kwargs (dict): user-defined params for handlers.
-                {'http_hadler':{'host':'www.example.com','url':'https://wwww.example.com/address'}}
-            logger_name(str): used in logs files
-                (default: last fullpath dir)
+    def create(self, logger, fullpath=None, logger_name='logger',
+                config=None, extra=None, clean=None, **kwargs):
+        """Create logger object and corresponding file descriptors.
+
+        Parameters
+        ----------
+        logger : object with logging.Logger interface
+            For compliance with pycnfg configuration (ignored).
+        fullpath : str, optional (default=None)
+            Absolute path to dir for logs files. Created, if not exists.
+            If None, used "project_path/results/logs_{logger_name}".
+        logger_name: str, optional (default='logger')
+            Logger identifier.
+        config : dict, optional (default=None)
+            Logger configuration to pass in logging.config.dictConfig. If None,
+            module level `CONFIG` is used.
+        extra : dict, optional (default=None)
+            Add extra to logging.LoggerAdapter. If None, {'delimeter': '\n' +
+            '=' * 100}.
+        clean : list of str, optional (default=None)
+            List of handlers identifiers, for which clean corresponding files.
+            If None, ["debug_handler", "warning_handler", "error_handler",
+            "critical_handler"].
+        **kwargs : dict
+            User-defined params for handlers, will update `config`.
+            For example:
+            {'http_hadler':{'host':'www.example.com',
+                            'url':'https://wwww.example.com/address'}}
+
+        Notes
+        -----
+        Logs files created as "(logger_name)_(level).log".
+        `test_handler` used only if program run with pytest.
+        `http_hanfler` used only if configuration provided in kwargs.
+
         """
-        self.logger = self.create_logger(project_path, logger_name, **kwargs)
+        if not fullpath:
+            fullpath = f"{self.project_path}/results/logs_{logger_name}"
+        if not config:
+            config = copy.deepcopy(CONFIG)
+        if not extra:
+            # Add extra in every entry.
+            extra = {'delimeter': '\n' + '=' * 100}
+        if not clean:
+            clean = ["debug_handler", "warning_handler",
+                     "error_handler", "critical_handler"]
 
-    def create_logger(self, project_path, logger_name, **kwargs):
-        fullpath = f"{project_path}/results/logs_{logger_name}"
-        # create dir
+        # Create dir.
         if not os.path.exists(fullpath):
             os.makedirs(fullpath)
-
-        dict_log_config = copy.deepcopy(_dict_log_config)
-        dict_log_config["loggers"][logger_name] = dict_log_config["loggers"].pop("mylogger")
-        # update path in config/params in handlers
+        if logger_name != 'logger':
+            config["loggers"][logger_name] = config["loggers"].pop("logger")
+        # Update path for config/params in handlers.
         handlers = set()
-        for handler_name in _dict_log_config["handlers"]:
+        for handler_name in CONFIG["handlers"]:
             prefix = handler_name.split('_')[0]
-            if prefix in ['test', 'debug', 'info', 'minimal', 'warning', 'error', 'critical']:
-                dict_log_config["handlers"][handler_name]['filename'] = '{}/{}_{}.log'.format(fullpath,
-                                                                                               logger_name, prefix)
+            if prefix in ['test', 'debug', 'info', 'minimal',
+                          'warning', 'error', 'critical']:
+                config["handlers"][handler_name]['filename'] =\
+                    f"{fullpath}/{logger_name}_{prefix}.log"
             if prefix is 'console':
-                dict_log_config["handlers"][handler_name]['stream'] = sys.stdout
+                config["handlers"][handler_name]['stream'] = sys.stdout
             dic = kwargs.get(handler_name, {})
-            dict_log_config['handlers'][handler_name].update(dic)
+            config['handlers'][handler_name].update(dic)
             handlers.add(handler_name)
-
-        # special cases
+        # Special cases.
         if "PYTEST_CURRENT_TEST" not in os.environ:
-            self.del_handler(dict_log_config, logger_name, handlers, 'test_handler')
+            # Delete test handler.
+            self._del_handler(config, logger_name, handlers, 'test_handler')
         if 'http_handler' not in kwargs:
-            self.del_handler(dict_log_config, logger_name, handlers, 'http_handler')
-
-        # create logger object (auto generate files)
-        logging.config.dictConfig(dict_log_config)
+            # Delete http handler.
+            self._del_handler(config, logger_name, handlers, 'http_handler')
+        # Create logger object (auto generate files).
+        logging.config.dictConfig(config)
         logger = logging.getLogger(logger_name)
-        # add extra in every entry
-        extra = {'delimeter': '\n' + '=' * 100}
         logger = logging.LoggerAdapter(logger, extra)
-        # clean file(s)
-        for hadler in ["debug_handler", "warning_handler", "error_handler", "critical_handler"]:
-            with open(dict_log_config["handlers"][hadler]["filename"], 'w'):
+        # Clean file(s).
+        for hadler in clean:
+            with open(config["handlers"][hadler]["filename"], 'w'):
                 pass
         logger.log(25, '\n' + '<>' * 50)
         return logger
 
-    def del_handler(self, dict_log_config, logger_name, handlers, handler_name):
+    def _del_handler(self, config, logger_name, handlers, handler_name):
         if handler_name in handlers:
-            index = dict_log_config["loggers"][logger_name]['handlers'].index(handler_name)
-            del dict_log_config["loggers"][logger_name]['handlers'][index]
+            index = config["loggers"][logger_name]['handlers']\
+                .index(handler_name)
+            del config["loggers"][logger_name]['handlers'][index]
 
 
 if __name__ == '__main__':

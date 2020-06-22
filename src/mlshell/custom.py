@@ -228,18 +228,24 @@ class PredictionTransformer(sklearn.base.BaseEstimator, sklearn.base.Transformer
 
 # TODO: remain binary simple variant
 class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMixin):
-    def __init__(self, threshold=None, classes=None, pos_labels=None, pos_labels_ind=None):
-        """Classify samples based on whether they are above of below `threshold`.
+    """Classify samples based on whether they are above of below `threshold`.
 
-        Args:
-            classes (array of shape (n_classes), or a list of n_outputs such arrays if n_outputs > 1):
-                Sorted target(s) classes.
+    Args:
+        classes (array of shape (n_classes), or a list of n_outputs such arrays if n_outputs > 1):
+            Sorted target(s) classes.
 
-        Note:
-            binary classes only.
-            classes should be extracted from train, not full dataset.
+    Note:
+        binary classes only.
+        classes should be extracted from train, not full dataset.
 
-        """
+    """
+
+    def __init__(self, threshold=None, **kwargs):
+        # kwargs layer need to resolve hp together.
+        classes = kwargs.get('classes', None)
+        pos_labels = kwargs.get('pos_labels', None)
+        pos_labels_ind = kwargs.get('pos_labels_ind', None)
+
         if not classes:
             raise ValueError("classes should be non-empty sequence.")
         classes = classes if isinstance(classes, list) else [classes]

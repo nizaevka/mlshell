@@ -3,28 +3,22 @@
 
 
 from .__version__ import __version__
-from .callbacks import find_path
-from .logger import CreateLogger
-from .handle import ConfHandler
-from .default import CreateDefaultPipeline, DEFAULT_PARAMS
-from .produce import Producer
-from .data import DataProducer, Dataset
-from .pipeline import PipeProducer, Pipeline
+from .logger import LoggerProducer
+from .default import PipelineSteps, DEFAULT_PARAMS
+from .dataset import DatasetProducer, Dataset
+from .pipeline import PipelineProducer, Pipeline
 from .resolve import HpResolver
 from .optimize import RandomizedSearchOptimizer, ThresholdOptimizer
 from .validate import Validator
 from .general import Workflow
 from .gui import GUI
 from .eda import EDA
-from .run import run
 
-
-__all__ = ['run', 'find_path', 'CreateLogger', 'ConfHandler', 'Producer',
-           'DataProducer', 'PipeProducer', 'HpResolver',
+__all__ = ['DatasetProducer', 'PipelineProducer', 'Workflow'
            'Dataset', 'Pipeline',
-           'Workflow', 'CreateDefaultPipeline', 'DEFAULT_PARAMS', 'GUI', 'EDA',
-           'RandomizedSearchOptimizer', 'ThresholdOptimizer',
-           'Validator']
+           'HpResolver', 'GUI', 'EDA',
+           'PipelineSteps', 'DEFAULT_PARAMS',
+           'RandomizedSearchOptimizer', 'ThresholdOptimizer', 'Validator']
 
 
 # import platform

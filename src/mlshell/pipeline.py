@@ -24,11 +24,21 @@ optimize():
     sklearn estimator
 validate():
     predict_proba()/predict()
+predict():
+    .dataset_id
+        In `mlshell.workflow` used only in result filenames, can be skipped.
+    .pipeline
 """
 
 
-from mlshell.libs import *
+import os
+
+import joblib
 import mlshell
+import sklearn.utils.estimator_checks
+import mlshell.pycnfg as pycnfg
+
+__all__ = ['Pipeline', 'PipelineProducer']
 
 
 class Pipeline(object):
@@ -40,31 +50,29 @@ class Pipeline(object):
 
     Attributes
     ----------
-    pipeline : object, optional (default=None)
+    pipeline : object
         Underlying pipeline.
-    dataset_id : str, optional (default=None),
+    dataset_id : str
         If pipeline is fitted, train dataset identifier, otherwise None.
 
     Notes
     -----
-    All unknown methods call redirects to underlying pipeline object.
+    Calling unknown methods are redirected to underlying pipeline object.
 
     """
     def __init__(self, pipeline=None, dataset_id=None):
         """
+        Parameters
+        ----------
+        pipeline : object with sklearn.pipeline.Pipeline interface, None,
+        optional (default=None)
+            Pipeline to wrap.
+        dataset_id : str, None, optional (default=None),
+            Train dataset identifier if pipeline is fitted, otherwise None.
 
         """
         self.pipeline = pipeline
         self.dataset_id = dataset_id
-        # TODO [code-review]: maybe better internal storage(actuaaly can do both)
-        # Need only to add dataset_id to name for fitted pipeline when dump on disk.
-        # Can be skipped.
-
-        # [deprecated] move out to optimizer
-        #     otherwise requires create separate for each dataset.
-        # self.optimizers = []
-        # self.best_params_ = {}
-        # self.best_score_ = float("-inf")
 
     def __getattr__(self, name):
         """Redirect unknown methods to pipeline object."""
@@ -103,165 +111,141 @@ class Pipeline(object):
         ----------
         hp_name : str
             Hyperparameter to resolve.
-        dataset : mlshell.Dataset or similar
-            Current data.
-        resolver : mlshell.HpResolver or csimilar, optional (default=None)
-            Specific class to resolve `hp_name`.
+        dataset : object
+            Current dataset, passed to `resolver`.
+        resolver : class, optional (default=None)
+            Specific class to resolve `hp_name`. If None, mlshell.HpResolver.
         **kwargs: : dict
             Additional parameters to pass in `resolver`.resolve().
 
         Returns
         -------
+        result: object
+            Resolved value.
 
         """
         if not resolver:
-            resolver = kwargs.get('resolve', {}).get(hp_name, {}).get('resolver', mlshell.HpResolver)
-        # [deprecated] need all level kwargs
-        # sub_kwargs = kwargs.get('resolve', {}).get(hp_name, {})
-        return resolver().resolve(self.pipeline, dataset, hp_name, **kwargs)
+            resolver = mlshell.HpResolver
+        return resolver().resolve(hp_name, dataset, self.pipeline, **kwargs)
 
     def dump(self, file):
         """Dump pipeline on disk.
 
         Parameters
         ----------
-        file
-
-        Returns
-        -------
+        file: str
+            Filepath.
 
         """
         joblib.dump(self.pipeline, file)
-        return
+        return None
 
 
-class PipelineProducer(mlshell.Producer):
-    def __init__(self, project_path='', logger=None):
-        self.logger = logger if logger else logging.Logger(__class__.__name__)
+class PipelineProducer(pycnfg.Producer):
+    """Class includes methods to produce pipeline.
+
+    Interface: make, load.
+
+    Parameters
+    ----------
+    project_path: str
+        Absolute path to current project dir (with conf.py).
+    logger : logger object
+        Logs.
+
+    """
+    _required_parameters = ['project_path', 'logger']
+
+    def __init__(self, project_path, logger):
+        self.logger = logger
         self.project_path = project_path
         super().__init__(self.project_path, self.logger)
 
-    def load(self, pipeline, filepath=None, **kwargs):
-        """Load fitted model on disk/string.
+    def make(self, pipeline, steps=None, memory=None, **kwargs):
+        """Create pipeline from steps.
 
-        Note:
-            Better use only the same version of sklearn.
+        Parameters
+        ----------
+        pipeline : Pipeline
+            Pipeline template, will be updated.
+        steps: list, class, optional (default=none)
+            Steps of pipeline, passed to sklearn.pipeline.Pipeline.
+            If class, should support class(**kwargs).steps.
+            If None, mlshell.PipelineSteps class is used.
+        memory : None, str, joblib.Memory interface, optional (default=None)
+            `memory` argument passed to sklearn.pipeline.Pipeline.
+            If 'auto', "project_path/temp/pipeline" is used.
+        **kwargs : dict
+            Additional kwargs to initialize `steps` (if provided as class).
 
-        """
-        self.logger.info("\u25CF LOAD PIPELINE")
-        pipeline.pipeline = joblib.load(filepath)
-        self.logger.info('Load fitted model from file:\n    {}'.format(filepath))
-        return pipeline
+        Returns
+        -------
+        pipeline : Pipeline
+            Resulted pipeline.
 
-    def create(self, pipeline, **kwargs):
-        """  Create pipeline
-
-        Note:
-            it is possible to use cache
-                cache each transformer after calling fit
-                avoid double calculation of transformers in GridSearch
-                will use cache result if steps and params are the same
-            but error-prone (better user-level control)
-                https://scikit-learn.org/stable/modules/compose.html#caching-transformers-avoid-repeated-computation
-                https://github.com/scikit-learn/scikit-learn/issues/10068
-                bad-tested
-                will be problem in case of transformer is changed internally
-                giant hdd consuming
-                time consuming create hash from GB of dat
+        Notes
+        -----
 
         """
         self.logger.info("\u25CF CREATE PIPELINE")
-        if kwargs['cache']:
-            cachedir = f"{self.project_path}/results/cache/pipeline"
-            # delete cache if necessary
-            if kwargs['cache'] == 'update' and os.path.exists(cachedir):
-                shutil.rmtree(cachedir, ignore_errors=True)
-                self.logger.warning(f'Warning: update pipeline cache:\n    {cachedir}')
-            else:
-                self.logger.warning(f'Warning: pipeline use cache:\n    {cachedir}')
-            if not os.path.exists(cachedir):
-                # create temp dir for cache if not exist
-                os.makedirs(cachedir)
-        else:
-            cachedir = None
-
-        # assemble several steps that can be cross-validated together
-        steps = self._pipeline_steps(**kwargs)
-
-        # [deprecated]
-        # last_step = self._create_last(kwargs['estimator'], pipeline_, kwargs['estimator_type'])
-        # self.logger.info(f"Estimator step:\n    {last_step}")
-        # pipeline_.append(('estimate', last_step))
-
-        pipeline.pipeline = sklearn.pipeline.Pipeline(steps, memory=cachedir)
-        # run tests
-        # sklearn.utils.estimator_checks.check_estimator(pipeline, generate_only=False)
-
+        steps = self._steps_resolve(steps, **kwargs)
+        memory = self._memory_resolve(memory)
+        pipeline.pipeline = sklearn.pipeline.Pipeline(steps, memory=memory)
+        sklearn.utils.estimator_checks.check_estimator(pipeline.pipeline,
+                                                       generate_only=False)
         return pipeline
 
-    def _pipeline_steps(self, steps=None, **kwargs):
-        """Configure pipeline steps.
+    def load(self, pipeline, filepath=None, **kwargs):
+        """Load fitted model from disk.
 
-        Returns:
+        Parameters
+        ----------
+        pipeline : Pipeline
+            Pipeline template, will be updated.
+        filepath : str, optional (default='data/train.csv')
+            Path to csv file relative to `project_dir`.
+        kwargs : dict
+            Additional parameters to pass in load().
+
+        Returns
+        -------
+        pipeline : Pipeline
+            Resulted pipeline.
+
+        """
+        self.logger.info("\u25CF LOAD PIPELINE")
+        pipeline.pipeline = joblib.load(filepath, **kwargs)
+        self.logger.info('Load fitted model from file:\n'
+                         '    {}'.format(filepath))
+        return pipeline
+
+    def _memory_resolve(self, memory):
+        if memory == 'auto':
+            memory = f"{self.project_path}/temp/pipeline"
+        if not os.path.exists(memory):
+            # Create temp dir for cache if not exist.
+            os.makedirs(memory)
+        return memory
+
+    def _steps_resolve(self, steps, **kwargs):
+        """Prepare pipeline steps.
+
+        Returns
+        -------
+        steps: list
             sklearn.pipeline.Pipeline steps.
-
-        Note:
-            * | feature/object selections should be independent at every fold,
-              | otherwise bias (but ok if totally sure no new data)
-            * can`t pass params to fit() in case of TargetTransformation
-            * if validate=True in FunctionTransformer, will raise error on "np.nan"
-            * limitation of pickling (used for cache and parallel runs on pipeline).
-
-                * define custom function in a module you import, or at least not in a closure.
-                * | pickle can`t pickle lambda, cause python pickles by name reference, and a lambda doesn't have a name.
-                  | preprocessing.FunctionTransformer(
-                  | lambda data: self.subcolumns(data, self.categoric_ind_name),validate=False))
-
-        TODO:
-            use dill instead.
 
         """
         if isinstance(steps, list):
             steps = steps
-            self.logger.warning('Warning: user-defined pipeline is used instead of default.')
         else:
             if steps is None:
-                clss = mlshell.default.CreateDefaultPipeline
+                clss = mlshell.PipelineSteps
             else:
                 clss = steps
-                self.logger.warning('Warning: user-defined pipeline is used instead of default.')
-            steps = clss(**kwargs).get_steps()
+            steps = clss(**kwargs).steps
         return steps
 
 
-# [deprecated] move out
-#    def update_params(self, optimizer):
-#        """
-#        Note:
-#            work good for refine runs, could lose runs if the same param multiple times
-#            in thar case need to merge 'cv_results_' and recalc best each times
-#            but could be different number of split, hard to combine different optimizers
-#
-#            # best_params_ (not available if refit is False and multi-metric)
-#            # best_estimator availbale if refit is not False
-#            # best_score available if refit is not False and not callable
-#
-#            # TODO: discuss alternative storage pipeline as optimizer object and best_* attributes
-#            #       more logically and sklearn-consistent, but less flexible for different optimizers
-#            #       best_estimator not always available to fit
-#            # Optimizer fit it is not the same as pipeline fit, it is better
-#        """
-#        self.pipeline = optimizer.__dict__.get('best_estimator_', pipeline)
-#        self.best_params_.update(optimizer.__dict__.get('best_params_', {}))
-#
-#        # [alternative] not evailable if refit callable
-#        # best_score_ = optimizer.__dict__.get('best_score_', float("-inf"))
-#        # if pipeline.best_score_ <= best_score_:
-#        #        self.pipelines[pipeline_id].best_score_ = best_score_
-#
-#    # [deprecated] need to use in fit(), predict() ..
-#    # def ckeck_data_format(self, data):
-#    #     """additional check for data when pass to pipeline."""
-#    #     if not isinstance(data, pd.DataFrame):
-#    #         raise TypeError("input data should be pandas.DataFrame object")
-#    #     return
+if __name__ == '__main__':
+    pass

@@ -1,12 +1,13 @@
 """The module contains class to read and execute configuration(s).
 
 Configuration is a python dictionary.
-Configuration could be passed to `mlshell.run` function or user-defined
-handler, where `mlshell.ConfHandler` built objects and executes its endpoints.
-Configuration support multiple sections. Each section specify set of
-sub-configurations.
+It supports multiple sections.
+Each section specify set of sub-configurations.
 Each sub-configuration provide steps to construct an object, that can be
 utilize as argument in some other sections.
+Whole configuration could be passed to `pycnfg.run` or user-defined
+wrapper around `pycnfg.Handler` to built underlying sub-configuration`s
+objects one by one.
 
 For each section there is common logic:
 {'section_id':
@@ -31,8 +32,8 @@ The target for each sub-configuration is to create an instance.
 `producer` work as factory, it should contain .produce() method that:
 * takes `init` and consecutive pass it to `steps` with specified kwargs.
 * return resulting object, that can be used as kwargs for any step in others
-sections.
-To specify the order in which sections handled, 'priority' key is available.
+sections. To specify the order in which sections handled, the 'priority'
+key is available in each sub-configuration
 
 For flexibility, it is possible to:
 * Specify global value for common kwargs in steps via `global` key.
@@ -40,14 +41,13 @@ For flexibility, it is possible to:
 * `producer`/`init` can be both an instance or a class.
 * Monkey patch `producer` object with custom functions via `patch` key.
 
-
 Configuration keys
 ------------------
 init : class or instance, optional (default={})
     Initial state for constructed object. Will be passed consecutive in steps
     as argument. If set as class will be auto initialized: `init()`.
 
-producer : class or instance, optional (default=mlshell.Producer)
+producer : class or instance, optional (default=pycnfg.Producer)
     Factory to construct an object:`producer.produce(`init`,`steps`,`objects`)`
     will be called, where `objects` is dictionary with previously created
     objects {'section_id__configuration_id': object}. If set as class will be
@@ -98,25 +98,21 @@ global : dict {'kwarg_name': value, ...}, optional (default={})
 
 Notes
 -----
-Default value can be rearrange in `mlshell.ConfHandler.read(conf, default)`.
+Default value can be reassigned in `pycnfg.Handler.read(conf, default)`.
 
 Examples
 --------
 # Patch producer with custom functions.
-def my_func(self, pipeline, dataset):
+def my_func(self, *args, **kwargs):
     # ... custom logic ...
-    return
+    return res
 
 {'patch': {'extra': my_func,},}
 
 See Also
 --------
-:class:`mlshell.ConfHandler`:
+:class:`pycnfg.Handler`:
     Reads configurations, executes steps.
-
-
-TODO:
-    encompass all sklearn-wise in mlshell.utills.sklearn
 
 """
 
@@ -129,10 +125,12 @@ import inspect
 import sys
 import types
 
-import mlshell.default
+import mlshell.pycnfg as pycnfg
+
+__all__ = ['Handler']
 
 
-class ConfHandler(object):
+class Handler(object):
     """Read and execute configurations.
 
     Interface: read, exec.
@@ -146,7 +144,7 @@ class ConfHandler(object):
 
     See Also
     ---------
-    :class:`mlshell.Producer`:
+    :class:`pycnfg.Producer`:
         Execute configuration steps.
 
     """
@@ -168,7 +166,7 @@ class ConfHandler(object):
         default_conf : dict
             Set of default configurations:
             {'section_id': {'configuration_id': configuration, },}
-            If None, read from `mlshell.DEFAULT_PARAMS`.
+            If None, read from `pycnfg.DEFAULT`.
 
         Returns
         -------
@@ -202,7 +200,7 @@ class ConfHandler(object):
             sys.modules['conf'] = conf_file
             conf = copy.deepcopy(conf_file.conf)
         if default_conf is None:
-            default_conf = copy.deepcopy(mlshell.DEFAULT_PARAMS)
+            default_conf = copy.deepcopy(pycnfg.DEFAULT)
         configs = self._parse_conf(conf, default_conf)
         return configs
 
@@ -228,14 +226,14 @@ class ConfHandler(object):
         `producer`/`init` auto initialized.
 
         Default values for skipped config keys:
-        {'init': {}, 'steps': [], 'producer': mlshell.Producer, 'patch': {},}
+        {'init': {}, 'steps': [], 'producer': pycnfg.Producer, 'patch': {},}
 
         """
         objects = {}
         for config in configs:
             name, val = config
-            self.logger.info(f"\u25CF HANDLE {name}")
-            self.logger.info(f"Configuration:\n    {name}")
+            self.logger.info(f"|__ SECTION: {name}")
+            self.logger.info(f"    |__ CONFIGURATION: {name}")
             objects[name] = self._exec(val, objects)
         return objects
 
@@ -438,7 +436,7 @@ class ConfHandler(object):
     def _exec(self, conf, objects):
         init = conf.get('init', {})
         steps = conf.get('steps', [])
-        producer = conf.get('producer', mlshell.Producer)
+        producer = conf.get('producer', pycnfg.Producer)
         patch = conf.get('patch', {})
         if inspect.isclass(init):
             init = init()

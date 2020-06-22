@@ -20,17 +20,75 @@ TODO:
 TODO:
     think about replace get_x, get_y with cycled generators
 
-TEST:
-    multioutput, better under targets column.
-        not sure if th_resolve would work
-        maybe need to move in dataset or sklearn utils (predict_proba to pos_labels_pp, prob_to_pred)
-        this is not dataset quality, it-is sklearn quality => utills.sklearn dir
-        code hould not repete!
-    multiclass, should work for all except th_strategy.
-    not dataframe format for data.
-    pass_csutom, n_jobs save?
-    result reproducible
-    extract categor_ind_name/numeric_ind_name
+
+# TODO: Move out to related methods.
+(dict): if user skip declaration for any parameter the default one will be used.
+
+    pipeline__estimator (``sklearn.base.BaseEstimator``, optional (default=sklearn.linear_model.LinearRegression())):
+        Last step in pipeline.
+    pipeline__type ('regressor' or 'classifier', optional (default='regressor')):
+        Last step estimator type.
+    pipeline__fit_params (dict, optional (default={})):
+        | Parametes will be passed to estimator.fit( ** estimator_fit_params) method.
+        | For example: {'estimate__classifier__early_stopping_rounds': 200, 'estimate__classifier__eval_metric': 'auc'}
+    pipeline__steps (custom class to create pipeline steps, optional (default=None))
+        Will replace ``mlshell.default.CreateDefaultPipeline`` if set, should have .get_steps() method.
+    pipeline__debug (bool, optional (default=False):
+        If True fit pipeline on <=1k subdata and log exhaustive information.
+    metrics (dict of ``sklearn.metrics``, optional (default={'score': sklearn.metrics.r2_score})):
+        Dict of metrics to be measured. Should consist 'score' key, which val is used for sort hp tuning results.
+    gs__flag (bool, optional (default=False)):
+        if True tune hp in optimizer and fit best just else fit pipeline with zero-position hp_grid.
+    gs__splitter (``sklearn.model_selection`` splitter, optional (default=sklearn.model_selection.KFold(shuffle=False)):
+        Yield train and test folds.
+    gs__hp_grid (dict of params for sklearn hyper-parameter optimizers, optional (default={})):
+        Full list see in ``mlshell.default.CreateDefaultPipeline`` class.
+    gs__verbose (int (default=1)):
+        `verbose` argument in optimizer.
+    gs__n_job (int (default=1)):,
+        ``n_jobs`` argument in optimizer.
+    gs__pre_dispatch  (None or int or string, optional (default='n_jobs'))
+        `pre_dispatch` argument in optimizer.
+    gs__runs (bool or None, optional (default=None)):
+        Number of runs in optimizer, hould be set if any hp_grid key is probability distribution.
+        If None will be used hp_grid shapes multiplication.
+    gs_metrics (list, optional (default=['score']))
+        Sublist of ``metrics`` to evaluate in grid search.
+        Always should contain 'score'.
+    data__split__train_size (train_size for sklearn.model_selection.train_test_split, default=0.7):
+        Split data on train and validation. It is possible to set 1.0 and CV on whole data (validation=train).
+    data__del_duplicates (bool, optional (default=False)):
+        If True remove duplicates rows from input data before pass to pipeline (workflow class level).
+    data__train__args/data__train__kwargs (list, (default=[])
+        Specify args to pass in user-defined classes.GetData class constructor.
+        Typically there are contain path to files, index_column name, rows read limit.
+        For example see `Examples <./Examples.html>`__.
+    data__test__args/data__test__kwargs (dict, (default={})
+        Specify kwargs to pass in user-defined classes.GetData class constructor.
+        Typically there are contain index_column name, rows read limit.
+        For example see `Examples <./Examples.html>`__.
+    th__pos_label (int or str, optional (default=1)):
+        For classification only. Label for positive class.
+    th__strategy ( 0,1,2,3, optional (default=0)):
+        | For classification only.
+        | ``th_`` tuning strategy.
+        | For details see `Concepts <./Concepts.html#classification-threshold>`__.
+    th__samples (int, optional (default=100)):
+        | For classification only.
+        | Number of ``th_`` values to brutforce for roc_curve based th_strategy (1.2/2.2/3.2).
+    th__plot_flag (bool, optional (default=False):
+        For ``th_strategy`` (1.2/2.2/3.2) plot ROC curve and trp/(tpr+fpr) vs ``th_`` with ``th_`` search range marks.
+    cache__pipeline (bool, optional (default=False):
+        if True, use ``memory`` argument in ``sklearn.pipeline.Pipeline``, cache steps` in ``result/cache/pipeline``.
+        If 'update', update cache files.
+        If false, not use cache.
+    cache__unifier (bool, optional (default=False):
+        If True, cache input after workflow.unify_data ``result/cache/unifier/``, use that cache next time if available.
+        If 'update', update cache file.
+        If false, not use cache.
+    seed (None or int, optional(default=42)):
+        workflow random state for random.seed(42), numpy.random.seed(42).
+
 """
 
 
@@ -347,6 +405,7 @@ class Workflow(mlshell.Producer):
     def optimize(self, res, pipeline_id=None, dataset_id=None,
                  optimizer, validator, **kwargs):
 
+
         # [deprecated]
         # pipeline_id = self._check_arg(pipeline)
         # dataset_id = self._check_arg(dataset)
@@ -363,8 +422,7 @@ class Workflow(mlshell.Producer):
         # Resolve hp_grid.
         hp_grid = kwargs['gs_params'].pop('hp_grid', {})
         if hp_grid:
-            # [deprecated] kwargs['gs_params']['hp_grid'] =
-            hp_grid = self._resolve_hps(hp_grid, pipeline, dataset, **kwargs)
+            hp_grid = self._resolve_hps(hp_grid, pipeline, dataset, **kwargs.get('resolve_params', {}))
 
 
         # TODO:
@@ -409,7 +467,7 @@ class Workflow(mlshell.Producer):
         # [deprecated] currently pipeline change inplace
         # hps.update(pipeline.get('best_params_', {}))
         hps.update(self._get_zero_position(kwargs.get('hp', {})))
-        hps = self._resolve_hps(hps, pipeline, dataset, **kwargs)
+        hps = self._resolve_hps(hps, pipeline, dataset, **kwargs.get('resolve_params', {}))
         pipeline.pipeline.set_params(**hps)
         return pipeline
 
@@ -429,14 +487,20 @@ class Workflow(mlshell.Producer):
                 zero_hps.update(**{name: iterator.__next__()})
         return zero_hps
 
-    def _resolve_hps(self, hps, pipeline, dataset, **kwargs):
+    def _resolve_hps(self, hps, pipeline, dataset, resolve_params):
         for hp_name, val in hps.items():
             if val == 'auto':
                 # hp
-                hps[hp_name] = pipeline.resolve(hp_name, dataset, **kwargs)
+                hps[hp_name] = \
+                    pipeline.resolve(hp_name,
+                                    dataset,
+                                    **resolve_params.get(hp_name, {}))
             elif val == ['auto']:
                 # hp_grid
-                hps[hp_name] = [].extend(pipeline.resolve(hp_name, dataset, **kwargs))
+                hps[hp_name] = \
+                    [].extend(pipeline.resolve(hp_name,
+                              dataset,
+                              **resolve_params.get(hp_name, {})))
         return hps
 
     # [deprecated] explicit param to resolve in hp_grid
