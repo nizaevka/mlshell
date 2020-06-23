@@ -1,15 +1,15 @@
 """The module contains default configuration."""
 
-
+import logging
 import mlshell.pycnfg as pycnfg
 
 __all__ = ['DEFAULT']
 
 
 DEFAULT = {
-    'section': {
-        'configuration': {
-            'init': {},
+    'path': {
+        'default': {
+            'init': pycnfg.find_path,
             'class': pycnfg.Producer,
             'global': {},
             'patch': {},
@@ -17,6 +17,17 @@ DEFAULT = {
             'steps': [],
         },
     },
+    'logger': {
+        'default': {
+            'init': logging.getLogger('default'),
+            'class': pycnfg.Producer,
+            'global': {},
+            'patch': {},
+            'priority': 1,
+            'steps': [],
+        },
+    },
+
 }
 """Default configuration."""
 

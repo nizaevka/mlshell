@@ -126,7 +126,7 @@ class Pipeline(object):
         """
         if not resolver:
             resolver = mlshell.HpResolver
-        return resolver().resolve(hp_name, dataset, self.pipeline, **kwargs)
+        return resolver(project_path, logger).resolve(hp_name, dataset, self.pipeline, **kwargs)
 
     def dump(self, file):
         """Dump pipeline on disk.
@@ -148,18 +148,34 @@ class PipelineProducer(pycnfg.Producer):
 
     Parameters
     ----------
-    project_path: str
-        Absolute path to current project dir (with conf.py).
+    objects : dict {'section_id__config__id', object,}
+        Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
+    path_id : str
+        Project path identifier in `objects`.
+    logger_id : str
+        Logger identifier in `objects`.
+
+    Attributes
+    ----------
+    objects : dict {'section_id__config__id', object,}
+        Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
     logger : logger object
-        Logs.
+        Default logger logging.getLogger().
+    project_path: str
+        Absolute path to project dir.
+
 
     """
-    _required_parameters = ['project_path', 'logger']
+    _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, project_path, logger):
-        self.logger = logger
-        self.project_path = project_path
-        super().__init__(self.project_path, self.logger)
+    def __init__(self, objects, oid, path_id, logger_id):
+        pycnfg.Producer.__init__(self, objects, oid)
+        self.logger = objects[logger_id]
+        self.project_path = objects[path_id]
 
     def make(self, pipeline, steps=None, memory=None, **kwargs):
         """Create pipeline from steps.
@@ -187,7 +203,7 @@ class PipelineProducer(pycnfg.Producer):
         -----
 
         """
-        self.logger.info("\u25CF CREATE PIPELINE")
+        self.logger.info("|__  CREATE PIPELINE")
         steps = self._steps_resolve(steps, **kwargs)
         memory = self._memory_resolve(memory)
         pipeline.pipeline = sklearn.pipeline.Pipeline(steps, memory=memory)
@@ -213,7 +229,7 @@ class PipelineProducer(pycnfg.Producer):
             Resulted pipeline.
 
         """
-        self.logger.info("\u25CF LOAD PIPELINE")
+        self.logger.info("|__  LOAD PIPELINE")
         pipeline.pipeline = joblib.load(filepath, **kwargs)
         self.logger.info('Load fitted model from file:\n'
                          '    {}'.format(filepath))

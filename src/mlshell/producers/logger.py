@@ -103,17 +103,18 @@ CONFIG = {
         },
     },
     "loggers": {
-        "logger": {
+        "default": {
             "handlers": ["test_handler", "debug_handler", "info_handler",
                          "minimal_handler", "warning_handler", "error_handler",
-                         "critical_handler", "console_handler", "http_handler"],
+                         "critical_handler", "console_handler", "http_handler"
+                         ],
             "level": 1,  # => use handlers levels.
         },
     },
     "formatters": {
         "default": {
             "format": "%(message)s%(delimeter)s"
-        }
+        },
         "custom": {
             "()": CustomFormatter,
             "format": "%(message)s%(delimeter)s",  # %(levelname)s:
@@ -124,25 +125,47 @@ CONFIG = {
 
 
 class LoggerProducer(pycnfg.Producer):
-    """Create logger object."""
+    """Create logger object.
 
-    def __init__(self, project_path):
-        self.project_path = project_path
-        TODO:
+    Interface: create.
 
-    def create(self, logger, fullpath=None, logger_name='logger',
-                config=None, extra=None, clean=None, **kwargs):
+    Parameters
+    ----------
+    objects : dict {'section_id__config__id', object,}
+        Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
+    path_id : str
+        Project path identifier in `objects`.
+
+    Attributes
+    ----------
+    objects : dict {'section_id__config__id', object,}
+        Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
+    project_path: str
+        Absolute path to project dir.
+
+    """
+    _required_parameters = ['objects', 'oid', 'path_id']
+
+    def __init__(self, objects, oid, path_id):
+        super().__init__(objects, oid)
+        self.project_path = objects[path_id]
+
+    def create(self, logger_name, fullpath, config=None,
+               extra=None, clean=None, **kwargs):
         """Create logger object and corresponding file descriptors.
 
         Parameters
         ----------
-        logger : object with logging.Logger interface
-            For compliance with pycnfg configuration (ignored).
+        logger_name: str
+            Logger identifier in `config`.
         fullpath : str, optional (default=None)
-            Absolute path to dir for logs files. Created, if not exists.
-            If None, used "project_path/results/logs_{logger_name}".
-        logger_name: str, optional (default='logger')
-            Logger identifier.
+            Absolute path  to dir for logs files or relative to
+            'self.project_dir' started with './'. Created, if not exists.
+            If None, used "project_path/results".
         config : dict, optional (default=None)
             Logger configuration to pass in logging.config.dictConfig. If None,
             module level `CONFIG` is used.
@@ -168,6 +191,8 @@ class LoggerProducer(pycnfg.Producer):
         """
         if not fullpath:
             fullpath = f"{self.project_path}/results/logs_{logger_name}"
+        elif fullpath.startswith('./'):
+            fullpath = f"{self.project_path}/{fullpath[2:]}"
         if not config:
             config = copy.deepcopy(CONFIG)
         if not extra:
@@ -180,8 +205,11 @@ class LoggerProducer(pycnfg.Producer):
         # Create dir.
         if not os.path.exists(fullpath):
             os.makedirs(fullpath)
-        if logger_name != 'logger':
-            config["loggers"][logger_name] = config["loggers"].pop("logger")
+        if logger_name not in config["loggers"]:
+            raise KeyError(f"Unknown logger name {logger_name}")
+        # [deprecated] use name in dictConfig, less confusing.
+        # if logger_name != 'default':
+        #     config["loggers"][logger_name] = config["loggers"].pop("default")
         # Update path for config/params in handlers.
         handlers = set()
         for handler_name in CONFIG["handlers"]:

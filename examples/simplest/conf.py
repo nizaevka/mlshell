@@ -42,7 +42,7 @@ logger = mlshell.logger.CreateLogger(project_path, script_name).logger
 
 
 # set workflow params
-conf = {
+CNFG = {
     'workflow': {
         'workflow_1': {
             'global': {'gs_params': 'my_gs', 'pipeline_id': 'pipeline_1'},

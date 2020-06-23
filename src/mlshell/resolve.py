@@ -1,4 +1,10 @@
-from mlshell.libs import *
+import operator
+
+import matplotlib.pyplot as plt
+import mlshell
+import mlshell.custom
+import numpy as np
+import sklearn
 
 
 class HpResolver(object):
@@ -9,7 +15,7 @@ class HpResolver(object):
     Parameters
     ----------
     project_path: str
-        Absolute path to current project dir (with conf.py).
+        Absolute path to current project dir.
     logger : logger object
         Logs.
 
@@ -22,8 +28,6 @@ class HpResolver(object):
 
     def resolve(self, hp_name, dataset, pipeline, **kwargs):
         """Resolve hyperparameter value.
-
-        TODO: maybe better in dataset? but hp_name relate to pipeline
 
         Parameters
         ----------
@@ -39,7 +43,7 @@ class HpResolver(object):
         Returns
         -------
         value : some object
-            Resolved value. If no resolver endpoint, return 'auto'
+            Resolved value. If no resolver endpoint, return 'auto'.
 
         Notes
         -----
@@ -94,39 +98,144 @@ class HpResolver(object):
                 numeric_ind_name[ind - count] = (column_name,)
         return data, categoric_ind_name, numeric_ind_name
 
-    def th_resolver(self, pipeline, dataset, cv=None, fit_params=None, plot_flag=False, samples=10):
-        classes, pos_labels, pos_labels_ind \
-            = operator.itemgetter('classes',
-                                  'pos_labels',
-                                  'pos_labels_ind')(dataset.get_classes())
-        x = dataset.get_x()
-        y = dataset.get_y()
-        if fit_params is None:
-            fit_params = {}
-        y_pred_proba, _, y_true = mlshell.custom.cross_val_predict(
-            pipeline, x, y=y, groups=None,
-            cv=cv, fit_params=fit_params,
-            method='predict_proba')
-        th_range = self.calc_th_range(y_true, y_pred_proba, pos_labels, pos_labels_ind, plot_flag, samples)
+    def th_resolver(self, dataset, pipeline, plot_flag=False, samples=10,
+                    **kwargs):
+        """Get threshold range from ROC curve on OOF probabilities predictions.
 
-        return th_range
+        If necessary to grid search threshold simultaneously with other hps,
+        extract optimal thresholds values from data in advance could provides
+        more directed tuning, than use random values.
+            * get predict_proba from `cross_val_predict`
+            * get tpr, fpr from `roc_curve`
+            * sample thresholds close to tpr/(fpr+tpr) maximum.
 
-    def calc_th_range(self, y_true, y_pred_proba, pos_labels, pos_labels_ind, plot_flag=False, samples=10):
-        """Calculate th range from OOF roc_curve.
+        As alternative, use mlshell.ThresholdOptimizer to grid search threshold
+        separately after others hyper-parameters tuning.
 
-        TODO: add plot
-            https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html#sphx-glr-auto-examples-model-selection-plot-roc-crossval-py
+        Parameters
+        ----------
+        dataset : mlshell.Dataset interface object
+            Dataset to to extract from.
+        pipeline : object with sklearn.pipeline.Pipeline interface, supported
+            `predict_proba` method
+            Pipeline.
+        plot_flag : bool, optional (default=False)
+            If True, plot ROC curve and resulted th range.
+        samples : int, optional (default=10)
+            Desired length of th range.
+        **kwargs : dict
+            Kwargs to pass in sklearn.model_selection.cross_val_predict.
+            Kwarg 'method' always should be set to 'predict_proba','y' ignored.
+
+        Raises
+        ------
+        ValueError
+            If kwargs key 'method' absent or kwargs['method']='predict_proba'.
+
+        Returns
+        -------
+        th_range : array-like
+            Resulted array of thresholds values.
 
         """
-        best_th_, best_ind, q, fpr, tpr, th_range = self.brut_th_(y_true, y_pred_proba, pos_labels, pos_labels_ind)
-        coarse_th_range, coarse_index = self.coarse_th_range(best_th_, th_range, samples)
+        if 'method' not in kwargs or kwargs['method'] != 'predict_proba':
+            raise ValueError("cross_val_predict 'method'"
+                             " should be 'predict_proba'.")
+        if 'y' in kwargs:
+            del kwargs['y']
+
+        x = dataset.get_x()
+        y = dataset.get_y()
+        classes, pos_labels, pos_labels_ind =\
+            operator.itemgetter('classes',
+                                'pos_labels',
+                                'pos_labels_ind')(dataset.get_classes())
+        # Extended sklearn.model_selection.cross_val_predict (TimeSplitter).
+        y_pred_proba, _, y_true = mlshell.custom.cross_val_predict(
+            pipeline, x, y=y, **kwargs)
+        # Calculate roc_curve, sample th close to tpr/(tpr+fpr) maximum.
+        th_range = self.calc_th_range(y_true, y_pred_proba, pos_labels,
+                                       pos_labels_ind, plot_flag, samples)
+        return th_range
+
+    def calc_th_range(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,
+                       plot_flag=False, samples=10):
+        """Calculate th range from OOF roc_curve.
+
+        Parameters
+        ----------
+        y_true
+        y_pred_proba
+        pos_labels
+        pos_labels_ind
+        plot_flag
+        samples
+
+        Returns
+        -------
+
+        """
+
+        best_th_, best_ind, q, fpr, tpr, th_range =\
+            self._brut_th_(y_true, y_pred_proba, pos_labels, pos_labels_ind)
+        coarse_th_range, coarse_index =\
+            self._coarse_th_range(best_th_, th_range, samples)
         if plot_flag:
-            self.th_plot(y_true, y_pred_proba, pos_labels, pos_labels_ind,
-                         best_th_, q, tpr, fpr, th_range, coarse_th_range, coarse_index)
+            self._th_plot(y_true, y_pred_proba, pos_labels, pos_labels_ind,
+                         best_th_, q, tpr, fpr, th_range, coarse_th_range,
+                         coarse_index)
         return coarse_th_range
 
-    def th_plot(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,
-                best_th_, q, tpr, fpr, th_, coarse_th_, coarse_index):
+    def _brut_th_(self, y_true, y_pred_proba, pos_labels, pos_labels_ind):
+        """ Measure th value that maximize tpr/(fpr+tpr).
+
+        Note:
+            for th gs will be used values near best th.
+
+        TODO:
+            It is possible to bruforce based on self.metric,
+            early-stopping if q decrease.
+
+        """
+        fpr, tpr, th_ = sklearn.metrics.roc_curve(
+            y_true, y_pred_proba[:, pos_labels_ind],
+            pos_labels=pos_labels, drop_intermediate=True)
+        # th_ sorted descending
+        # fpr sorted ascending
+        # tpr sorted ascending
+        # q go through max
+
+        def np_divide(a, b):
+            """ ignore / 0, div0( [-1, 0, 1], 0 ) -> [0, 0, 0] """
+            with np.errstate(divide='ignore', invalid='ignore'):
+                c = np.true_divide(a, b)
+                c[~np.isfinite(c)] = 0  # -inf inf NaN
+            return c
+        q = np_divide(tpr, fpr+tpr)  # tpr/(fpr+tpr)
+        best_ind = np.argmax(q)
+        best_th_ = th_[best_ind]
+        # [deprecated] faster go from left
+        # use reverse view, need last occurrence
+        # best_th_ = th_[::-1][np.argmax(q[::-1])]
+        return best_th_, best_ind, q, fpr, tpr, th_
+
+    def _coarse_th_range(self, best_th_, th_, samples):
+        """Get most possible th range.
+
+        Note:
+            linear sample from [best/100; 2*best] with limits [np.min(th), 1]
+            th descending
+            th_range ascending
+        """
+        th_range_desire = np.linspace(max(best_th_ / 100, np.min(th_)), min(best_th_ * 2, 1), samples)
+        # find index of nearest from th_reverse
+        index_rev = np.searchsorted(th_[::-1], th_range_desire, side='left')  # a[i-1] < v <= a[i]
+        index = len(th_) - index_rev - 1
+        th_range = np.clip(th_[index], a_min=None, a_max=1)
+        return th_range, index
+
+    def _th_plot(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,
+                 best_th_, q, tpr, fpr, th_, coarse_th_, coarse_index):
         """
 
         TODO: built_in roc curve plotter
@@ -155,46 +264,9 @@ class HpResolver(object):
         # plt.plot(th_, fpr, 'red')
         plt.show()
 
-    def coarse_th_range(self, best_th_, th_, samples):
-        """Get most possible th range.
 
-        Note:
-            linear sample from [best/100; 2*best] with limits [np.min(th), 1]
-            th descending
-            th_range ascending
-        """
-        th_range_desire = np.linspace(max(best_th_ / 100, np.min(th_)), min(best_th_ * 2, 1), samples)
-        # find index of nearest from th_reverse
-        index_rev = np.searchsorted(th_[::-1], th_range_desire, side='left')  # a[i-1] < v <= a[i]
-        index = len(th_) - index_rev - 1
-        th_range = np.clip(th_[index], a_min=None, a_max=1)
-        return th_range, index
 
-    def brut_th_(self, y_true, y_pred_proba, pos_labels, pos_labels_ind):
-        """ Measure th value that maximize tpr/(fpr+tpr).
 
-        Note:
-            for th gs will be used values near best th.
-
-        TODO:
-            It is possible to bruforce based on self.metric,
-            early-stopping if q decrease.
-
-        """
-        fpr, tpr, th_ = sklearn.metrics.roc_curve(
-            y_true, y_pred_proba[:, pos_labels_ind],
-            pos_labels=pos_labels, drop_intermediate=True)
-        # th_ sorted descending
-        # fpr sorted ascending
-        # tpr sorted ascending
-        # q go through max
-        q = np_divide(tpr, fpr+tpr)  # tpr/(fpr+tpr)
-        best_ind = np.argmax(q)
-        best_th_ = th_[best_ind]
-        # [deprecated] faster go from left
-        # use reverse view, need last occurrence
-        # best_th_ = th_[::-1][np.argmax(q[::-1])]
-        return best_th_, best_ind, q, fpr, tpr, th_
 
     # TODO: Better move to utills y_pred_to_probe, also get pos_labels_ind
     # move out

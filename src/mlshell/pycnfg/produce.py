@@ -10,10 +10,12 @@ It useful to save time when reusing a configuration.
 import glob
 import json
 import os
+import logging
 
 import dill
 import numpy as np
 import pandas as pd
+import mlshell.pycnfg as pycnfg
 
 
 class Producer(object):
@@ -25,29 +27,28 @@ class Producer(object):
     ----------
     objects : dict {'section_id__config__id', object,}
         Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
 
     Attributes
     ----------
     objects : dict {'section_id__config__id', object,}
         Dictionary with resulted objects from previous executed producers.
-    project_path: str
-        Absolute path to current project dir (with conf.py).
+    oid : str
+        Unique identifier of produced object.
     logger : logger object
-        Deault project logger 'logger__default'.
+        Default logger logging.getLogger().
+    project_path: None
+        Absolute path to project dir pycnfg.find_path().
 
     """
-    _required_parameters = ['objects']
-# [deprecated]
-#    _required_parameters = ['project_path', 'logger']
-#
-#    def __init__(self, project_path, logger):
-#        self.logger = logger
-#        self.project_path = project_path
+    _required_parameters = ['objects', 'oid']
 
-    def __init__(self, objects):
+    def __init__(self, objects, oid):
         self.objects = objects
-        self.logger = objects['logger__default']
-        self.project_path = objects['project_path']
+        self.logger = logging.getLogger()
+        self.project_path = pycnfg.find_path()
+        self.oid = oid
 
     def produce(self, init, steps):
         """Execute configuration steps.
@@ -68,6 +69,7 @@ class Producer(object):
             List of configurations, prepared for execution.
 
         """
+        self.logger.info(f"|__ CONFIGURATION: {self.oid}")
         res = init
         for step in steps:
             method = step[0]
@@ -80,9 +82,7 @@ class Producer(object):
         res = self._check(res)
         return res
 
-    def dump_cache(self, obj, prefix,
-                   fformat='pickle',
-                   cachedir=None,
+    def dump_cache(self, obj, prefix=None, cachedir=None, fformat='pickle',
                    **kwargs):
         """Pickle intermediate object state to disk.
 
@@ -90,14 +90,15 @@ class Producer(object):
         ----------
         obj : picklable
             Object to dump.
-        prefix : str
-            File identifier, added to filename.
+        prefix : str, optional (default=None)
+            File identifier, added to filename. If None, 'self.oid' is used.
+        cachedir : str, optional(default=None)
+            Absolute path dump dir or relative to 'self.project_dir' started
+            with './'. Created, if not exists. If None,"self.project_path/temp
+            /objects" is used.
         fformat : 'pickle'/'hr', optional default('pickle')
             If 'pickle', dump `obj` via dill lib. If 'hr' try to decompose
             in human-readable csv/json (only for dictionary).
-        cachedir : str, optional(default=None)
-            Absolute path to dir for cache.
-            If None, "project_path/temp/objects" is used.
         **kwargs : kwargs
             Additional parameters to pass in .dump().
 
@@ -107,8 +108,12 @@ class Producer(object):
             Unchanged input for compliance with producer logic.
 
         """
+        if not prefix:
+            prefix = self.oid
         if not cachedir:
             cachedir = f"{self.project_path}/temp/objects"
+        elif cachedir.startswith('./'):
+            cachedir = f"{self.project_path}/{cachedir[2:]}"
 
         # Create temp dir for cache if not exist.
         if not os.path.exists(cachedir):
@@ -130,22 +135,22 @@ class Producer(object):
                             '    {}'.format('\n    '.join(fps)))
         return obj
 
-    def load_cache(self, obj, prefix,
-                   fformat='pickle', cachedir=None, **kwargs):
+    def load_cache(self, obj, prefix=None, cachedir=None, fformat='pickle',
+                   **kwargs):
         """Load intermediate object state from disk.
 
         Parameters
         ----------
         obj : picklable
             Object template, will be updated for 'hr', ignored for 'pickle'.
-        prefix : str
-            File identifier, added to filename.
+        prefix : str, optional (default=None)
+            File identifier. If None, 'self.oid' is used.
         fformat : 'pickle'/'hr', optional default('pickle')
             If 'pickle', load object via dill lib.
             If 'hr' try to compose csv/json files in a dictionary.
         cachedir : str, optional(default=None)
-            Absolute path to dir for cache.
-            If None, "project_path/temp/objects" is used.
+            Absolute path load dir or relative to 'self.project_dir' started
+            with './'. If None,"self.project_path/temp/objects" is used.
         **kwargs : kwargs
             Additional parameters to pass in .load().
 
@@ -155,8 +160,12 @@ class Producer(object):
             Loaded cache.
 
         """
+        if not prefix:
+            prefix = self.oid
         if not cachedir:
             cachedir = f"{self.project_path}/temp/objects"
+        elif cachedir.startswith('./'):
+            cachedir = f"{self.project_path}/{cachedir[2:]}"
 
         if fformat == 'pickle':
             filepath = f'{cachedir}/{prefix}_.dump'

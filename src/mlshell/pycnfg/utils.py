@@ -1,7 +1,5 @@
-"""
-The module includes auxiliary utilities.
+"""The module includes auxiliary utilities."""
 
-"""
 
 import os
 import sys
@@ -12,21 +10,24 @@ import mlshell.pycnfg as pycnfg
 __all__ = ['find_path', 'run']
 
 
-def find_path(filepath=None):
-    """Get fullpath and name of main script.
+def find_path(script_name=False, filepath=None):
+    """Get fullpath of main script.
 
-    Args:
-        filepath (str): path to main script (default=None)
-            if None and Ipython get from workdir,
-            | if None and standart get from sys.argv,
-            | if sys.argv empty, get from working directory.
+    Parameters
+    ----------
+    script_name : bool, optional (default=False)
+        If True, return also script name.
+    filepath : str, None, optional (default=None)
+        Path to main script. If None and Ipython, get from workdir. If None and
+        standard interpreter, get from sys.argv. If sys.argv empty, get from
+        working directory.
 
-    Returns:
-        (tuple): tuple containing:
-
-        - project_dir (str): full path to start script directory
-        - script_name (str): name of main script if not Ipython
-            else 'ipython'
+    Returns
+    -------
+    project_dir : str
+        Full path to start script directory.
+    script_name : str, otional if `script_name` is True
+        Main script name. 'ipython' for Ipython.
 
     """
     def is_ipython():
@@ -43,26 +44,31 @@ def find_path(filepath=None):
                 # Other type (?).
                 return False
         except NameError:
-            # Probably standard Python interpreter
+            # Probably standard Python interpreter.
             return False
     if filepath is not None:
         temp = filepath.replace('\\', '/').split('/')
         project_dir = '/'.join(temp[:-1])
-        script_name = temp[-1][:-3]
+        script_name_ = temp[-1][:-3]
     elif is_ipython():
         project_dir = os.getcwd().replace('\\', '/')
-        script_name = 'ipython'
+        script_name_ = 'ipython'
     else:
-        # sys.argv provide script_name but not work in Ipython
-        # for example ['path/run.py', '55']
+        # sys.argv provide script_name, but not work in Ipython.
+        # For example ['path/run.py', '55'].
         ext_size = 3  # '.py'
-        script_name = sys.argv[0].replace('\\', '/').split('/')[-1][:-ext_size]  # run
-        project_dir = sys.argv[0].replace('\\', '/')[:-len(script_name)-ext_size]
+        script_name_ = sys.argv[0]\
+            .replace('\\', '/')\
+            .split('/')[-1][:-ext_size]  # run
+        project_dir = sys.argv[0]\
+            .replace('\\', '/')[:-len(script_name_)-ext_size]
+    if script_name:
+        return project_dir, script_name_
+    else:
+        return project_dir
 
-    return project_dir, script_name
 
-
-def run(conf, default_conf=None, project_path=None, logger=None):
+def run(conf, default_conf=None):
     """Wrapper over configuration handler.
 
     Parameters
@@ -70,12 +76,7 @@ def run(conf, default_conf=None, project_path=None, logger=None):
     conf : dict
         Configuration to pass in `pycnfg.Handler().read()`.
     default_conf : None, dict, optional (default=None)
-        Default configurations to pass in `ConfHandler().read()`.
-    project_path: str, optional (default='')
-        Absolute path to current project dir.
-        If None, auto detected by `pycnfg.find_path()`.
-    logger : None, logger object (default=None)
-        If None, `pycnfg.GetLogger()` will be used with script name.
+        Default configurations to pass in `pycnfg.Handler().read()`.
 
     Returns
     -------
@@ -86,21 +87,9 @@ def run(conf, default_conf=None, project_path=None, logger=None):
     --------
     :class:`pycnfg.Handler`:
         Reads configurations, executes steps.
-    :class:`pycnfg.GetLogger`:
-        Creates universal logger.
-    :callback:`pycnfg.find_path`:
-        Finds start script directory and name.
 
     """
-    logger_name = 'logger'
-    if not project_path:
-        project_path, script_name = find_path()
-        logger_name = script_name
-    if not logger:
-        logger = pycnfg.GetLogger(project_path, logger_name).logger
-
-    # get params from conf.py
-    handler = pycnfg.Handler(project_path=project_path, logger=logger)
+    handler = pycnfg.Handler()
     configs = handler.read(conf=conf, default_conf=default_conf)
     objects = handler.exec(configs)
     return objects

@@ -38,20 +38,22 @@ key is available in each sub-configuration
 For flexibility, it is possible to:
 * Specify global value for common kwargs in steps via `global` key.
 * Create separate section for arbitrary parameter in steps.
-* `producer`/`init` can be both an instance or a class.
 * Monkey patch `producer` object with custom functions via `patch` key.
+* `init` can be both an instance, a class or a function
 
 Configuration keys
 ------------------
-init : class or instance, optional (default={})
+init : class or instance or function, optional (default={})
     Initial state for constructed object. Will be passed consecutive in steps
-    as argument. If set as class will be auto initialized: `init()`.
+    as argument. If set as class or function `init()` will be auto called.
 
-producer : class or instance, optional (default=pycnfg.Producer)
-    Factory to construct an object:`producer.produce(`init`,`steps`,`objects`)`
-    will be called, where `objects` is dictionary with previously created
-    objects {'section_id__configuration_id': object}. If set as class will be
-    auto initialized: `producer(project_path, logger)`.
+producer : class, optional (default=pycnfg.Producer)
+    Factory to construct an object: `producer.produce(`init`,`steps`)`
+    will be called, where `objects` is a dictionary with previously created
+    objects {'section_id__configuration_id': object}. Class will be auto
+    initialized with `producer(`objects`, 'section_id__configuration_id',
+    **kwargs)`. If ('__init__', kwargs) step provided in `steps`, kwargs will
+    be passed to initializer.
 
 patch : dict {'method_id' : function}, optional (default={})
     Monkey-patching `producer` object with custom functions.
@@ -135,42 +137,34 @@ class Handler(object):
 
     Interface: read, exec.
 
-    Parameters
-    ----------
-    project_path: str
-        Absolute path to current project dir (with conf.py).
-    logger : logger object
-        Logs.
-
     See Also
     ---------
     :class:`pycnfg.Producer`:
         Execute configuration steps.
 
     """
-    _required_parameters = ['project_path', 'logger']
+    _required_parameters = []
 
-    def __init__(self, project_path, logger):
-        self.logger = logger
-        self.project_path = project_path
+    def __init__(self):
+        pass
 
-    def read(self, conf=None, default_conf=None):
+    def read(self, conf, default_conf=None):
         """Read raw configuration and transform to executable.
 
         Parameters
         ----------
-        conf : dict or None
+        conf : dict or str
             Set of configurations:
             {'section_id': {'configuration_id': configuration,},}.
-            If None, try to read `conf` from `project_path/conf.py`.
-        default_conf : dict
+            If str, absolute path to file with `CNFG` variable.
+        default_conf : dict, optional (default=None)
             Set of default configurations:
             {'section_id': {'configuration_id': configuration, },}
             If None, read from `pycnfg.DEFAULT`.
 
         Returns
         -------
-        configs : list of tuple [('section_id__config__id', config), ...].
+        configs : list of tuple [('section_id__configuration_id', config),...].
             List of configurations, prepared for execution.
 
         Notes
@@ -189,15 +183,12 @@ class Handler(object):
             `section_id__configuration_id`, otherwise with conf. object.
 
         """
-        self.logger.info("\u25CF READ CONFIGURATION")
-        if conf is None:
-            # dir_name = self.project_path.split('/')[-1]
-            spec = importlib.util.spec_from_file_location(
-                f'conf', f"{self.project_path}/conf.py")
+        if isinstance(conf, str):
+            spec = importlib.util.spec_from_file_location(f'CNFG', f"{conf}")
             conf_file = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(conf_file)
             # Otherwise problem with pickle, depends on the module path.
-            sys.modules['conf'] = conf_file
+            sys.modules['CNFG'] = conf_file
             conf = copy.deepcopy(conf_file.conf)
         if default_conf is None:
             default_conf = copy.deepcopy(pycnfg.DEFAULT)
@@ -208,7 +199,10 @@ class Handler(object):
         """Execute configurations in priority.
 
         For each configuration:
-        * call `producer`.produce(`init`, `steps`, `objects`).
+        * initialize producer
+        `producer(`objects`, 'section_id__configuration_id', **kwargs)`,
+        where kwargs took from ('__init__', kwargs) step if provided.
+        * call `producer`.produce(`init`, `steps`).
         * store result under `section_id__configuration_id` in `objects`.
 
         Parameters
@@ -231,10 +225,8 @@ class Handler(object):
         """
         objects = {}
         for config in configs:
-            name, val = config
-            self.logger.info(f"|__ SECTION: {name}")
-            self.logger.info(f"    |__ CONFIGURATION: {name}")
-            objects[name] = self._exec(val, objects)
+            oid, val = config
+            objects[oid] = self._exec(oid, val, objects)
         return objects
 
     def _parse_conf(self, p, dp):
@@ -433,18 +425,29 @@ class Handler(object):
                              f"    {non_uniq}")
         return None
 
-    def _exec(self, conf, objects):
+    def _exec(self, oid, conf, objects):
         init = conf.get('init', {})
         steps = conf.get('steps', [])
         producer = conf.get('producer', pycnfg.Producer)
         patch = conf.get('patch', {})
         if inspect.isclass(init):
             init = init()
+        elif inspect.isfunction(init):
+            init = init()
         if inspect.isclass(producer):
-            producer = producer(project_path=self.project_path,
-                                logger=self.logger)
+            kwargs = self._init_kwargs(steps)
+            producer = producer(objects, oid, **kwargs)
+        else:
+            raise TypeError(f"{oid} producer should be a class.")
         producer = self._patch(patch, producer)
-        return producer.produce(init, steps, objects)
+        return producer.produce(init, steps)
+
+    def _init_kwargs(self, steps):
+        try:
+            kwargs = steps[0][1] if steps[0][0] == '__init__' else {}
+        except IndexError:
+            kwargs = {}
+        return kwargs
 
     def _patch(self, patch, producer):
         """Monkey-patching producer.

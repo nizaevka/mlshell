@@ -9,13 +9,117 @@ import mlshell.validate
 __all__ = ['DEFAULT_PARAMS', 'PipelineSteps']
 
 
-WORKFLOW = {
+PATHS = {
+    'default': {
+        'init': pycnfg.find_path,
+        'producer': pycnfg.Producer,
+        'global': {},
+        'patch': {},
+        'priority': 1,
+        'steps': [],
+    }
+}
+
+
+LOGGERS = {
+    'default': {
+        'init': 'default',
+        'producer': mlshell.LoggerProducer,
+        'global': {},
+        'patch': {},
+        'priority': 2,
+        'steps': [
+            ('create', {})
+        ],
+    }
+}
+
+
+PIPELINES = {
+    'default': {
+        'init': mlshell.Pipeline,
+        'producer': mlshell.PipeProducer,
+        'global': {},
+        'patch': {},
+        'priority': 3,
+        'steps': [
+            ('create', {
+                'cache': None,
+                'steps': None,
+                'estimator': sklearn.linear_model.LinearRegression(),
+                'estimator_type': 'regressor',
+                # 'th_strategy': None,
+            },),
+            ('resolve', {},),
+                # [deprecated]  should be setted 'auto'/['auto'], by default only for index
+                #  only if not setted
+                # 'hp': {
+                #     'process_parallel__pipeline_categoric__select_columns__kwargs',
+                #     'process_parallel__pipeline_numeric__select_columns__kwargs',
+                #     'estimate__apply_threshold__threshold'}
+                # },
+        ],
+    },
+}
+
+
+METRICS = {
+    'classifier': {
+        'init': None,
+        'producer': mlshell.MetricProducer,
+        'global': {},
+        'patch': {},
+        'priority': 3,
+        'steps': [
+            ('make_scorer', {
+                'func': sklearn.metrics.accuracy_score,
+                'kwargs': {'greater_is_better': True},
+            }),
+        ],
+    },
+    'regressor': {
+        'init': None,
+        'producer': mlshell.MetricProducer,
+        'global': {},
+        'patch': {},
+        'priority': 3,
+        'steps': [
+            ('make_scorer', {
+                'func': sklearn.metrics.r2_score,
+                'kwargs': {'greater_is_better': True},
+            }),
+        ],
+    }
+}
+
+
+DATASETS = {
+    'default': {
+        'init': mlshell.Dataset(),
+        'producer': mlshell.DataProducer,
+        'global': {},
+        'patch': {},
+        'priority': 3,
+        'steps': [
+            ('load_cache', {'prefix': None},),
+            ('load', {},),
+            ('preprocess', {'categor_names': [], 'target_names': [], 'pos_labels': []},),
+            ('info', {},),
+            ('unify', {},),
+            ('split', {},),
+            ('dump_cache', {'prefix': None},),
+        ],
+    },
+}
+
+
+WORKFLOWS = {
     'default': {
         'init': {},
         'producer': mlshell.Workflow,
         'global': {},
         'patch': {},
-        'priority': 2,
+        'priority': 4,
         'steps': [
             ('fit', {
                 'pipeline_id': None,
@@ -82,93 +186,15 @@ WORKFLOW = {
     # TODO: [beta] DL workflow.
     #   'pytorch': {},
 }
-""""""
-
-
-PIPELINES = {
-    'default': {
-        'init': mlshell.Pipeline,
-        'producer': mlshell.PipeProducer,
-        'global': {},
-        'patch': {},
-        'priority': 1,
-        'steps': [
-            ('create', {
-                'cache': None,
-                'steps': None,
-                'estimator': sklearn.linear_model.LinearRegression(),
-                'estimator_type': 'regressor',
-                # 'th_strategy': None,
-            },),
-            ('resolve', {},),
-                # [deprecated]  should be setted 'auto'/['auto'], by default only for index
-                #  only if not setted
-                # 'hp': {
-                #     'process_parallel__pipeline_categoric__select_columns__kwargs',
-                #     'process_parallel__pipeline_numeric__select_columns__kwargs',
-                #     'estimate__apply_threshold__threshold'}
-                # },
-        ],
-    },
-}
-
-
-METRICS = {
-    'classifier': {
-        'init': None,
-        'producer': mlshell.MetricProducer,
-        'global': {},
-        'patch': {},
-        'priority': 1,
-        'steps': [
-            ('make_scorer', {
-                'func': sklearn.metrics.accuracy_score,
-                'kwargs': {'greater_is_better': True},
-            }),
-        ],
-    },
-    'regressor': {
-        'init': None,
-        'producer': mlshell.MetricProducer,
-        'global': {},
-        'patch': {},
-        'priority': 1,
-        'steps': [
-            ('make_scorer', {
-                'func': sklearn.metrics.r2_score,
-                'kwargs': {'greater_is_better': True},
-            }),
-        ],
-    }
-}
-
-
-DATASETS = {
-    'default': {
-        'init': mlshell.Dataset(),
-        'class': mlshell.DataProducer,
-        'global': {},
-        'patch': {},
-        'priority': 1,
-
-        'steps': [
-            ('load_cache', {'prefix': None},),
-            ('load', {},),
-            ('preprocess', {'categor_names': [], 'target_names': [], 'pos_labels': []},),
-            ('info', {},),
-            ('unify', {},),
-            ('split', {},),
-            ('dump_cache', {'prefix': None},),
-        ],
-    },
-}
 
 
 DEFAULT_PARAMS = {
+    'path': PATHS,
+    'logger': LOGGERS,
     'pipeline': PIPELINES,
     'dataset': DATASETS,
     'metric': METRICS,
-    'workflow': WORKFLOW,
+    'workflow': WORKFLOWS,
 }
 """Default sections for ML task.
 

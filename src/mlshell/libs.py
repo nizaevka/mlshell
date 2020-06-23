@@ -122,5 +122,6 @@ def np_divide(a, b):
         c[~np.isfinite(c)] = 0  # -inf inf NaN
     return c
 
+
 if __name__ == '__main__':
     pass

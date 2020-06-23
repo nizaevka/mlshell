@@ -22,7 +22,7 @@ TODO: check what await for.
 To use in Workflow:
 get_x
 get_y
-get_classes
+get_classes (HpResolver.th_resolver)
 dump
 split
 ...
@@ -30,6 +30,7 @@ split
 TODO:
 * categoric_ind_name/numeric_ind_name used in resolver if hp_name exist and set
 'auto'/['auto']
+
 
 
 TODO: check
@@ -57,12 +58,13 @@ targets = targets_df.values.astype(int)  # cast to int
 
 
 import copy
+import os
 
 import jsbeautifier
 import numpy as np
 import pandas as pd
 import sklearn
-import mlshell
+import mlshell.pycnfg as pycnfg
 import tabulate
 
 __all__ = ['Dataset', 'DataIO', 'DataPreprocessor', 'DatasetProducer']
@@ -73,6 +75,13 @@ class Dataset(dict):
 
     Implements interface to access arbitrary data.
     Interface: get_x, get_y, get_classes, dump_prediction, split.
+
+    Parameters
+    ----------
+    *args : list
+        Passed to parent class constructor.
+    **kwrags : dict
+        Passed to parent class constructor.
 
     Attributes
     ----------
@@ -106,13 +115,6 @@ class Dataset(dict):
         Train indices.
     test_index : array-like, optional
         Test indices.
-
-    Parameters
-    ----------
-    *args : list
-        Passed to parent class constructor.
-    **kwrags : dict
-        Passed to parent class constructor.
 
     Notes
     -----
@@ -253,7 +255,7 @@ class DataIO(object):
     Parameters
     ----------
     project_path: str.
-        Absolute path to current project dir (with conf.py).
+        Absolute path to current project dir.
     logger : logger object.
         Logs.
 
@@ -266,7 +268,7 @@ class DataIO(object):
 
     # @time_profiler
     # @memory_profiler
-    def load(self, dataset, filepath='data/train.csv',
+    def load(self, dataset, filepath,
              random_skip=False, random_state=None, **kwargs):
         """Load data from csv-file.
 
@@ -274,8 +276,9 @@ class DataIO(object):
         ----------
         dataset : Dataset
             Template for dataset.
-        filepath : str, optional (default='data/train.csv')
-            Path to csv file relative to `project_dir`.
+        filepath : str, optional
+            Absolute path to csv file or relative to 'self.project_dir' started
+            with './'.
         random_skip : bool, optional (default=False)
             If True randomly skip rows while read file, remains 'nrow' lines.
             Rewrite `skiprows` kwarg.
@@ -294,15 +297,15 @@ class DataIO(object):
         If `nrow` > lines in file, auto set to None.
 
         """
-        self.logger.info("\u25CF \u25B6 LOAD DATA")
-        filepath = "{}/{}".format(self.project_path, filepath)
-        # count lines
+        self.logger.info("    |__ LOAD DATA")
+        if filepath.startswith('./'):
+            filepath = "{}/{}".format(self.project_path, filepath[2:])
+
+        # Count lines.
         with open(filepath, 'r') as f:
             lines = sum(1 for _ in f)
-
         if 'skiprows' in kwargs and random_skip:
             self.logger.warning("random_skip rewrite skiprows kwarg.")
-
         nrows = kwargs.get('nrows', None)
         skiprows = kwargs.get('skipwoes', None)
         if nrows:
@@ -332,7 +335,7 @@ class DataPreprocessor(object):
     Parameters
     ----------
     project_path: str.
-        Absolute path to current project dir (with conf.py).
+        Absolute path to current project dir.
     logger : logger object.
         Logs.
 
@@ -345,9 +348,8 @@ class DataPreprocessor(object):
         self.logger = logger
         self.project_path = project_path
 
-    def preprocess(self, dataset,
-                   target_names=None, categor_names=None, pos_labels=None,
-                   **kwargs):
+    def preprocess(self, dataset, target_names=None, categor_names=None,
+                   pos_labels=None, **kwargs):
         """Preprocess raw data.
 
         Parameters
@@ -400,7 +402,7 @@ class DataPreprocessor(object):
         generating.
 
         """
-        self.logger.info("\u25CF \u25B6 PREPROCESS DATA")
+        self.logger.info("    |__ PREPROCESS DATA")
         raw = dataset['data']
         if categor_names is None:
             categor_names = []
@@ -478,7 +480,7 @@ class DataPreprocessor(object):
         If split ``train_size`` set to 1.0, test=train used.
 
         """
-        self.logger.info("\u25CF SPLIT DATA")
+        self.logger.info("|__  SPLIT DATA")
         data = dataset['data']
 
         if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
@@ -689,23 +691,38 @@ class DataPreprocessor(object):
         return None
 
 
-class DatasetProducer(mlshell.Producer, DataIO, DataPreprocessor):
+class DatasetProducer(pycnfg.Producer, DataIO, DataPreprocessor):
     """Class includes methods to produce dataset.
 
     Parameters
     ----------
-    project_path: str
-        Absolute path to current project dir (with conf.py).
+    objects : dict {'section_id__config__id', object,}
+        Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
+    path_id : str
+        Project path identifier in `objects`.
+    logger_id : str
+        Logger identifier in `objects`.
+
+    Attributes
+    ----------
+    objects : dict {'section_id__config__id', object,}
+        Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
     logger : logger object
-        Logs.
+        Default logger logging.getLogger().
+    project_path: str
+        Absolute path to project dir.
 
     """
-    _required_parameters = ['project_path', 'logger']
+    _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, project_path, logger):
-        self.logger = logger
-        self.project_path = project_path
-        mlshell.Producer.__init__(self, self.project_path, self.logger)
+    def __init__(self, objects, oid, path_id, logger_id):
+        pycnfg.Producer.__init__(self, objects, oid)
+        self.logger = objects[logger_id]
+        self.project_path = objects[path_id]
         DataIO.__init__(self, self.project_path, self.logger)
         DataPreprocessor.__init__(self, self.project_path, self.logger)
 
