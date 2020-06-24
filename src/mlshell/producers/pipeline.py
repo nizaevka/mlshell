@@ -45,7 +45,7 @@ class Pipeline(object):
     """Unified pipeline interface.
 
     Implements interface to access arbitrary pipeline.
-    Interface: is_classifier, is_regressor, resolve, dump and all underlying
+    Interface: is_classifier, is_regressor, dump and all underlying
         pipeline object methods.
 
     Attributes
@@ -100,33 +100,6 @@ class Pipeline(object):
     def is_regressor(self):
         """Check if pipeline regressor."""
         return sklearn.base.is_regressor(self.pipeline)
-
-    def resolve(self, hp_name, dataset, resolver=None, **kwargs):
-        """Resolve hyperparameter based on dataset value.
-
-        For example, categorical features indices are dataset dependent.
-        Resolve lets to set it before fit/optimize step.
-
-        Parameters
-        ----------
-        hp_name : str
-            Hyperparameter to resolve.
-        dataset : object
-            Current dataset, passed to `resolver`.
-        resolver : class, optional (default=None)
-            Specific class to resolve `hp_name`. If None, mlshell.HpResolver.
-        **kwargs: : dict
-            Additional parameters to pass in `resolver`.resolve().
-
-        Returns
-        -------
-        result: object
-            Resolved value.
-
-        """
-        if not resolver:
-            resolver = mlshell.HpResolver
-        return resolver(project_path, logger).resolve(hp_name, dataset, self.pipeline, **kwargs)
 
     def dump(self, file):
         """Dump pipeline on disk.

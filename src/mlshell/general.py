@@ -422,7 +422,7 @@ class Workflow(mlshell.Producer):
         # Resolve hp_grid.
         hp_grid = kwargs['gs_params'].pop('hp_grid', {})
         if hp_grid:
-            hp_grid = self._resolve_hps(hp_grid, pipeline, dataset, **kwargs.get('resolve_params', {}))
+            hp_grid = self._resolve_hps(hp_grid, dataset, pipeline, **kwargs.get('resolve_params', {}))
 
 
         # TODO:
@@ -467,7 +467,8 @@ class Workflow(mlshell.Producer):
         # [deprecated] currently pipeline change inplace
         # hps.update(pipeline.get('best_params_', {}))
         hps.update(self._get_zero_position(kwargs.get('hp', {})))
-        hps = self._resolve_hps(hps, pipeline, dataset, **kwargs.get('resolve_params', {}))
+        hps = self._resolve_hps(hps, dataset, pipeline,
+                                **kwargs.get('resolve_params', {}))
         pipeline.pipeline.set_params(**hps)
         return pipeline
 
@@ -487,20 +488,40 @@ class Workflow(mlshell.Producer):
                 zero_hps.update(**{name: iterator.__next__()})
         return zero_hps
 
-    def _resolve_hps(self, hps, pipeline, dataset, resolve_params):
+    def _resolve_hps(self, hps, dataset, pipeline,  resolve_params):
+        """Resolve hyper-parameter based on dataset value.
+
+        For example, categorical features indices are dataset dependent.
+        Resolve lets to set it before fit/optimize step.
+
+        Parameters
+        ----------
+        hps : dict {hp_name: val or [val]}
+            Pipeline.get_params() output or hp_grid.
+        pipeline : Pipeline
+            Pipeline, passed to `resolver`
+        dataset : Dataset
+            Dataset, passed to `resolver`.
+        **resolve_params: : dict {hp_name: {'resolver': class, **kwargs}}
+            Additional parameters to pass in `resolver(project_path, logger)
+            .resolve()` for specific hp. Could contains `resolver` key with
+            specific class to resolve `hp_name`. If value is None or key is
+            absent, mlshell.HpResolver used.
+
+        Returns
+        -------
+        hps: dict
+            Resolved input hyper-parameters.
+
+        """
         for hp_name, val in hps.items():
-            if val == 'auto':
+            if val == 'auto' or val == ['auto']:
                 # hp
-                hps[hp_name] = \
-                    pipeline.resolve(hp_name,
-                                    dataset,
-                                    **resolve_params.get(hp_name, {}))
-            elif val == ['auto']:
-                # hp_grid
-                hps[hp_name] = \
-                    [].extend(pipeline.resolve(hp_name,
-                              dataset,
-                              **resolve_params.get(hp_name, {})))
+                kwargs = resolve_params.get(hp_name, {})
+                resolver = kwargs.pop('resolver', mlshell.HpResolver)
+                value = resolver(self.project_path, self.logger)\
+                    .resolve(hp_name, dataset, pipeline, **kwargs)
+                hps[hp_name] = value if val == 'auto' else [value]
         return hps
 
     # [deprecated] explicit param to resolve in hp_grid

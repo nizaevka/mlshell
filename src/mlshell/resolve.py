@@ -8,9 +8,12 @@ import sklearn
 
 
 class HpResolver(object):
-    """Include methods to resolve dataset-dependent hyperparameters.
+    """Resolve hyperparameter based on dataset value.
 
     Interface: resolve, th_resolver
+
+    For example, categorical features indices are dataset dependent.
+    Resolve allows to set it before fit/optimize step.
 
     Parameters
     ----------
@@ -27,12 +30,12 @@ class HpResolver(object):
         self.project_path = project_path
 
     def resolve(self, hp_name, dataset, pipeline, **kwargs):
-        """Resolve hyperparameter value.
+        """Resolve hyper-parameter value.
 
         Parameters
         ----------
         hp_name : str
-            Hyperparameter identifier.
+            Hyper-parameter identifier.
         dataset : mlshell.Dataset interface object
             Dataset to to extract from.
         pipeline : object with sklearn.pipeline.Pipeline interface
@@ -58,13 +61,15 @@ class HpResolver(object):
             dataset.get_classes()
 
         """
-        if hp_name == 'process_parallel__pipeline_categoric__select_columns__kwargs':
+        if hp_name ==\
+                'process_parallel__pipeline_categoric__select_columns__kwargs':
             if 'categoric_ind_name' in dataset:
                 categoric_ind_name = dataset['categoric_ind_name']
             else:
                 categoric_ind_name = self._extract_ind_name(dataset)[1]
             value = {'indices': list(categoric_ind_name.keys())}
-        elif hp_name == 'process_parallel__pipeline_numeric__select_columns__kwargs':
+        elif hp_name ==\
+                'process_parallel__pipeline_numeric__select_columns__kwargs':
             if 'numeric_ind_name' in dataset:
                 value = {'indices': list(dataset['numeric_ind_name'].keys())}
             else:
@@ -92,22 +97,22 @@ class HpResolver(object):
                 continue
             if column_name in raw_names['categor_features']:
                 # Loose categories names.
-                categoric_ind_name[ind - count] = (column_name,
-                                                   np.unique(data[column_name]))
+                categoric_ind_name[ind - count] =\
+                    (column_name, np.unique(data[column_name]))
             else:
                 numeric_ind_name[ind - count] = (column_name,)
         return data, categoric_ind_name, numeric_ind_name
 
-    def th_resolver(self, dataset, pipeline, plot_flag=False, samples=10,
-                    **kwargs):
+    def th_resolver(self, dataset, pipeline, **kwargs):
         """Get threshold range from ROC curve on OOF probabilities predictions.
 
         If necessary to grid search threshold simultaneously with other hps,
         extract optimal thresholds values from data in advance could provides
         more directed tuning, than use random values.
-            * get predict_proba from `cross_val_predict`
-            * get tpr, fpr from `roc_curve`
-            * sample thresholds close to tpr/(fpr+tpr) maximum.
+
+        * Get predict_proba from `cross_val_predict`.
+        * Get tpr, fpr, th_range from `roc_curve` relative to positive label.
+        * Sample thresholds close to `metric` optimum.
 
         As alternative, use mlshell.ThresholdOptimizer to grid search threshold
         separately after others hyper-parameters tuning.
@@ -119,13 +124,11 @@ class HpResolver(object):
         pipeline : object with sklearn.pipeline.Pipeline interface, supported
             `predict_proba` method
             Pipeline.
-        plot_flag : bool, optional (default=False)
-            If True, plot ROC curve and resulted th range.
-        samples : int, optional (default=10)
-            Desired length of th range.
         **kwargs : dict
-            Kwargs to pass in sklearn.model_selection.cross_val_predict.
-            Kwarg 'method' always should be set to 'predict_proba','y' ignored.
+            Kwargs['cross_val_predict'] to pass in `sklearn.model_selection`.
+            cross_val_predict. Sub-key 'method' value always should be set to
+            'predict_proba', sub-key 'y' will be ignored.
+            Kwargs['calc_th_range'] to pass in `mlshell.calc_th_range`.
 
         Raises
         ------
@@ -135,7 +138,7 @@ class HpResolver(object):
         Returns
         -------
         th_range : array-like
-            Resulted array of thresholds values.
+            Resulted array of thresholds values, sorted ascending.
 
         """
         if 'method' not in kwargs or kwargs['method'] != 'predict_proba':
@@ -151,112 +154,186 @@ class HpResolver(object):
                                 'pos_labels',
                                 'pos_labels_ind')(dataset.get_classes())
         # Extended sklearn.model_selection.cross_val_predict (TimeSplitter).
-        y_pred_proba, _, y_true = mlshell.custom.cross_val_predict(
-            pipeline, x, y=y, **kwargs)
+        y_pred_proba, index = mlshell.custom.cross_val_predict(
+            pipeline, x, y=y, **kwargs['cross_val_predict'])
+        # y_true!=y for TimeSplitter.
+        y_true = y.values[index] if hasattr(y, 'loc') else y[index]
         # Calculate roc_curve, sample th close to tpr/(tpr+fpr) maximum.
         th_range = self.calc_th_range(y_true, y_pred_proba, pos_labels,
-                                       pos_labels_ind, plot_flag, samples)
+                                      pos_labels_ind,
+                                      **kwargs['calc_th_range'])
         return th_range
 
     def calc_th_range(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,
-                       plot_flag=False, samples=10):
+                      metric=None, samples=10, sampler=None, plot_flag=False):
         """Calculate th range from OOF roc_curve.
 
         Parameters
         ----------
-        y_true
-        y_pred_proba
-        pos_labels
-        pos_labels_ind
-        plot_flag
-        samples
+        y_true : numpy.ndarray or 2d numpy.ndarray
+            Target(s) of shape [n_samples,] or [n_samples, n_outputs] for
+            multi-output.
+        y_pred_proba :  2d numpy.ndarray  or list of 2d numpy.ndarray
+            Probability prediction of shape [n_samples, n_classes]
+            or [n_outputs, n_samples, n_classes] for multi-output.
+        pos_labels: list
+           List of positive labels for each target.
+        pos_labels_ind: list
+           List of positive labels index in np.unique(target) for each
+           target.
+        metric : callable, None, optional (default=None)
+            Will be called with roc_curve output metric(fpr, tpr, th_). Should
+            return optimal threshold value, corresponding `th_` index and
+            vector for metric visualization (shape as tpr). If None,
+            tpr/(fpr+tpr) used.
+        samples : int, optional (default=10)
+            Desired number of threshold values.
+        sampler : callable, optional (default=None)
+            Will be called sampler(optimum, th_, samples), Should return:
+            (sub-range of th_, original index of sub-range).If None, linear
+            sample from [optimum/100; 2*optimum] with limits [np.min(th_), 1].
+        plot_flag : bool, optional (default=False)
+            If True, plot ROC curve and resulted th range.
 
         Returns
         -------
+        th_range : numpy.ndarray or list of numpy.ndarray
+            Resulted array of thresholds sorted ascending values of shape
+            [samples] or [n_outputs, samples]  for multi-output.
 
         """
+        if not metric:
+            metric = self._metric
+        if not sampler:
+            sampler = self._sampler
+        if y_true.ndim == 1:
+            # Add dimension, for compliance to multi-output.
+            y_true = y_true[..., None]
 
-        best_th_, best_ind, q, fpr, tpr, th_range =\
-            self._brut_th_(y_true, y_pred_proba, pos_labels, pos_labels_ind)
-        coarse_th_range, coarse_index =\
-            self._coarse_th_range(best_th_, th_range, samples)
-        if plot_flag:
-            self._th_plot(y_true, y_pred_proba, pos_labels, pos_labels_ind,
-                         best_th_, q, tpr, fpr, th_range, coarse_th_range,
-                         coarse_index)
-        return coarse_th_range
+        # Process targets separately.
+        res = []
+        for i in range(len(y_true)):
+            # Calculate ROC curve.
+            fpr, tpr, th_ = sklearn.metrics.roc_curve(
+                y_true[:, i], y_pred_proba[i][:, pos_labels_ind[i]],
+                pos_label=pos_labels[i], drop_intermediate=True)
+            # th_ sorted descending.
+            # fpr sorted ascending.
+            # tpr sorted ascending.
+            # Calculate metric at every point.
+            best_th_, best_ind, q = metric(fpr, tpr, th_)
+            # Sample near metric optimum.
+            th_range, index = sampler(best_th_, th_, samples)
+            # Plot.
+            if plot_flag:
+                self._th_plot(y_true[:, i], y_pred_proba[i], pos_labels[i],
+                              pos_labels_ind[i], best_th_, q, tpr, fpr,
+                              th_, th_range, index)
+            res.append(th_range)
+        th_range = res if len(res) > 1 else res[0]
+        return th_range
 
-    def _brut_th_(self, y_true, y_pred_proba, pos_labels, pos_labels_ind):
-        """ Measure th value that maximize tpr/(fpr+tpr).
+    def _metric(self, fpr, tpr, th_):
+        """Find threshold value maximizing metric.
 
-        Note:
-            for th gs will be used values near best th.
+        Parameters
+        ----------
+        fpr : numpy.ndarray, shape = [>2]
+            Increasing false positive rates such that element i is the false
+            positive rate of predictions with score >= thresholds[i].
+        tpr : numpy.ndarray, shape = [>2]
+            Increasing true positive rates such that element i is the true
+            positive rate of predictions with score >= thresholds[i].
+        th_ : numpy.ndarray, shape = [n_thresholds]
+            Decreasing thresholds on the decision function used to compute
+            fpr and tpr.`thresholds[0]` represents no instances being predicted
+            and is arbitrarily set to `max(y_score) + 1`.
 
-        TODO:
-            It is possible to bruforce based on self.metric,
-            early-stopping if q decrease.
+        Returns
+        -------
+        best_th_ : float
+            Optimal threshold value.
+        best_ind : int
+            Optimal threshold index in `th_`.
+        q : numpy.ndarray
+            Metric score for all roc_curve points.
 
         """
-        fpr, tpr, th_ = sklearn.metrics.roc_curve(
-            y_true, y_pred_proba[:, pos_labels_ind],
-            pos_labels=pos_labels, drop_intermediate=True)
-        # th_ sorted descending
-        # fpr sorted ascending
-        # tpr sorted ascending
-        # q go through max
-
         def np_divide(a, b):
-            """ ignore / 0, div0( [-1, 0, 1], 0 ) -> [0, 0, 0] """
+            """Numpy array division.
+
+            ignore / 0, div0( [-1, 0, 1], 0 ) -> [0, 0, 0]
+            """
             with np.errstate(divide='ignore', invalid='ignore'):
                 c = np.true_divide(a, b)
                 c[~np.isfinite(c)] = 0  # -inf inf NaN
             return c
-        q = np_divide(tpr, fpr+tpr)  # tpr/(fpr+tpr)
+
+        # q go through max.
+        q = np_divide(tpr, fpr + tpr)  # tpr/(fpr+tpr)
         best_ind = np.argmax(q)
         best_th_ = th_[best_ind]
-        # [deprecated] faster go from left
+        # [alternative] faster go from left
         # use reverse view, need last occurrence
         # best_th_ = th_[::-1][np.argmax(q[::-1])]
-        return best_th_, best_ind, q, fpr, tpr, th_
+        return best_th_, best_ind, q
 
-    def _coarse_th_range(self, best_th_, th_, samples):
-        """Get most possible th range.
+    def _sampler(self, best_th_, th_, samples):
+        """Sample threshold near optimum.
 
-        Note:
-            linear sample from [best/100; 2*best] with limits [np.min(th), 1]
-            th descending
-            th_range ascending
+        Parameters
+        ----------
+        best_th_ : float
+            Optimal threshold value.
+        th_ : numpy.ndarray, shape = [n_thresholds]
+            Threshold range to sample fro, sorted descending.
+        samples : int, optional (default=10)
+            Number of samples.
+
+        Returns
+        -------
+        th_range : numpy.ndarray
+            Resulted th_ sub-range, sorted ascending.
+        index : numpy.ndarray
+            Samples indices in th_.
+
+        Notes
+        -----
+        Linear sampling from [best/100; 2*best] with limits [np.min(th), 1].
+
         """
-        th_range_desire = np.linspace(max(best_th_ / 100, np.min(th_)), min(best_th_ * 2, 1), samples)
-        # find index of nearest from th_reverse
-        index_rev = np.searchsorted(th_[::-1], th_range_desire, side='left')  # a[i-1] < v <= a[i]
+        # th_ descending
+        # th_range ascending
+        desired = np.linspace(max(best_th_ / 100, np.min(th_)),
+                              min(best_th_ * 2, 1), samples)
+        # Find index of nearest from th_reverse (a[i-1] < v <= a[i]).
+        index_rev = np.searchsorted(th_[::-1], desired, side='left')
         index = len(th_) - index_rev - 1
         th_range = np.clip(th_[index], a_min=None, a_max=1)
         return th_range, index
 
-    def _th_plot(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,
-                 best_th_, q, tpr, fpr, th_, coarse_th_, coarse_index):
-        """
-
-        TODO: built_in roc curve plotter
-            https: // scikit - learn.org / stable / modules / generated / sklearn.metrics.RocCurveDisplay.html  # sklearn.metrics.RocCurveDisplay
-
-        """
+    def _th_plot(self, y_true, y_pred_proba, pos_label, pos_label_ind,
+                 best_th_, q, tpr, fpr, th_, th_range, index):
+        """Plot roc curve and metric."""
         fig, axs = plt.subplots(nrows=2, ncols=1)
         fig.set_size_inches(10, 10)
-        # roc_curve
-        roc_auc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba[:, pos_labels_ind])
-        axs[0].plot(fpr, tpr, 'darkorange', label=f"ROC curve (area = {roc_auc:.3f})")
-        axs[0].scatter(fpr[coarse_index], tpr[coarse_index], c='b', marker="o")
+        # Roc curve.
+        roc_auc = sklearn.metrics.roc_auc_score(y_true,
+                                                y_pred_proba[:, pos_label_ind])
+        axs[0].plot(fpr, tpr, 'darkorange',
+                    label=f"ROC curve (area = {roc_auc:.3f})")
+        axs[0].scatter(fpr[index], tpr[index], c='b', marker="o")
         axs[0].plot([0, 1], [0, 1], color='navy', linestyle='--')
         axs[0].set_xlabel('False Positive Rate')
         axs[0].set_ylabel('True Positive Rate')
-        axs[0].set_title(f"Receiver operating characteristic (label '{pos_labels}')")
+        axs[0].set_title(f"Receiver operating characteristic "
+                         f"(label '{pos_label}')")
         axs[0].legend(loc="lower right")
-        # tpr/(tpr+fpr)
+        # Metric q.
         axs[1].plot(th_, q, 'green')
         axs[1].vlines(best_th_, np.min(q), np.max(q))
-        axs[1].vlines(coarse_th_, np.min(q), np.max(q), colors='b', linestyles=':')
+        axs[1].vlines(th_range, np.min(q), np.max(q), colors='b',
+                      linestyles=':')
         axs[1].set_xlim([0.0, 1.0])
         axs[1].set_xlabel('Threshold')
         axs[1].set_ylabel('TPR/(TPR+FPR)')
@@ -265,13 +342,5 @@ class HpResolver(object):
         plt.show()
 
 
-
-
-
-    # TODO: Better move to utills y_pred_to_probe, also get pos_labels_ind
-    # move out
-    def prob_to_pred(self, y_pred_proba, th_):
-        """Fix threshold on predict_proba"""
-        y_pred = np.where(y_pred_proba[:, self.pos_labels_ind] > th_, [self.pos_labels], [self.neg_label])
-        return y_pred
-
+if __name__ == '__main__':
+    pass

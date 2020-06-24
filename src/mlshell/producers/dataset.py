@@ -166,9 +166,9 @@ class Dataset(dict):
             {
                 'classes': list
                     List of labels for each target.
-                'pos_labels': pos_labels,
+                'pos_labels': list
                     List of positive labels for each target.
-                'pos_labels_ind': pos_labels_ind
+                'pos_labels_ind': list
                     List of positive labels index in np.unique(target) for each
                     target.
             }

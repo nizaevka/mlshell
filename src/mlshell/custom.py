@@ -230,6 +230,11 @@ class PredictionTransformer(sklearn.base.BaseEstimator, sklearn.base.Transformer
 class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMixin):
     """Classify samples based on whether they are above of below `threshold`.
 
+    Parameters
+    ----------
+    threshold : float [0,1], None, list of float [0,1]
+        For multioutput target list of [n_outouts].
+
     Args:
         classes (array of shape (n_classes), or a list of n_outputs such arrays if n_outputs > 1):
             Sorted target(s) classes.
@@ -272,21 +277,28 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
                 return self.classes.take(np.argmax(x, axis=1), axis=0)
 
         """
+
+        # x = predict_proba
         if not isinstance(x, list):
-            # Compliance to multioutput.
+            # Compliance to multi-output.
             x = [x]
+            threshold = [self.threshold]
+        else:
+            threshold = self.threshold
+
         assert len(x) == len(self.classes_), "Multi-output inconsistent."
 
         res = []
         for i in range(len(x)):
-            # Check that each train fold contain all classes, otherwise we can`t predict_proba.
-            # We can`t reconstruct probabilities(add zero), because don`t no which one class is absent.
+            # Check that each train fold contain all classes, otherwise we
+            # can`t predict_proba. We can`t reconstruct probabilities
+            # (add zero), because don`t no which one class is absent.
             n_classes = x[i].shape[1]
             if n_classes != self.classes_[i].shape[0]:
                 raise ValueError('Not all class labels  in train folds:\n'
                                  '    ThresholdClassifier can`t identify class probabilities.')
 
-            if self.threshold is None:
+            if threshold[i] is None:
                 # just take the max
                 res.append(self.classes_[i].take(np.argmax(x[i], axis=1), axis=0))
             else:
@@ -301,7 +313,7 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
                     # Binary classification.
                     mask = np.arange(n_classes) != self.pos_labels_ind
                     neg_labels = self.classes_[i][mask]
-                res.append(np.where(x[i][..., self.pos_labels_ind] > self.threshold, [self.pos_labels], neg_labels))
+                res.append(np.where(x[i][..., self.pos_labels_ind] > threshold[i], [self.pos_labels], neg_labels))
         return res if len(res) > 1 else res[0]
 
     def predict_proba(self, x):
@@ -368,82 +380,89 @@ def cross_val_predict(*args, **kwargs):
 
     Returns
     -------
-    folds_predict_proba : 2d numpy.ndarray
-        OOF probability predictions [predictions x n_classes].
-    folds_test_index : 1d numpy.ndarray
-        Target indices where available predictions (reset form).
-    y_true : 1d numpy.ndarray
-        Target subset where available predictions.
+    y_pred_oof : 2d numpy.ndarray or list of 2d numpy.ndarray
+        OOF probability predictions of shape [n_test_samples, n_classes]
+        or [n_outputs, n_test_samples, n_classes] for multi-output.
+    index_oof : numpy.ndarray or list of numpy.ndarray
+        Samples reset indices where predictions available of shape
+        [n_test_samples,] or [n_test_samples, n_outputs] for multi-output.
 
     """
     # Debug key (compare predictions for no TimeSplitter cv strategy).
     _debug = kwargs.pop('_debug', False)
     temp_pp = None
     temp_ind = None
+    x = args[1]
     try:
-        folds_predict_proba = sklearn.model_selection.cross_val_predict(
+        y_pred_oof = sklearn.model_selection.cross_val_predict(
             *args, **kwargs)
-        folds_test_index = np.arange(0, folds_predict_proba.shape[0])
+        index_oof = np.arange(0, x.shape[0])
+        # [deprecated] y could be None in common case
+        # y_index_oof = np.arange(0, y_pred_oof.shape[0])
         if _debug:
-            temp_pp = folds_predict_proba
-            temp_ind = folds_test_index
+            temp_pp = y_pred_oof
+            temp_ind = index_oof
             raise ValueError('debug')
     except ValueError as e:
-        folds_predict_proba, folds_test_index = _extension(*args, **kwargs)
+        y_pred_oof, index_oof = partial_cross_val_predict(*args, **kwargs)
     if _debug:
-        assert np.array_equal(temp_pp, folds_predict_proba)
-        assert np.array_equal(temp_ind, folds_test_index)
-    # y!=y_true for TimeSplitter
-    y = kwargs.get('y')
-    y_true = y.values[folds_test_index] if hasattr(y, 'loc') \
-        else y[folds_test_index]
-    return folds_predict_proba, folds_test_index, y_true
+        assert np.array_equal(temp_pp, y_pred_oof)
+        assert np.array_equal(temp_ind, index_oof)
+    return y_pred_oof, index_oof
 
 
-def _extension(estimator, x, y=None, cv=None, fit_params=None,
-               method='predict_proba', **kwargs):
-    """Extension of cross_val_predict for TimeSplitter.
-
-    Notes
-    -----
-    Multiclass / multioutput classification currently not supported.
-
-    """
+def partial_cross_val_predict(estimator, x, y, cv, fit_params=None,
+                              method='predict_proba', **kwargs):
+    """Extension to cross_val_predict for TimeSplitter."""
+    if not fit_params:
+        fit_params = {}
     if method is not 'predict_proba':
         raise ValueError("Currently only 'predict_proba' method supported.")
+    if y.ndim == 1:
+        # Add dimension, for compliance to multi-output.
+        y = y[..., None]
 
-    folds_predict_proba = []  # list(range(self.cv_n_splits))
-    folds_test_index = []  # list(range(self.cv_n_splits))
-    # [future] init list for th_ for every class
-    # th_ = [[2, 1. / self.n_classes] for i in self.classes_]
-    ind = 0
-    for fold_train_index, fold_test_index in cv.split(x):
-        # stackingestimator__sample_weight=train_weights[fold_train_subindex].
-        if hasattr(x, 'loc'):
-            estimator.fit(x.loc[x.index[fold_train_index]],
-                          y.loc[y.index[fold_train_index]],
-                          **fit_params)
-            # In order of pipeline.classes_.
-            fold_predict_proba =\
-                estimator.predict_proba(x.loc[x.index[fold_test_index]])
-        else:
-            estimator.fit(x[fold_train_index], y[fold_train_index],
-                          **fit_params)
-            # in order of pipeline.classes_
-            fold_predict_proba = estimator.predict_proba(x[fold_test_index])
-        # [future] merge th_ for class
-        # metrics.roc_curve(y[fold_test_index],
-        # y_test_prob, pos_labels=self.pos_labels)
-        # th_[self.pos_labels].extend(fold_th_)
-        folds_test_index.extend(fold_test_index)
-        folds_predict_proba.extend(fold_predict_proba)
-        ind += 1
-    folds_predict_proba = np.array(folds_predict_proba)
-    folds_test_index = np.array(folds_test_index)
-    # [future] Delete duplicates.
-    # for i in range(self.n_classes):
-    #    th_[i] = sorted(list(set(th_[i])), reverse=True)
-    return folds_predict_proba, folds_test_index
+    def single_output(x_, y_):
+        """Single output target."""
+        y_pred_oof_ = []
+        index_oof_ = []
+        ind = 0
+        for fold_train_index, fold_test_index in cv.split(x_):
+            if hasattr(x_, 'loc'):
+                estimator.fit(x_.loc[x_.index[fold_train_index]],
+                              y_.loc[y_.index[fold_train_index]],
+                              **fit_params)
+                # In order of pipeline.classes_.
+                fold_y_pred = estimator.predict_proba(
+                    x_.loc[x_.index[fold_test_index]])
+            else:
+                estimator.fit(x_[fold_train_index], y_[fold_train_index],
+                              **fit_params)
+                # In order of pipeline.classes_.
+                fold_y_pred = estimator.predict_proba(x_[fold_test_index])
+            index_oof_.extend(fold_test_index)
+            y_pred_oof_.extend(fold_y_pred)
+            ind += 1
+        y_pred_oof_ = np.array(y_pred_oof_)
+        index_oof_ = np.array(index_oof_)
+        return y_pred_oof_, index_oof_
+
+    # Process targets separately.
+    y_pred_oof = []
+    index_oof = []
+    for i in range(len(y)):
+        l, r = single_output(x, y[:, i])
+        y_pred_oof.append(l)
+        index_oof.append(r)
+    index_oof = np.array(index_oof).T
+    return y_pred_oof, index_oof
+
+
+# TODO: Better move to utills y_pred_to_probe, also get pos_labels_in
+def prob_to_pred(y_pred_proba, th_, pos_labels, neg_label, pos_labels_ind):
+    """Fix threshold on predict_proba"""
+    y_pred = np.where(y_pred_proba[:, pos_labels_ind] > th_, [pos_labels], [neg_label])
+    return y_pred
 
 
 if __name__ == '__main__':
