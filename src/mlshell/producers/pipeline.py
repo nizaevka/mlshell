@@ -141,7 +141,6 @@ class PipelineProducer(pycnfg.Producer):
     project_path: str
         Absolute path to project dir.
 
-
     """
     _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 

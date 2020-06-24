@@ -381,7 +381,7 @@ class Workflow(mlshell.Producer):
         dataset = objects[dataset_id]
 
         # resolve and set hps
-        pipeline = self._set_hps(pipeline, dataset, **kwargs)
+        pipeline = self._set_hps(pipeline, dataset, resolver, **kwargs)
         # optional
         self._print_steps(pipeline)
         # [deprecated] excessive
@@ -403,7 +403,7 @@ class Workflow(mlshell.Producer):
         return res
 
     def optimize(self, res, pipeline_id=None, dataset_id=None,
-                 optimizer, validator, **kwargs):
+                 optimizer, validator, resolver, **kwargs):
 
 
         # [deprecated]
@@ -418,11 +418,11 @@ class Workflow(mlshell.Producer):
         # For pass_custom.
         self.current_pipeline_id = pipeline_id
         # Resolve and set hps.
-        pipeline = self._set_hps(pipeline, dataset, **kwargs)
+        pipeline = self._set_hps(pipeline, dataset, resolver, **kwargs)
         # Resolve hp_grid.
         hp_grid = kwargs['gs_params'].pop('hp_grid', {})
         if hp_grid:
-            hp_grid = self._resolve_hps(hp_grid, dataset, pipeline, **kwargs.get('resolve_params', {}))
+            hp_grid = self._resolve_hps(hp_grid, resolver, dataset, pipeline, **kwargs.get('resolve_params', {}))
 
 
         # TODO:
@@ -462,20 +462,22 @@ class Workflow(mlshell.Producer):
         #     self.logger.warning("Warning: optimizer.update_best don`t contain 'best_estimator_':\n"
         #                         "    optimizer results will not be used for pipeline.")
 
-    def _set_hps(self, pipeline, dataset, **kwargs):
+    def _set_hps(self, pipeline, dataset, resolver, **kwargs):
         hps = pipeline.pipeline.get_params()
         # [deprecated] currently pipeline change inplace
         # hps.update(pipeline.get('best_params_', {}))
         hps.update(self._get_zero_position(kwargs.get('hp', {})))
-        hps = self._resolve_hps(hps, dataset, pipeline,
+        hps = self._resolve_hps(hps, resolver, dataset, pipeline,
                                 **kwargs.get('resolve_params', {}))
         pipeline.pipeline.set_params(**hps)
         return pipeline
 
     def _get_zero_position(self, hps):
-        """
-        Note:
-            In case of generator/iterator change in hp_grid will be irreversible.
+        """Get zero position if hp_grid provided.
+
+        Notes
+        -----
+        In case of generator/iterator change in hp_grid will be irreversible.
 
         """
         # get zero position params from hp
@@ -488,7 +490,7 @@ class Workflow(mlshell.Producer):
                 zero_hps.update(**{name: iterator.__next__()})
         return zero_hps
 
-    def _resolve_hps(self, hps, dataset, pipeline,  resolve_params):
+    def _resolve_hps(self, hps, resolver, dataset, pipeline,  resolve_params):
         """Resolve hyper-parameter based on dataset value.
 
         For example, categorical features indices are dataset dependent.
@@ -496,17 +498,18 @@ class Workflow(mlshell.Producer):
 
         Parameters
         ----------
-        hps : dict {hp_name: val or [val]}
-            Pipeline.get_params() output or hp_grid.
-        pipeline : Pipeline
+        hps : dict {hp_name: val or [val}
+            Pipeline.get_params() output or hp_grid. If val=='auto' or ['auto']
+            hp will be resolved.
+        resolver : mlshell.HpResolver interface
+            Interface to resolve hps.
+        pipeline : mlshell.Pipeline interface
             Pipeline, passed to `resolver`
-        dataset : Dataset
+        dataset : mlshell.Dataset interface
             Dataset, passed to `resolver`.
-        **resolve_params: : dict {hp_name: {'resolver': class, **kwargs}}
-            Additional parameters to pass in `resolver(project_path, logger)
-            .resolve()` for specific hp. Could contains `resolver` key with
-            specific class to resolve `hp_name`. If value is None or key is
-            absent, mlshell.HpResolver used.
+        **resolve_params: : dict {hp_name: kwargs}
+            Additional parameters to pass in `resolver.resolve(*arg,
+            **resolve_params['hp_name'])` for specific hp.
 
         Returns
         -------
@@ -516,9 +519,7 @@ class Workflow(mlshell.Producer):
         """
         for hp_name, val in hps.items():
             if val == 'auto' or val == ['auto']:
-                # hp
                 kwargs = resolve_params.get(hp_name, {})
-                resolver = kwargs.pop('resolver', mlshell.HpResolver)
                 value = resolver(self.project_path, self.logger)\
                     .resolve(hp_name, dataset, pipeline, **kwargs)
                 hps[hp_name] = value if val == 'auto' else [value]

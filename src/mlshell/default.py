@@ -38,7 +38,7 @@ LOGGERS = {
 PIPELINES = {
     'default': {
         'init': mlshell.Pipeline,
-        'producer': mlshell.PipeProducer,
+        'producer': mlshell.PipelineProducer,
         'global': {},
         'patch': {},
         'priority': 3,
@@ -131,6 +131,7 @@ WORKFLOWS = {
             ('optimize', {
                 'optimizer': mlshell.optimize.RandomizedSearchOptimizer,  # optimizer
                 'validator': mlshell.validate.Validator,
+                'resolver': mlshell.HpResolver,
                 'pipeline_id': None,  # multiple pipeline? no, user can defined separately if really needed
                 'dataset_id': 'train',
                 'gs_params': {
@@ -149,7 +150,6 @@ WORKFLOWS = {
                 'fit_params': {},
                 'resolve_params': {
                     'estimate__apply_threshold__threshold': {
-                        'resolver': None,
                         'samples': 10,
                         'plot_flag': False,
                         'fit_params': {},

@@ -15,19 +15,11 @@ class HpResolver(object):
     For example, categorical features indices are dataset dependent.
     Resolve allows to set it before fit/optimize step.
 
-    Parameters
-    ----------
-    project_path: str
-        Absolute path to current project dir.
-    logger : logger object
-        Logs.
-
     """
-    _required_parameters = ['project_path', 'logger']
+    _required_parameters = []
 
-    def __init__(self, project_path, logger):
-        self.logger = logger
-        self.project_path = project_path
+    def __init__(self,):
+        pass
 
     def resolve(self, hp_name, dataset, pipeline, **kwargs):
         """Resolve hyper-parameter value.
@@ -81,7 +73,7 @@ class HpResolver(object):
         else:
             value = 'auto'
         if value != 'auto':
-            self.logger.info(f"Resolve hp: {hp_name}")
+            print(f"Resolve hp: {hp_name}")
         return value
 
     def _extract_ind_name(self, dataset):

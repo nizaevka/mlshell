@@ -1,14 +1,26 @@
-import mlshell
-from mlshell.libs import *
+"""
+
+"""
+
+
+import copy
+import mlshell.pycnfg as pycnfg
+import sklearn
 
 
 class Scorer(object):
     def __init__(self, scorer=None):
-        """
+        """Unified pipeline interface.
 
-        Attributes:
-            scorer:
-                Object for which wrapper is created.
+        Implements interface to access arbitrary scorer.
+        Interface: all underlying scorer methods.
+
+        Attributes
+        ----------
+        scorer: callable TODO
+            Object for which wrapper is created.
+        metric: callable
+            Scorer underlying metric function.
 
         """
         self.scorer = scorer
@@ -23,8 +35,18 @@ class Scorer(object):
             getattr(self.scorer, name)(*args, **kwargs)
         return wrapper
 
+    @property
+    def metric(self):
+        """Scorer object metric."""
+        return self._x
 
-#TODO: [beta]
+    def pprint(self):
+        """Not sure if good idea""".
+        # TODO:
+        pass
+
+
+#TODO: [need tests]
 class ExtendedScorer(object):
     def __init__(self, scorer):
         # Scorer to extend.
@@ -69,44 +91,73 @@ class ExtendedScorer(object):
         return self.scorer(estimator, x, y, **kwargs)
 
 
-class ScorerProducer(mlshell.Producer):
-    def __init__(self, project_path='', logger=None):
-        self.logger = logger if logger else logging.Logger(__class__.__name__)
-        self.project_path = project_path
-        super().__init__(self.project_path, self.logger)
+class ScorerProducer(pycnfg.Producer):
+    """Class includes methods to produce scorer.
 
-    # [alternative]
-    # def __init__(self, *args, **kwargs):
-    #    self.logger = kwargs.get('logger', logging.Logger('Validator'))
+    Interface: make.
 
-    def make_scorer(self, scorer, func=None, kwargs=None):
-        """Make scorer from metric function.
+    Parameters
+    ----------
+    objects : dict {'section_id__config__id', object,}
+        Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
+    path_id : str
+        Project path identifier in `objects`.
+    logger_id : str
+        Logger identifier in `objects`.
 
-        func : callback or str.
+    Attributes
+    ----------
+    objects : dict {'section_id__config__id', object,}
+        Dictionary with resulted objects from previous executed producers.
+    oid : str
+        Unique identifier of produced object.
+    logger : logger object
+        Default logger logging.getLogger().
+    project_path: str
+        Absolute path to project dir.
+
+    """
+    _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
+
+    def __init__(self, objects, oid, path_id, logger_id):
+        pycnfg.Producer.__init__(self, objects, oid)
+        self.logger = objects[logger_id]
+        self.project_path = objects[path_id]
+
+    def make(self, scorer, func=None, needs_custom_kwargs=False, **kwargs):
+        """Make scorer from metric callable.
+
+        Parameters
+        ----------
+        scorer : mlshell.Scorer interface
+        func : callback or str
             Custom function or sklearn built-in metric name.
-        kwargs
+        needs_custom_kwargs : bool
+            If True, allow to pass kwargs while grid search for custom metric.
+        **kwargs : dict
+            Additional kwargs to pass in make_scorer (if not str `func`).
+
         """
         if func is None:
             raise ValueError('Specify metric function')
-        if kwargs is None:
-            kwargs = {}
 
         if isinstance(func, str):
             # convert to callable
             # ignore kwargs (built-in `str` metrics has hard-coded kwargs)
             scorer.scorer = sklearn.metrics.get_scorer(func)
         else:
-            kwargs = copy.deepcopy(kwargs)
-            if 'needs_custom_kwargs' in kwargs:
+            if needs_custom_kwargs:
                 # [deprecated] Now check will not work, separate objects.
                 # if self.custom_scorer:
                 #     raise ValueError("Only one custom metric can be set with 'needs_custom_kwargs'.")
-                del kwargs['needs_custom_kwargs']
-                # create special object.
-                # [alternative] Rewrite _BaseScorer.
+                # Create special object.
                 custom_scorer = sklearn.metrics.make_scorer(func, **kwargs)
+                scorer = ExtendedScorer(custom_scorer)
+                # [alternative] Rewrite _BaseScorer.
                 # TODO: combine with Scorer class after testing.
-                scorer = ExtendedScorer
+                #   scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
             else:
                 scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
 
