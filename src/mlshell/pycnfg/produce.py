@@ -79,6 +79,8 @@ class Producer(object):
                                  f'should be a dictionary.')
             kwargs = self._object_resolve(kwargs, self.objects)
             res = getattr(self, method)(res, **kwargs)
+        # Add identifier.
+        res.oid = self.oid
         res = self._check(res)
         return res
 

@@ -436,9 +436,13 @@ class Workflow(mlshell.Producer):
 
         # Resolve scoring.
         scoring = kwargs['gs_params'].pop('scoring', {})
-        if scoring:
-            kwargs['gs_params']['scoring'] = validator(logger=self.logger).resolve_scoring(scoring, self.metrics,
-                                                                                           **pipeline.pipeline.get_params())
+        if isinstance(scoring, list):
+            for metric_id in scoring:
+                scoring = {metric_id: self.object[i] for i in metric_id}
+        # Allow to set directly dict, not only list.
+        kwargs['gs_params']['scoring'] = scoring
+
+            # validator(logger=self.logger).resolve_scoring(scoring, self.metrics, **pipeline.pipeline.get_params())
         train, test = dataset.split()
 
         self.logger.info("\u25CF \u25B6 OPTIMIZE HYPERPARAMETERS")
@@ -571,19 +575,17 @@ class Workflow(mlshell.Producer):
 
     # =============================================== validate =========================================================
     # @memory_profiler
-    def validate(self, pipeline_id, dataset_id, metric_id, validator, **kwargs):
+    def validate(self, pipeline_id, dataset_id, metric_id, validator):
         """Predict and score on validation set."""
         self.logger.info("\u25CF VALIDATE ON HOLDOUT")
+        if not isinstance(metric_id, list):
+            metric_id = [metric_id]
+
         dataset = self.datasets[dataset_id]
         pipeline = self.pipelines[pipeline_id]
         train, test = dataset.split()
-
-        if not isinstance(metric_id, list):
-            metric_id = [metric_id]
-        for i in metric_id:
-            scorer = self.object[i]
-
-        validator.via_metrics(metrics, pipeline, train, test, logger=self.logger, **kwargs)
+        metrics = [self.object[i] for i in metric_id]
+        validator.via_metrics(pipeline, metrics, [train, test], self.logger)
         # [deprecated] not all metrics can be converted to scorers
         # validator.via_scorers(self.metrics_to_scorers(self.metrics, self.metrics),
         # pipeline, train, test)

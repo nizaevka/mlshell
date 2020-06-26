@@ -74,7 +74,7 @@ class Dataset(dict):
     """Unified data interface.
 
     Implements interface to access arbitrary data.
-    Interface: get_x, get_y, get_classes, dump_prediction, split.
+    Interface: get_x, get_y, split, dump_prediction.
 
     Parameters
     ----------
@@ -90,6 +90,8 @@ class Dataset(dict):
     raw_names : dict
         Includes index/targets/features identifiers:
         {
+            'oid': str
+                Dataset identifier.
             'index': list
                 List of index label(s).
             'features': list
@@ -130,6 +132,14 @@ class Dataset(dict):
     def __hash__(self):
         return pd.util.hash_pandas_object(self['data']).sum()
 
+    @property
+    def oid(self):
+        return self['oid']
+
+    @oid.setter
+    def oid(self, value):
+        self['oid'] = value
+
     def get_x(self):
         """Extract features from dataset.
 
@@ -155,47 +165,6 @@ class Dataset(dict):
         df = self['data']
         raw_names = self['raw_names']
         return df[raw_names['targets']]
-
-    def get_classes(self):
-        """Extract classes and positive label index from dataset,
-         classification only.
-
-        Returns
-        -------
-        result : dict
-            {
-                'classes': list
-                    List of labels for each target.
-                'pos_labels': list
-                    List of positive labels for each target.
-                'pos_labels_ind': list
-                    List of positive labels index in np.unique(target) for each
-                    target.
-            }
-
-        """
-        df = self['data']
-        raw_names = self['raw_names']
-        pos_labels = raw_names.get('pos_labels', [])
-
-        # Find classes, example: [array([1]), array([2, 7])].
-        classes = [np.unique(j) for i, j in
-                   df[raw_names['targets']].iteritems()]
-        if not pos_labels:
-            pos_labels_ind = -1
-            pos_labels = [i[-1] for i in classes]  # [2,4]
-        else:
-            # Find where pos_labels in sorted labels, example: [1, 0].
-            pos_labels_ind = [np.where(classes[i] == pos_labels[i])[0][0]
-                              for i in range(len(classes))]
-
-        print(f"Labels {pos_labels} identified as positive:\n"
-              f"    for classifiers supported predict_proba:"
-              f" if P(pos_labels)>threshold, prediction=pos_labels on sample.")
-
-        return {'classes': classes,
-                'pos_labels': pos_labels,
-                'pos_labels_ind': pos_labels_ind}
 
     def split(self):
         """Split dataset on train and test.
@@ -348,7 +317,8 @@ class DataPreprocessor(object):
         self.logger = logger
         self.project_path = project_path
 
-    def preprocess(self, dataset, target_names=None, categor_names=None,
+    def preprocess(self, dataset, targets_names, features_names=None,
+                   categor_names=None,
                    pos_labels=None, **kwargs):
         """Preprocess raw data.
 
@@ -356,9 +326,9 @@ class DataPreprocessor(object):
         ----------
         dataset : Dataset {'data': pandas.DataFrame}
             Raw dataset.
-        target_names: list, None, optional (default=None)
+        targets_names: list
             List of target identifiers in raw dataset.
-            If None, ['target'] is used.
+        features_names TODO
         categor_names: list, None, optional (default=None)
             List of categoric features(also binary) identifiers in raw dataset.
             If None, empty list.
@@ -385,8 +355,13 @@ class DataPreprocessor(object):
                     List of target label(s),
                 'indices': list
                     List of rows indices.
+                'classes': list
+                    List of unique labels for each target.
                 'pos_labels': list
-                    List of "positive" label(s) in target(s).
+                    List of "positive" label(s) for each target.
+                'pos_labels_ind': list
+                    List of "positive" label(s) index in np.unique(target) for
+                    each target.
                 categoric_ind_name : dict
                     {'column_index': ('feature_name', ['cat1', 'cat2'])}
                     Dictionary with categorical feature indices as key, and
@@ -406,23 +381,24 @@ class DataPreprocessor(object):
         raw = dataset['data']
         if categor_names is None:
             categor_names = []
-        if target_names is None:
-            target_names = ['target']
+        if features_names is None:
+            features_names = [c for c in raw.columns if c not in targets_names]
         if pos_labels is None:
             pos_labels = []
+
         index = raw.index
-        targets = self._make_targets(raw, target_names)
-        features, features_names, categoric_ind_name, numeric_ind_name\
-            = self._make_features(raw, target_names, categor_names)
+        targets, raw_info_targets =\
+            self._process_targets(raw, targets_names, pos_labels)
+        features, raw_info_features =\
+            self._process_features(raw, features_names, categor_names)
         raw_names = {
             'index': index.name,
+            'indices': list(index),
+            'targets': targets_names,
             'features': list(features_names),
             'categoric_features': categor_names,
-            'targets': target_names,
-            'indices': list(index),
-            'categoric_ind_name': categoric_ind_name,
-            'numeric_ind_name': categoric_ind_name,
-            'pos_labels': pos_labels,
+            **raw_info_features,
+            **raw_info_targets,
         }
         data = self._combine(index, targets, features, raw_names)
         dataset.update({'data': data,
@@ -501,20 +477,29 @@ class DataPreprocessor(object):
                         'test_index': test_index})
         return dataset
 
-    def _make_targets(self, raw, target_names):
+    def _process_targets(self, raw, target_names, pos_labels):
         """Targets preprocessing."""
         targets_df = raw[target_names]
+        targets_df, classes, pos_labels, pos_labels_ind =\
+            self._unify_targets(targets_df, pos_labels)
         targets = targets_df.values
-        return targets
+        raw_info_targets = {
+            'classes': classes,
+            'pos_labels': pos_labels,
+            'pos_labels_ind': pos_labels_ind,
+        }
+        return targets, raw_info_targets
 
-    def _make_features(self, raw, target_names, categor_names):
+    def _process_features(self, raw, features_names, categor_names):
         """Features preprocessing."""
-        features_df = raw.drop(target_names, axis=1)
-        features_names = features_df.columns
+        features_df = raw[features_names]
         features_df, categoric_ind_name, numeric_ind_name \
             = self._unify_features(features_df, categor_names)
         features = features_df.values
-        return features, features_names, categoric_ind_name, numeric_ind_name
+        raw_info_features = {
+            'categoric_ind_name': categoric_ind_name,
+            'numeric_ind_name': numeric_ind_name,}
+        return features, raw_info_features
 
     def _combine(self, index, targets, features, raw_names):
         """Combine preprocessed sub-data."""
@@ -528,25 +513,68 @@ class DataPreprocessor(object):
         df.insert(loc=0, column='targets', value=targets)
         return df
 
-    def _unify_features(self, data, categor_names):
-        """Unify input dataframe.
+    def _unify_targets(self, targets, pos_labels=None):
+        """Unify input targets.
+
+        Extract classes and positive label index (classification only).
 
         Parameters
         ----------
-        data : pd.DataFrame
+        targets : pd.DataFrame
             Data to unify.
-        categor_names: list
-            List of categorical features (and binary) column names in data.
+        pos_labels: list, None, optional (default=None)
+            Classification only, list of "positive" labels for targets.
+            Could be used for threshold analysis (roc_curve) and metrics
+            evaluation if classifiers supported predict_proba. If None, last
+            label in np.unique(target) for each target is used.
 
         Returns
         -------
-        data: pd.DataFrame
-            Updates:
+        targets: pd.DataFrame
+            Unchanged input.
+        'classes': list
+            List of labels for each target.
+        'pos_labels': list
+            List of "positive" label(s) for each target.
+        'pos_labels_ind': list
+            List of "positive" label(s) index in np.unique(target) for
+            each target.
+
+        """
+        # Find classes, example: [array([1]), array([2, 7])].
+        classes = [np.unique(j) for i, j in targets.iteritems()]
+        if not pos_labels:
+            pos_labels_ind = -1
+            pos_labels = [i[-1] for i in classes]  # [2,4]
+        else:
+            # Find where pos_labels in sorted labels, example: [1, 0].
+            pos_labels_ind = [np.where(classes[i] == pos_labels[i])[0][0]
+                              for i in range(len(classes))]
+        self.logger.info(
+            f"Labels {pos_labels} identified as positive:\n"
+            f"    for classifiers supported predict_proba:"
+            f" if P(pos_labels)>threshold, prediction=pos_labels on sample.")
+        return targets, classes, pos_labels, pos_labels_ind
+
+    def _unify_features(self, features, categor_names):
+        """Unify input features.
+
+        Parameters
+        ----------
+        features : pd.DataFrame
+            Data to unify.
+        categor_names: list
+            List of categorical features (and binary) column names in features.
+
+        Returns
+        -------
+        features: pd.DataFrame
+            Input updates:
             * fill gaps.
                 if gap in categorical => fill 'unknown'
                 if gap in non-categor => np.nan
             * cast categorical features to str dtype, and apply Ordinalencoder.
-            * cast the whole dataframe to np.float64.
+            * cast the whole featuresframe to np.float64.
         categoric_ind_name : dict
             {'column_index': ('feature_name', ['cat1', 'cat2'])}
             Dictionary with categorical feature indices as key, and tuple
@@ -558,19 +586,19 @@ class DataPreprocessor(object):
         """
         categoric_ind_name = {}
         numeric_ind_name = {}
-        for ind, column_name in enumerate(data):
+        for ind, column_name in enumerate(features):
             if column_name in categor_names:
                 # Fill gaps with 'unknown', inplace unreliable (copy!)
-                data[column_name] = data[column_name]\
+                features[column_name] = features[column_name]\
                     .fillna(value='unknown', method=None, axis=None,
                             inplace=False, limit=None, downcast=None)
                 # Cast dtype to str (copy!).
-                data[column_name] = data[column_name].astype(str)
+                features[column_name] = features[column_name].astype(str)
                 # Encode
                 encoder = sklearn.preprocessing.\
                     OrdinalEncoder(categories='auto')
-                data[column_name] = encoder\
-                    .fit_transform(data[column_name]
+                features[column_name] = encoder\
+                    .fit_transform(features[column_name]
                                    .values.reshape(-1, 1))
                 # Generate {index: ('feature_id', ['B','A','C'])}.
                 # tolist need for 'hr' cache dump.
@@ -578,7 +606,7 @@ class DataPreprocessor(object):
                                            encoder.categories_[0].tolist())
             else:
                 # Fill gaps with np.nan.
-                data[column_name].fillna(value=np.nan, method=None, axis=None,
+                features[column_name].fillna(value=np.nan, method=None, axis=None,
                                          inplace=True, downcast=None)
                 # Generate {'index': ('feature_id',)}.
                 numeric_ind_name[ind] = (column_name,)
@@ -586,10 +614,10 @@ class DataPreprocessor(object):
         # python float = np.float = C double =
         # np.float64 = np.double(64 bit processor)).
         # [alternative] sklearn.utils.as_float_array / assert_all_finite
-        data = data.astype(np.float64, copy=False, errors='ignore')
+        features = features.astype(np.float64, copy=False, errors='ignore')
         # Additional check.
-        self._check_numeric_types(data, categor_names)
-        return data, categoric_ind_name, numeric_ind_name
+        self._check_numeric_types(features, categor_names)
+        return features, categoric_ind_name, numeric_ind_name
 
     def _check_duplicates(self, data, del_duplicates=False):
         """Check duplicates rows in dataframe.

@@ -11,26 +11,28 @@ in Producer defined.
 """
 
 
-import copy
 import mlshell.pycnfg as pycnfg
 import sklearn
+import tabulate
+import pandas as pd
+import numpy as np
 
 
-class Scorer(object):
-    def __init__(self, scorer=None, sid=None, score_func=None,
+class Metric(object):
+    def __init__(self, scorer=None, oid=None, score_func=None,
                  greater_is_better=True, needs_proba=False,
                  needs_threshold=False, needs_custom_kwargs=False):
         """Unified pipeline interface.
 
         Implements interface to access arbitrary scorer.
-        Interface: all underlying scorer methods.
+        Interface: pprint and all underlying scorer methods.
 
         Attributes
         ----------
         scorer: callable
-            Object for which wrapper is created.
-        sid : str
-            Scorer identifier.
+            Scorer to pass in grid search optimizer.
+        oid : str
+            Instance identifier.
         score_func: callable
             Scorer underlying score function.
         greater_is_better : boolean, default=True
@@ -54,7 +56,7 @@ class Scorer(object):
         """
         self.scorer = scorer
         self.score_func = score_func
-        self.sid = sid
+        self.oid = oid
         # Flags.
         self.greater_is_better = greater_is_better
         self.needs_proba = needs_proba
@@ -89,7 +91,7 @@ class Scorer(object):
         if hasattr(estimator, 'steps'):
             for step in estimator.steps:
                 if step[0] == 'pass_custom':
-                    temp = step[1].kwargs.get(self.id, {})
+                    temp = step[1].kwargs.get(self.oid, {})
                     self.scorer._kwargs.update(temp)
 
     def pprint(self, score):
@@ -124,53 +126,7 @@ class Scorer(object):
         return str(score)
 
 
-#TODO: [deprecated]
-class ExtendedScorer(object):
-    def __init__(self, scorer):
-        # Scorer to extend.
-        self.scorer = scorer
-
-        # [deprecated] now not memorize state, if no pass_csutom step, use default.
-        # Last kwargs state to use in score for second stage optimizers.
-        # self.cache_custom_kwargs = {}
-        # TODO: here is actually problem when multiple pipeline are used.
-        #   it is better to inheret pass_custom step for next level
-        #   so the attribute error will never rise.
-
-        self.init_kwargs = self.scorer._kwargs
-
-
-    def __call__(self, estimator, x, y, **kwargs):
-        """Read custom_kwargs from current pipeline, pass to scorer.
-
-        Note:
-            In gs self object copy, we can dynamically get param only from estimator.
-
-            Use initial kwargs for score if:
-                pipeline not contain steps
-                no `pass_custom`
-                kwargs empty {}.
-
-        """
-        # Use initial kwargs for score if pipeline not contain steps.
-        self.scorer._kwargs.update(self.init_kwargs)
-        if hasattr(estimator, 'steps'):
-            if estimator.steps[0][0] == 'pass_custom':
-                if estimator.steps[0][1].kwargs:
-                    self.scorer._kwargs.update(estimator.steps[0][1].kwargs)
-        # [deprecated] need tests.
-        # except AttributeError:
-        #     # ThresholdClassifier object has no attribute 'steps'.
-
-        #     # [deprecated] Now use init kwargs in score,
-        #     #   not last if no step or `pass_custom`.
-        #     # self.scorer._kwargs.update(self.cache_custom_kwargs)
-        #     pass
-
-        return self.scorer(estimator, x, y, **kwargs)
-
-
-class ScorerProducer(pycnfg.Producer):
+class MetricProducer(pycnfg.Producer):
     """Class includes methods to produce scorer.
 
     Interface: make.
@@ -205,7 +161,8 @@ class ScorerProducer(pycnfg.Producer):
         self.logger = objects[logger_id]
         self.project_path = objects[path_id]
 
-    def make(self, scorer, score_func=None, needs_custom_kwargs=False, **kwargs):
+    def make(self, scorer, score_func=None, needs_custom_kwargs=False,
+             **kwargs):
         """Make scorer from metric callable.
 
         Parameters
@@ -224,10 +181,11 @@ class ScorerProducer(pycnfg.Producer):
 
         # Convert to scorer
         if isinstance(score_func, str):
-            # Valid sklearn.metrics.SCORERS.keys().
+            # built_in = sklearn.metrics.SCORERS.keys().
             # Ignore kwargs, built-in `str` metrics has hard-coded kwargs.
             scorer.scorer = sklearn.metrics.get_scorer(score_func)
         else:
+            # Non-scalar output metric also possible.
             scorer.scorer = sklearn.metrics.make_scorer(score_func, **kwargs)
             # [deprecated] combined ExtendedScorer and Scorer
             # if needs_custom_kwargs:
@@ -238,7 +196,6 @@ class ScorerProducer(pycnfg.Producer):
             # else:
             #     scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
         scorer.score_func = score_func
-        scorer.sid = self.oid.split('__')[-1]
         scorer.needs_custom_kwargs = needs_custom_kwargs
         scorer.greater_is_better = scorer.scorer._sign > 0
         scorer.needs_proba =\
@@ -251,139 +208,112 @@ class ScorerProducer(pycnfg.Producer):
         return scorer
 
 
-import operator
-import tabulate
-import pandas as pd
-import numpy as np
-
 class Validator(object):
-    def validate(self, metrics, pipeline, train, test, **kwargs):
-        """
+    def __init__(self):
+        pass
+
+    def validate(self, pipeline, metrics, datasets, logger, method='metric'):
+        """Evaluate pipeline metrics.
 
         Parameters
         ----------
-        metrics
-        pipeline
-        train
-        test
-        kwargs
-
-        Returns
-        -------
-
-        """
-
-        return
-
-    def _via_metrics(self, metrics, pipeline, train, test, logger=logger, **kwargs):
-        """Calculate ccore via score functions.
-
-        Reutilize inference, more efficient than via scorers.
+        pipeline : sklearm.pipeline.Pipeline interface
+            model
+        metrics : list of mlshell.Metric
+            Metrics to evaluate.
+        datasets : list of mlshell.Dataset
+            Dataset to evaluate on.
+        method : 'metric' or 'scorer'
+            If 'metric', efficient (reuse y_pred) evaluation via
+            `score_func(y, y_pred, **kwargs)`. If 'scorer', evaluate via
+            `scorer(pipeline, x, y)`.
+        logger : logger object
+            Logs.
 
         """
         if not metrics:
             logger.warning("Warning: no metrics to evaluate.")
             return
+        if method not in ['metric', 'scorer']:
+            raise ValueError("Unknown 'method' value.")
 
-        x_train = train.get_x()
-        y_train = train.get_y()
-        x_test = test.get_x()
-        y_test = test.get_y()
-        # Storage to prevent multiple inference.
-        infer = {'predict_proba': None,
-                 'decision_function': None,
-                 'predict': None}
-        for name, metric in metrics.items():
-            logger.log(5, f"{name}:")
+        # Storage to prevent multiple inference (via metric).
+        infer = {}
+        for dataset in datasets:
+            infer[dataset.oid] = {
+                'predict_proba': None,
+                'decision_function': None,
+                'predict': None
+            }
+        for metric in metrics:
+            logger.log(5, f"{metric.oid}:")
             for dataset in datasets:
-
-            try:
-                y_pred = self._get_y_pred(dataset)
-            except AttributeError as e:
-                # Pipeline has not 'predict_proba', 'decision_function'.
-                logger.warning(f"Ignore metric: {e}")
-                continue
-            # Update metric kwargs with pass_custom kwarg from pipeline.
-            if getattr(metric, 'needs_custom_kwargs', False):
-                if hasattr(pipeline, 'steps'):
-                    for step in pipeline.steps:
-                        if step[0] == 'pass_custom':
-                            temp = step[1].kwargs.get(metric.id, {})
-                            metric.kwargs.update(temp)
-            # Score on train.
-            score_train = metric.score_func(y_train, y_pred_train,
-                                            **metric.kwargs)
-            # Score on test.
-            score_test = metric.score_func(y_test, y_pred_test,
-                                           **metric.kwargs)
-            score_train = metric.pprint(score_train)
-            score_test = metric.pprint(score_test)
-            logger.log(5, f"Train:\n    {score_train}\n"
-                          f"Test:\n    {score_test}")
-
+                x = dataset.get_x()
+                y = dataset.get_y()
+                try:
+                    if method == 'metric':
+                        score = self._via_metric(pipeline, x, y, metric,
+                                                 dataset, infer[dataset.oid])
+                    elif method == 'scorer':
+                        score = metric(pipeline, x, y)
+                    else:
+                        assert False
+                except AttributeError as e:
+                    # Pipeline has not 'predict_proba'/'decision_function'.
+                    logger.warning(f"Ignore metric: {e}")
+                    break
+                score = metric.pprint(score)
+                logger.log(5, f"{dataset.oid}:\n    {score}")
         return
 
-    def _get_y_pred(self, name, metric, pipeline, infer, x_train, x_test,):
+    def _via_metric(self, pipeline, x, y, metric, dataset, infer):
+        """Evaluate score via score functions.
+
+        Reutilize inference, more efficient than via scorers.
+
+        """
+        y_pred = self._get_y_pred(pipeline, x, metric, infer, dataset)
+        # Update metric kwargs with pass_custom kwarg from pipeline.
+        if getattr(metric, 'needs_custom_kwargs', False):
+            if hasattr(pipeline, 'steps'):
+                for step in pipeline.steps:
+                    if step[0] == 'pass_custom':
+                        temp = step[1].kwargs.get(metric.oid, {})
+                        metric.kwargs.update(temp)
+        # Score.
+        score = metric.score_func(y, y_pred, **metric.kwargs)
+        return score
+
+    def _get_y_pred(self, pipeline, x, metric, infer, dataset):
         if getattr(metric, 'needs_proba', False):
             # [...,i] equal to [:,i]/[:,:,i]/.. (for multi-output target)
             if not infer['predict_proba']:
-                # Pipeline awaits for as much classes as in train.
-                classes, pos_labels_ind = \
-                    operator.itemgetter(
-                        'classes',
-                        'pos_labels_ind'
-                    )(train.get_classes())
+                # Pipeline predict_proba shape would be based on train
+                # (pos_labels_ind/classes not guaranteed in test).
+                pos_labels_ind = dataset.get_classes()
                 # For multi-output return list of arrays.
-                pp_train = pipeline.predict_proba(x_train)
-                pp_test = pipeline.predict_proba(x_test)
-                if isinstance(pp_train, list):
-                    y_pred_train = [i[..., pos_labels_ind] for i in pp_train]
+                pp = pipeline.predict_proba(x)
+                if isinstance(pp, list):
+                    y_pred = [i[..., pos_labels_ind] for i in pp]
                 else:
-                    y_pred_train = pp_train[..., pos_labels_ind]
-                if isinstance(pp_test, list):
-                    y_pred_test = [i[..., pos_labels_ind] for i in pp_test]
-                else:
-                    y_pred_test = pp_test[..., pos_labels_ind]
-                infer['predict_proba'] = (y_pred_train, y_pred_test)
+                    y_pred = pp[..., pos_labels_ind]
+                infer['predict_proba'] = y_pred
             else:
-                y_pred_train, y_pred_test = infer['predict_proba']
+                y_pred = infer['predict_proba']
         elif getattr(metric, 'needs_threshold', False):
             if not infer['decision_function']:
-                y_pred_train = pipeline.decision_function(x_train)
-                y_pred_test = pipeline.decision_function(x_test)
-                infer['decision_function'] = (y_pred_train, y_pred_test)
+                y_pred = pipeline.decision_function(x)
+                infer['decision_function'] = y_pred
             else:
-                y_pred_train, y_pred_test = infer['decision_function']
+                y_pred = infer['decision_function']
         else:
             if not infer['predict']:
-                y_pred_train = pipeline.predict(x_train)
-                y_pred_test = pipeline.predict(x_test)
-                infer['predict'] = (y_pred_train, y_pred_test)
+                y_pred = pipeline.predict(x)
+                infer['predict'] = y_pred
             else:
-                y_pred_train, y_pred_test = infer['predict']
-        return y_pred_train, y_pred_test
+                y_pred = infer['predict']
+        return y_pred
 
 
-    # [deprecated] need rearrange
-    # def _via_scorers(self, scorers, pipeline,
-    #                  train, test, pos_labels_ind, classes):
-    #     # via scorers
-    #     # upside: sklearn consistent
-    #     # downside:
-    #     #   requires multiple inference
-    #     #   non-score metric not possible (confusion_matrix)
-
-    #     for name, scorer in scorers.items():
-    #         self.logger.log(25, f"{name}:")
-    #         self.logger.log(5, f"{name}:")
-    #         # result score on Train
-    #         score_train = scorer(pipeline, train.get_x(), train.get_y())
-    #         # result score on test
-    #         score_test = scorer(pipeline, test.get_x(), test.get_y())
-    #         self.logger.log(25, f"Train:\n    {score_train}\n"
-    #                             f"Test:\n    {score_test}")
-    #         self.logger.log(5, f"Train:\n    {score_train}\n"
-    #                            f"Test:\n    {score_test}")
-    #     # non-score metrics
-    #     add_metrics = {name: self.p['metrics'][name] for name in self.p['metrics'] if name not in scorers}
-    #     self._via_metrics(add_metrics, pipeline, train, test, pos_labels_ind, classes)
+if __name__ == '__main__':
+    pass
