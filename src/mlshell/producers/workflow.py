@@ -403,7 +403,7 @@ class Workflow(mlshell.Producer):
         return res
 
     def optimize(self, res, pipeline_id=None, dataset_id=None,
-                 optimizer, validator, resolver, **kwargs):
+                 optimizer, resolver, **kwargs):
 
 
         # [deprecated]
@@ -441,8 +441,6 @@ class Workflow(mlshell.Producer):
                 scoring = {metric_id: self.object[i] for i in metric_id}
         # Allow to set directly dict, not only list.
         kwargs['gs_params']['scoring'] = scoring
-
-            # validator(logger=self.logger).resolve_scoring(scoring, self.metrics, **pipeline.pipeline.get_params())
         train, test = dataset.split()
 
         self.logger.info("\u25CF \u25B6 OPTIMIZE HYPERPARAMETERS")

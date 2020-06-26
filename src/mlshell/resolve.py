@@ -28,9 +28,9 @@ class HpResolver(object):
         ----------
         hp_name : str
             Hyper-parameter identifier.
-        dataset : mlshell.Dataset interface object
+        dataset : mlshell.Dataset
             Dataset to to extract from.
-        pipeline : object with sklearn.pipeline.Pipeline interface
+        pipeline : sklearn.pipeline.Pipeline interface
             Pipeline contain `hp_name` in get_params().
         **kwargs : dict
             Additional kwargs to pass in corresponding resolver endpoint.
@@ -50,26 +50,29 @@ class HpResolver(object):
         'estimate__apply_threshold__threshold'
             HpResolver.th_resolver()
         'estimate__apply_threshold__kwargs'
-            dataset.get_classes()
+            {i:dataset.meta[i]
+                for i in ['pos_labels_ind', 'pos_labels', 'classes']}
 
         """
         if hp_name ==\
                 'process_parallel__pipeline_categoric__select_columns__kwargs':
             if 'categoric_ind_name' in dataset:
-                categoric_ind_name = dataset['categoric_ind_name']
+                categoric_ind_name = dataset.meta['categoric_ind_name']
             else:
                 categoric_ind_name = self._extract_ind_name(dataset)[1]
             value = {'indices': list(categoric_ind_name.keys())}
         elif hp_name ==\
                 'process_parallel__pipeline_numeric__select_columns__kwargs':
             if 'numeric_ind_name' in dataset:
-                value = {'indices': list(dataset['numeric_ind_name'].keys())}
+                numeric_ind_name = dataset.meta['numeric_ind_name']
             else:
-                value = self._extract_ind_name(dataset.get('data'))[2]
+                numeric_ind_name = self._extract_ind_name(dataset)[2]
+            value = {'indices': list(numeric_ind_name.keys())}
         elif hp_name == 'estimate__apply_threshold__threshold':
             value = self.th_resolver(pipeline, dataset, **kwargs)
         elif hp_name == 'estimate__apply_threshold__kwargs':
-            value = dataset.get_classes()
+            value = {i: dataset.meta[i]
+                     for i in ['pos_labels_ind', 'pos_labels', 'classes']}
         else:
             value = 'auto'
         if value != 'auto':
@@ -78,16 +81,16 @@ class HpResolver(object):
 
     def _extract_ind_name(self, dataset):
         """Extract categoric/numeric names and index."""
-        data = dataset.get('data')
-        raw_names = dataset.get('raw_names')
+        data = dataset.data
+        meta = dataset.meta
         categoric_ind_name = {}
         numeric_ind_name = {}
         count = 0
         for ind, column_name in enumerate(data):
-            if column_name in raw_names['targets']:
+            if column_name in meta['targets']:
                 count += 1
                 continue
-            if column_name in raw_names['categor_features']:
+            if column_name in meta['categor_features']:
                 # Loose categories names.
                 categoric_ind_name[ind - count] =\
                     (column_name, np.unique(data[column_name]))
@@ -111,11 +114,10 @@ class HpResolver(object):
 
         Parameters
         ----------
-        dataset : mlshell.Dataset interface object
+        dataset : mlshell.Dataset
             Dataset to to extract from.
-        pipeline : object with sklearn.pipeline.Pipeline interface, supported
-            `predict_proba` method
-            Pipeline.
+        pipeline : mlshell.Pipeline
+            Estimator.
         **kwargs : dict
             Kwargs['cross_val_predict'] to pass in `sklearn.model_selection`.
             cross_val_predict. Sub-key 'method' value always should be set to
@@ -139,15 +141,15 @@ class HpResolver(object):
         if 'y' in kwargs:
             del kwargs['y']
 
-        x = dataset.get_x()
-        y = dataset.get_y()
+        x = dataset.x
+        y = dataset.y
         classes, pos_labels, pos_labels_ind =\
             operator.itemgetter('classes',
                                 'pos_labels',
-                                'pos_labels_ind')(dataset.get_classes())
+                                'pos_labels_ind')(dataset.meta)
         # Extended sklearn.model_selection.cross_val_predict (TimeSplitter).
         y_pred_proba, index = mlshell.custom.cross_val_predict(
-            pipeline, x, y=y, **kwargs['cross_val_predict'])
+            pipeline.pipeline, x, y=y, **kwargs['cross_val_predict'])
         # y_true!=y for TimeSplitter.
         y_true = y.values[index] if hasattr(y, 'loc') else y[index]
         # Calculate roc_curve, sample th close to tpr/(tpr+fpr) maximum.

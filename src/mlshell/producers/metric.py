@@ -1,21 +1,23 @@
 """
+The :mod:`mlshell.metric` contains examples of `Metric` class to create
+empty metric object and `MetricProducer` class to fulfill it.
 
-`mlshell.Scorer also allow to pass custom kwargs while grid search.
+`Metric` class proposes unified interface to work with underlying scorer.
+Intended to be used in `mlshell.Workflow`. Notably, it allow to pass custom
+kwargs while grid search. For new metric formats no need to edit `Workflow`
+class, only update `Metric` interface logic.
 
-Notes
------
+`MetricProducer` class specifies methods to make metric from custom function.
+Current implementation inherits sklearn.metric.make_scorer logic.
 
-
-Scorer object need ._kwargs for pass_csutom, that is all, sklearn mainly
-in Producer defined.
 """
 
 
 import mlshell.pycnfg as pycnfg
+import numpy as np
+import pandas as pd
 import sklearn
 import tabulate
-import pandas as pd
-import numpy as np
 
 
 class Metric(object):
@@ -49,9 +51,6 @@ class Metric(object):
             have either a decision_function or predict_proba method.
         needs_custom_kwargs : bool
             If True, allow to pass kwargs while grid search for custom metric.
-        kwargs : dict
-            Additional kwargs passed to `score_func` (unchanged if step
-            `pass_custom` not used).
 
         """
         self.scorer = scorer
@@ -61,15 +60,12 @@ class Metric(object):
         self.greater_is_better = greater_is_better
         self.needs_proba = needs_proba
         self.needs_threshold = needs_threshold
-        self.needs_cutom_kwargs = needs_custom_kwargs
-        # [deprecated] not necessery to storage init.
-        # they are in scorer._kwargs
-        # self.kwargs = kwargs
-        # **kwargs : dict
-        #    Additional kwargs, passed to func (initially).
+        self.needs_custom_kwargs = needs_custom_kwargs
 
     @property
     def kwargs(self):
+        """dict: Additional kwargs passed to `score_func` (unchanged if step
+        `pass_custom` not used)"""
         return self.scorer._kwargs
 
     def __call__(self, estimator, *args, **kwargs):
@@ -86,8 +82,6 @@ class Metric(object):
 
     def _set_custom_kwargs(self, estimator):
         # Allow to get custom kwargs
-        # [deprecated] not need if recover pass_custom.
-        # self.scorer._kwargs.update(self.init_kwargs)
         if hasattr(estimator, 'steps'):
             for step in estimator.steps:
                 if step[0] == 'pass_custom':
@@ -187,14 +181,6 @@ class MetricProducer(pycnfg.Producer):
         else:
             # Non-scalar output metric also possible.
             scorer.scorer = sklearn.metrics.make_scorer(score_func, **kwargs)
-            # [deprecated] combined ExtendedScorer and Scorer
-            # if needs_custom_kwargs:
-            #     # Create special object.
-            #     custom_scorer = sklearn.metrics.make_scorer(func, **kwargs)
-            #     scorer = ExtendedScorer(custom_scorer)
-            #     # [alternative] Rewrite _BaseScorer.
-            # else:
-            #     scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
         scorer.score_func = score_func
         scorer.needs_custom_kwargs = needs_custom_kwargs
         scorer.greater_is_better = scorer.scorer._sign > 0
@@ -202,27 +188,27 @@ class MetricProducer(pycnfg.Producer):
             isinstance(scorer.scorer, sklearn.metrics._scorer._ProbaScorer)
         scorer.needs_threshold =\
             isinstance(scorer.scorer, sklearn.metrics._scorer._ThresholdScorer)
-        scorer.needs_cutom_kwargs = needs_custom_kwargs
-        # [deprecate]
-        # scorer.init_kwargs = copy.deepcopy(scorer.scorer._kwargs)
+        scorer.needs_custom_kwargs = needs_custom_kwargs
         return scorer
 
 
 class Validator(object):
+    """Validate fitted pipeline."""
     def __init__(self):
         pass
 
     def validate(self, pipeline, metrics, datasets, logger, method='metric'):
-        """Evaluate pipeline metrics.
+        """Evaluate metrics on pipeline.
 
         Parameters
         ----------
-        pipeline : sklearm.pipeline.Pipeline interface
-            model
+        pipeline : mlshell.Pipeline
+            Fitted model.
         metrics : list of mlshell.Metric
             Metrics to evaluate.
-        datasets : list of mlshell.Dataset
-            Dataset to evaluate on.
+        datasets : list of mlshell.Dataset ('meta'[pos_labels_ind] for c)
+            Dataset to evaluate on. For classification 'dataset.meta'
+            should contains `pos_labels_ind` key.
         method : 'metric' or 'scorer'
             If 'metric', efficient (reuse y_pred) evaluation via
             `score_func(y, y_pred, **kwargs)`. If 'scorer', evaluate via
@@ -231,6 +217,14 @@ class Validator(object):
             Logs.
 
         """
+        # pipeline
+        # [kwargs, steps, pipeline.predict(x)/predict_proba(x)/
+        #  decision_function(x)]
+        # metric
+        # [oid, scorer(pipeline, x,y), score_func(y, y_pred, **kwargs),
+        #  pprint(score) ]
+        # dataset
+        # [oid, x, y, meta[pos_labels_ind]]
         if not metrics:
             logger.warning("Warning: no metrics to evaluate.")
             return
@@ -248,14 +242,15 @@ class Validator(object):
         for metric in metrics:
             logger.log(5, f"{metric.oid}:")
             for dataset in datasets:
-                x = dataset.get_x()
-                y = dataset.get_y()
+                x = dataset.x
+                y = dataset.y
                 try:
                     if method == 'metric':
-                        score = self._via_metric(pipeline, x, y, metric,
-                                                 dataset, infer[dataset.oid])
+                        score = self._via_metric(pipeline.pipeline, x, y,
+                                                 metric, dataset,
+                                                 infer[dataset.oid])
                     elif method == 'scorer':
-                        score = metric(pipeline, x, y)
+                        score = metric.scorer(pipeline.pipeline, x, y)
                     else:
                         assert False
                 except AttributeError as e:
@@ -290,7 +285,7 @@ class Validator(object):
             if not infer['predict_proba']:
                 # Pipeline predict_proba shape would be based on train
                 # (pos_labels_ind/classes not guaranteed in test).
-                pos_labels_ind = dataset.get_classes()
+                pos_labels_ind = dataset.meta['pos_labels_ind']
                 # For multi-output return list of arrays.
                 pp = pipeline.predict_proba(x)
                 if isinstance(pp, list):

@@ -4,6 +4,7 @@ Use it as Mixin to add desired endpoints.
 
 Support method to cache/read intermediate state of object (pickle/unpickle).
 It useful to save time when reusing a configuration.
+
 """
 
 

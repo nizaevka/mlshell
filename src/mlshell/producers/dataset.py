@@ -18,11 +18,17 @@ See also
 --------
 :class:`mlshell.Workflow` docstring for dataset prerequisites.
 
-TODO: check what await for.
-To use in Workflow:
-get_x
-get_y
-get_classes (HpResolver.th_resolver)
+TODO:
+    В каждом методе Workflow расспиши требования к интерфейсу
+    В заголовке максимальные требования
+Interface:
+x
+y
+meta
+    не все обязательны или все?
+    pos_labels_ind в валидаторе
+    classes, pos_labels_ind, pos_labels в резолвере
+    categoric_ind_name, numeric_ind_name в резолвере (на самом деле только keys())
 dump
 split
 ...
@@ -32,9 +38,8 @@ TODO:
 'auto'/['auto']
 
 
-
 TODO: check
-* categoric_ind_name/numeric_ind_name move under raw_names
+* categoric_ind_name/numeric_ind_name move under meta
 * [deprecated] If None, auto add zero values under 'target' id.
         try:
             targets_df = raw[target_names]
@@ -58,7 +63,6 @@ targets = targets_df.values.astype(int)  # cast to int
 
 
 import copy
-import os
 
 import jsbeautifier
 import numpy as np
@@ -74,7 +78,7 @@ class Dataset(dict):
     """Unified data interface.
 
     Implements interface to access arbitrary data.
-    Interface: get_x, get_y, split, dump_prediction.
+    Interface: x, y, data, meta, split, dump_prediction and dict api.
 
     Parameters
     ----------
@@ -87,7 +91,7 @@ class Dataset(dict):
     ----------
     data : pd.DataFrame
         Underlying data.
-    raw_names : dict
+    meta : dict
         Includes index/targets/features identifiers:
         {
             'oid': str
@@ -111,7 +115,7 @@ class Dataset(dict):
             numeric_ind_name : dict, optional
                 {'columns_index':('feature_name',)}
                 Dictionary with numeric features indices as key, and tuple
-                ('feature_name', ) as value.)}
+                ('feature_name', ) as value.
         }
     train_index : array-like, optional
         Train indices.
@@ -134,37 +138,36 @@ class Dataset(dict):
 
     @property
     def oid(self):
+        """str: dataset identifier."""
         return self['oid']
 
     @oid.setter
     def oid(self, value):
         self['oid'] = value
 
-    def get_x(self):
-        """Extract features from dataset.
-
-        Returns
-        -------
-        features : pd.DataFrame
-            Extracted features columns.
-
-        """
+    @property
+    def x(self):
+        """pd.DataFrame : extracted features columns."""
         df = self['data']
-        raw_names = self['raw_names']
-        return df[raw_names['features']]
+        meta = self['meta']
+        return df[meta['features']]
 
-    def get_y(self):
-        """Extract targets from dataset.
-
-        Returns
-        -------
-        targets : pd.DataFrame
-            Extracted target columns.
-
-        """
+    @property
+    def y(self):
+        """pd.DataFrame : extracted targets columns."""
         df = self['data']
-        raw_names = self['raw_names']
-        return df[raw_names['targets']]
+        meta = self['meta']
+        return df[meta['targets']]
+
+    @property
+    def meta(self):
+        """dict: attribute access to meta."""
+        return self['meta']
+
+    @property
+    def data(self):
+        """pd.DataFrame : attribute access to data."""
+        return self['data']
 
     def split(self):
         """Split dataset on train and test.
@@ -205,7 +208,7 @@ class Dataset(dict):
         `   Additional kwargs to pass in .to_csv(**kwargs).
 
         """
-        y_true = self.get_y()
+        y_true = self.y
         # Recover original index and names.
         obj = pd.DataFrame(index=y_true.index.values,
                            data={zip(y_true.columns, y_pred)})\
@@ -318,8 +321,7 @@ class DataPreprocessor(object):
         self.project_path = project_path
 
     def preprocess(self, dataset, targets_names, features_names=None,
-                   categor_names=None,
-                   pos_labels=None, **kwargs):
+                   categor_names=None, pos_labels=None, **kwargs):
         """Preprocess raw data.
 
         Parameters
@@ -327,8 +329,9 @@ class DataPreprocessor(object):
         dataset : Dataset {'data': pandas.DataFrame}
             Raw dataset.
         targets_names: list
-            List of target identifiers in raw dataset.
-        features_names TODO
+            List of targets columns names in raw dataset.
+        features_names: list
+            List of features columns names in raw dataset.
         categor_names: list, None, optional (default=None)
             List of categoric features(also binary) identifiers in raw dataset.
             If None, empty list.
@@ -343,8 +346,10 @@ class DataPreprocessor(object):
         Returns
         -------
         dataset : Dataset
-            Resulted dataset. Key 'data' updated. Key added:
-            'raw_names' : {
+            Resulted dataset. Key updated: 'data'. Key added:
+            'meta' : dict
+                extracted auxiliary information from data
+            {
                 'index': list
                     List of index label(s).
                 'features': list
@@ -373,7 +378,7 @@ class DataPreprocessor(object):
 
         Notes
         -----
-        Don`t change dataframe shape or index/columns names after `raw_names`
+        Don`t change dataframe shape or index/columns names after `meta`
         generating.
 
         """
@@ -391,7 +396,7 @@ class DataPreprocessor(object):
             self._process_targets(raw, targets_names, pos_labels)
         features, raw_info_features =\
             self._process_features(raw, features_names, categor_names)
-        raw_names = {
+        meta = {
             'index': index.name,
             'indices': list(index),
             'targets': targets_names,
@@ -400,9 +405,9 @@ class DataPreprocessor(object):
             **raw_info_features,
             **raw_info_targets,
         }
-        data = self._combine(index, targets, features, raw_names)
+        data = self._combine(index, targets, features, meta)
         dataset.update({'data': data,
-                        'raw_names': raw_names,
+                        'meta': meta,
                         **kwargs})
         return dataset
 
@@ -501,15 +506,15 @@ class DataPreprocessor(object):
             'numeric_ind_name': numeric_ind_name,}
         return features, raw_info_features
 
-    def _combine(self, index, targets, features, raw_names):
+    def _combine(self, index, targets, features, meta):
         """Combine preprocessed sub-data."""
-        columns = raw_names['features']
+        columns = meta['features']
         df = pd.DataFrame(
             data=features,
             index=index,
             columns=columns,
             copy=False,
-        ).rename_axis(raw_names['index'])
+        ).rename_axis(meta['index'])
         df.insert(loc=0, column='targets', value=targets)
         return df
 
@@ -606,8 +611,9 @@ class DataPreprocessor(object):
                                            encoder.categories_[0].tolist())
             else:
                 # Fill gaps with np.nan.
-                features[column_name].fillna(value=np.nan, method=None, axis=None,
-                                         inplace=True, downcast=None)
+                features[column_name].fillna(value=np.nan, method=None,
+                                             axis=None, inplace=True,
+                                             downcast=None)
                 # Generate {'index': ('feature_id',)}.
                 numeric_ind_name[ind] = (column_name,)
         # Cast to np.float64 without copy.
@@ -632,7 +638,7 @@ class DataPreprocessor(object):
 
         Notes
         -----
-        Use del_duplicates=True only before generating dataset `raw_names`.
+        Use del_duplicates=True only before generating dataset `meta`.
 
         """
         # Duplicate rows index mask.
@@ -677,7 +683,7 @@ class DataPreprocessor(object):
 
         Notes
         -----
-        Use del_geps=True only before generating dataset `raw_names`.
+        Use del_geps=True only before generating dataset `meta`.
 
         """
         gaps_number = data.size - data.count().sum()
