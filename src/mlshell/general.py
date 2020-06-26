@@ -571,16 +571,19 @@ class Workflow(mlshell.Producer):
 
     # =============================================== validate =========================================================
     # @memory_profiler
-    def validate(self, pipeline_id, dataset_id, validator, **kwargs):
+    def validate(self, pipeline_id, dataset_id, metric_id, validator, **kwargs):
         """Predict and score on validation set."""
         self.logger.info("\u25CF VALIDATE ON HOLDOUT")
         dataset = self.datasets[dataset_id]
         pipeline = self.pipelines[pipeline_id]
         train, test = dataset.split()
 
-        validator = validator(logger=self.logger)
-        metrics = validator.resolve_metric(kwargs.get('metric', []), self.metrics)
-        validator.via_metrics(metrics, pipeline, train, test, **kwargs)
+        if not isinstance(metric_id, list):
+            metric_id = [metric_id]
+        for i in metric_id:
+            scorer = self.object[i]
+
+        validator.via_metrics(metrics, pipeline, train, test, logger=self.logger, **kwargs)
         # [deprecated] not all metrics can be converted to scorers
         # validator.via_scorers(self.metrics_to_scorers(self.metrics, self.metrics),
         # pipeline, train, test)

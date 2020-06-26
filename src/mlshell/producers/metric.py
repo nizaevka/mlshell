@@ -1,5 +1,13 @@
 """
 
+`mlshell.Scorer also allow to pass custom kwargs while grid search.
+
+Notes
+-----
+
+
+Scorer object need ._kwargs for pass_csutom, that is all, sklearn mainly
+in Producer defined.
 """
 
 
@@ -9,7 +17,9 @@ import sklearn
 
 
 class Scorer(object):
-    def __init__(self, scorer=None):
+    def __init__(self, scorer=None, sid=None, score_func=None,
+                 greater_is_better=True, needs_proba=False,
+                 needs_threshold=False, needs_custom_kwargs=False):
         """Unified pipeline interface.
 
         Implements interface to access arbitrary scorer.
@@ -17,17 +27,54 @@ class Scorer(object):
 
         Attributes
         ----------
-        scorer: callable TODO
+        scorer: callable
             Object for which wrapper is created.
-        metric: callable
-            Scorer underlying metric function.
+        sid : str
+            Scorer identifier.
+        score_func: callable
+            Scorer underlying score function.
+        greater_is_better : boolean, default=True
+            Whether `score_func` is a score function (default), meaning high
+            is good, or a loss function, meaning low is good. In the latter
+            case, the scorer object should sign-flip the outcome of the
+            `score_func`.
+        needs_proba : boolean, default=False
+            Whether `score_func` requires predict_proba to get probability
+            estimates out of a classifier.
+        needs_threshold : boolean, default=False
+            Whether `score_func` takes a continuous decision certainty.
+            This only works for binary classification using estimators that
+            have either a decision_function or predict_proba method.
+        needs_custom_kwargs : bool
+            If True, allow to pass kwargs while grid search for custom metric.
+        kwargs : dict
+            Additional kwargs passed to `score_func` (unchanged if step
+            `pass_custom` not used).
 
         """
         self.scorer = scorer
+        self.score_func = score_func
+        self.sid = sid
+        # Flags.
+        self.greater_is_better = greater_is_better
+        self.needs_proba = needs_proba
+        self.needs_threshold = needs_threshold
+        self.needs_cutom_kwargs = needs_custom_kwargs
+        # [deprecated] not necessery to storage init.
+        # they are in scorer._kwargs
+        # self.kwargs = kwargs
+        # **kwargs : dict
+        #    Additional kwargs, passed to func (initially).
 
-    def __call__(self, *args, **kwargs):
+    @property
+    def kwargs(self):
+        return self.scorer._kwargs
+
+    def __call__(self, estimator, *args, **kwargs):
         """Redirect call to scorer object."""
-        return self.scorer(*args, **kwargs)
+        if self.needs_cutom_kwargs:
+            self._set_custom_kwargs(estimator)
+        return self.scorer(estimator, *args, **kwargs)
 
     def __getattr__(self, name):
         """Redirect unknown methods to scorer object."""
@@ -35,24 +82,55 @@ class Scorer(object):
             getattr(self.scorer, name)(*args, **kwargs)
         return wrapper
 
-    @property
-    def metric(self):
-        """Scorer object metric."""
-        return self._x
+    def _set_custom_kwargs(self, estimator):
+        # Allow to get custom kwargs
+        # [deprecated] not need if recover pass_custom.
+        # self.scorer._kwargs.update(self.init_kwargs)
+        if hasattr(estimator, 'steps'):
+            for step in estimator.steps:
+                if step[0] == 'pass_custom':
+                    temp = step[1].kwargs.get(self.id, {})
+                    self.scorer._kwargs.update(temp)
 
-    def pprint(self):
-        """Not sure if good idea""".
-        # TODO:
-        pass
+    def pprint(self, score):
+        """Pretty print metric result.
+
+        Parameters
+        ----------
+        score : arbitrary object
+            `score_func` output.
+
+        Returns
+        -------
+        score : str
+            Ready to print result.
+
+        """
+        if self.score_func.__name__ == 'confusion_matrix':
+            labels = self.scorer._kwargs.get('labels', None)  # classes
+            score = tabulate.tabulate(
+                pd.DataFrame(data=score, columns=labels, index=labels),
+                headers='keys', tablefmt='psql'
+            ).replace('\n', '\n    ')
+        elif self.score_func.__name__ == 'classification_report':
+            if isinstance(score, dict):
+                score = tabulate.tabulate(
+                    pd.DataFrame(score), headers='keys', tablefmt='psql'
+                ).replace('\n', '\n    ')
+            else:
+                score = score.replace('\n', '\n    ')
+        elif isinstance(score, np.ndarray):
+            score = np.array2string(score, prefix='    ')
+        return str(score)
 
 
-#TODO: [need tests]
+#TODO: [deprecated]
 class ExtendedScorer(object):
     def __init__(self, scorer):
         # Scorer to extend.
         self.scorer = scorer
 
-        # [deprecated] now not memorize state, if no pass_csutom step, use default
+        # [deprecated] now not memorize state, if no pass_csutom step, use default.
         # Last kwargs state to use in score for second stage optimizers.
         # self.cache_custom_kwargs = {}
         # TODO: here is actually problem when multiple pipeline are used.
@@ -60,6 +138,7 @@ class ExtendedScorer(object):
         #   so the attribute error will never rise.
 
         self.init_kwargs = self.scorer._kwargs
+
 
     def __call__(self, estimator, x, y, **kwargs):
         """Read custom_kwargs from current pipeline, pass to scorer.
@@ -126,13 +205,13 @@ class ScorerProducer(pycnfg.Producer):
         self.logger = objects[logger_id]
         self.project_path = objects[path_id]
 
-    def make(self, scorer, func=None, needs_custom_kwargs=False, **kwargs):
+    def make(self, scorer, score_func=None, needs_custom_kwargs=False, **kwargs):
         """Make scorer from metric callable.
 
         Parameters
         ----------
         scorer : mlshell.Scorer interface
-        func : callback or str
+        score_func : callback or str
             Custom function or sklearn built-in metric name.
         needs_custom_kwargs : bool
             If True, allow to pass kwargs while grid search for custom metric.
@@ -140,219 +219,171 @@ class ScorerProducer(pycnfg.Producer):
             Additional kwargs to pass in make_scorer (if not str `func`).
 
         """
-        if func is None:
+        if score_func is None:
             raise ValueError('Specify metric function')
 
-        if isinstance(func, str):
-            # convert to callable
-            # ignore kwargs (built-in `str` metrics has hard-coded kwargs)
-            scorer.scorer = sklearn.metrics.get_scorer(func)
+        # Convert to scorer
+        if isinstance(score_func, str):
+            # Valid sklearn.metrics.SCORERS.keys().
+            # Ignore kwargs, built-in `str` metrics has hard-coded kwargs.
+            scorer.scorer = sklearn.metrics.get_scorer(score_func)
         else:
-            if needs_custom_kwargs:
-                # [deprecated] Now check will not work, separate objects.
-                # if self.custom_scorer:
-                #     raise ValueError("Only one custom metric can be set with 'needs_custom_kwargs'.")
-                # Create special object.
-                custom_scorer = sklearn.metrics.make_scorer(func, **kwargs)
-                scorer = ExtendedScorer(custom_scorer)
-                # [alternative] Rewrite _BaseScorer.
-                # TODO: combine with Scorer class after testing.
-                #   scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
-            else:
-                scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
-
-        # TODO: move out check somewhere or prohibit.
-        # if metric_id not in custom_metrics:
-        #     # valid sklearn.metrics.SCORERS.keys().
-        #     scorers[metric_id] = sklearn.metrics.get_scorer(metric_id)
+            scorer.scorer = sklearn.metrics.make_scorer(score_func, **kwargs)
+            # [deprecated] combined ExtendedScorer and Scorer
+            # if needs_custom_kwargs:
+            #     # Create special object.
+            #     custom_scorer = sklearn.metrics.make_scorer(func, **kwargs)
+            #     scorer = ExtendedScorer(custom_scorer)
+            #     # [alternative] Rewrite _BaseScorer.
+            # else:
+            #     scorer.scorer = sklearn.metrics.make_scorer(func, **kwargs)
+        scorer.score_func = score_func
+        scorer.sid = self.oid.split('__')[-1]
+        scorer.needs_custom_kwargs = needs_custom_kwargs
+        scorer.greater_is_better = scorer.scorer._sign > 0
+        scorer.needs_proba =\
+            isinstance(scorer.scorer, sklearn.metrics._scorer._ProbaScorer)
+        scorer.needs_threshold =\
+            isinstance(scorer.scorer, sklearn.metrics._scorer._ThresholdScorer)
+        scorer.needs_cutom_kwargs = needs_custom_kwargs
+        # [deprecate]
+        # scorer.init_kwargs = copy.deepcopy(scorer.scorer._kwargs)
         return scorer
 
-# [deprecated] Now is the new object.
-#     def resolve_scoring(self, metric_ids, custom_metrics, **kwargs):
-#         """Make scorers from user_metrics.
-#
-#         Args:
-#             metric_ids (sequence of str): user_metrics names to use in gs.
-#             custom_metrics (dict): {'name': (sklearn metric object, bool greater_is_better), }
-#
-#         Returns:
-#             scorers (dict): {'name': sklearn scorer object, }
-#
-#         Note:
-#             if 'gs__metric_id' is None, estimator default will be used.
-#
-#         """
-#         scorers = {}
-#         self.cache_custom_kwargs = kwargs.get('pass_custom__kwargs', {})
-#         self.custom_scorer = None
-#
-#         # [deprecated]
-#         # if not names:
-#         #     # need to set explicit, because always need not None 'refit' name
-#         #     # can`t extract estimator built-in name, so use all from validation user_metrics
-#         #     names = user_metrics.keys()
-#         for metric_id in metric_ids:
-#             if metric_id in custom_metrics:
-#                 metric = custom_metrics[metric_id]
-#                 if isinstance(metric[0], str):
-#                     # convert to callable
-#                     # ignore kwargs (built-in `str` metrics has hard-coded kwargs)
-#                     scorers[metric_id] = sklearn.metrics.get_scorer(metric[0])
-#                     continue
-#                 if len(metric) == 1:
-#                     kwargs = {}
-#                 else:
-#                     kwargs = copy.deepcopy(metric[1])
-#                     if 'needs_custom_kwargs' in kwargs:
-#                         if self.custom_scorer:
-#                             raise ValueError("Only one custom metric can be set with 'needs_custom_kwargs'.")
-#                         del kwargs['needs_custom_kwargs']
-#                         self.custom_scorer = sklearn.metrics.make_scorer(metric[0], **kwargs)
-#                         # [alternative] Rewrite _BaseScorer.
-#                         scorers[metric_id] = self._custom_scorer_shell
-#                         continue
-#                 scorers[metric_id] = sklearn.metrics.make_scorer(metric[0], **kwargs)
-#             else:
-#                 # valid sklearn.metrics.SCORERS.keys().
-#                 scorers[metric_id] = sklearn.metrics.get_scorer(metric_id)
-#         return scorers
 
-    def resolve_metric(self, metric_ids, custom_metrics):
-        res = {}
-        for metric_id in metric_ids:
-            if metric_id in custom_metrics:
-                res.update({metric_id: custom_metrics[metric_id]})
-            else:
-                # Sklearn built-in, resolve through scorer.
-                scorer = sklearn.metrics.get_scorer(metric_id)
-                metric = (
-                    scorer._score_func,
-                    {'greater_is_better': scorer._sign > 0,
-                     'needs_proba':
-                         isinstance(scorer,
-                                    sklearn.metrics._scorer._ProbaScorer),
-                     'needs_threshold':
-                         isinstance(scorer,
-                                    sklearn.metrics._scorer._ThresholdScorer),}
-                )
-                res.update({metric_id: metric})
-        return res
+import operator
+import tabulate
+import pandas as pd
+import numpy as np
 
-    def _via_metrics(self, metrics, pipeline, train, test, **kwargs):
-        # via metrics
-        #   upside: only one inference
-        #   donwside: errpr-prone
-        #   strange: xgboost lib contain auto detection y_type logic.
+class Validator(object):
+    def validate(self, metrics, pipeline, train, test, **kwargs):
+        """
+
+        Parameters
+        ----------
+        metrics
+        pipeline
+        train
+        test
+        kwargs
+
+        Returns
+        -------
+
+        """
+
+        return
+
+    def _via_metrics(self, metrics, pipeline, train, test, logger=logger, **kwargs):
+        """Calculate ccore via score functions.
+
+        Utilize inference, more efficient than use scorers.
+
+        """
         if not metrics:
-            self.logger.warning("Warning: no metrics to evaluate.")
+            logger.warning("Warning: no metrics to evaluate.")
             return
-        x_train, y_train = train
-        x_test, y_test = test
 
-        # [deprecated] not need anymore
-        # if hasattr(pipeline, 'predict_proba'):
-        #     th_ = pipeline.get_params().get('estimate__apply_threshold__threshold', 0.5)
-        #     y_pred_train = self.prob_to_pred(y_pred_proba_train, th_)
-        #     y_pred_test = self.prob_to_pred(y_pred_proba_test, th_)
-
-        # Need to prevent multiple prediction.
-        temp = {'predict_proba': None,
-                'decision_function': None,
-                'predict': None}
+        x_train = train.get_x()
+        y_train = train.get_y()
+        x_test = test.get_x()
+        y_test = test.get_y()
+        # Storage to prevent multiple inference.
+        infer = {'predict_proba': None,
+                 'decision_function': None,
+                 'predict': None}
         for name, metric in metrics.items():
-            if metric[1].get('needs_proba', False):
-                if not hasattr(pipeline, 'predict_proba'):
-                    self.logger.warning(f"Warning: pipeline object has no method 'predict_proba':\n"
-                                        "    ignore metric '{name}'")
-                    continue
-                # [...,i] equal to [:,i]/[:,:,i]/.. (for multi-output target)
-                if not temp['predict_proba']:
-                    # Pipeline assume that there are as much classes as in trainset.
-                    pos_labels_ind = operator.itemgetter('pos_labels_ind')(train.get_classes())
-                    # For multi-output return list of arrays.
-                    pp_train = pipeline.predict_proba(x_train)
-                    pp_test = pipeline.predict_proba(x_test)
-                    if isinstance(pp_train, list):
-                        y_pred_train = [i[..., pos_labels_ind] for i in pp_train]
-                    else:
-                        y_pred_train = pp_train[..., pos_labels_ind]
-                    if isinstance(pp_test, list):
-                        y_pred_test = [i[..., pos_labels_ind] for i in pp_test]
-                    else:
-                        y_pred_test = pp_test[..., pos_labels_ind]
-                    temp['predict_proba'] = (y_pred_train, y_pred_test)
-                else:
-                    y_pred_train, y_pred_test = temp['predict_proba']
-            elif metric[1].get('needs_threshold', False):
-                if not hasattr(pipeline, 'decision_function'):
-                    self.logger.warning(f"Warning: pipeline object has no method 'predict_proba':\n"
-                                        "    ignore metric '{name}'")
-                    continue
-                if not temp['decision_function']:
-                    y_pred_train = pipeline.decision_function(x_train)
-                    y_pred_test = pipeline.decision_function(x_test)
-                    temp['decision_function'] = (y_pred_train, y_pred_test)
-                else:
-                    y_pred_train, y_pred_test = temp['decision_function']
-            else:
-                if not temp['predict']:
-                    y_pred_train = pipeline.predict(x_train)
-                    y_pred_test = pipeline.predict(x_test)
-                    temp['predict'] = (y_pred_train, y_pred_test)
-                else:
-                    y_pred_train, y_pred_test = temp['predict']
+            try:
+                y_pred_train, y_pred_test = self._get_y_pred()
+            except AttributeError as e:
+                # Pipeline has not 'predict_proba', 'decision_function'.
+                logger.warning(f"Ignore metric: {e}")
+                continue
 
-            # skip make_scorer params
-            kwargs = {key: metric[1][key] for key in metric[1]
-                       if key not in ['greater_is_better', 'needs_proba',
-                                      'needs_threshold', 'needs_custom_kwargs']}
+            # Update metric kwargs with pass_custom kwarg from pipeline.
+            if getattr(metric, 'needs_custom_kwargs', False):
+                if hasattr(pipeline, 'steps'):
+                    for step in pipeline.steps:
+                        if step[0] == 'pass_custom':
+                            temp = step[1].kwargs.get(metric.id, {})
+                            metric.kwargs.update(temp)
 
-            # pass_custom steo inly
-            if metric[1].get('needs_custom_kwargs', False):
-                if (hasattr(pipeline, 'steps') and
-                    pipeline.steps[0][0] == 'pass_custom' and
-                    pipeline.steps[0][1].kwargs):
-                    kwargs.update(pipeline.steps[0][1].kwargs)
+            # Score on train.
+            score_train = metric.score_func(y_train, y_pred_train,
+                                            **metric.kwargs)
+            # Score on test.
+            score_test = metric.score_func(y_test, y_pred_test,
+                                           **metric.kwargs)
 
-            # result score on Train
-            score_train = metric[0](y_train, y_pred_train, **kwargs)
-            # result score on test
-            score_test = metric[0](y_test, y_pred_test, **kwargs)
+            score_train = metric.pprint(score_train)
+            score_test = metric.pprint(score_test)
+            score_train = self._pprint(metric, score_train, classes)
+            score_test = self._pprint(metric, score_test, classes)
+            logger.log(5, f"{name}:")
+            logger.log(5, f"Train:\n    {score_train}\n"
+                          f"Test:\n    {score_test}")
 
-            self.logger.log(25, f"{name}:")
-            self.logger.log(5, f"{name}:")
-            self._score_pretty_print(metric, score_train, score_test, classes)
         return
 
-    def _score_pretty_print(self, metric, score_train, score_test, classes):
-        if metric[0].__name__ == 'confusion_matrix':
+    def _get_y_pred(self, name, metric, pipeline, infer, x_train, x_test,):
+        if getattr(metric, 'needs_proba', False):
+            # [...,i] equal to [:,i]/[:,:,i]/.. (for multi-output target)
+            if not infer['predict_proba']:
+                # Pipeline awaits for as much classes as in train.
+                classes, pos_labels_ind = \
+                    operator.itemgetter(
+                        'classes',
+                        'pos_labels_ind'
+                    )(train.get_classes())
+                # For multi-output return list of arrays.
+                pp_train = pipeline.predict_proba(x_train)
+                pp_test = pipeline.predict_proba(x_test)
+                if isinstance(pp_train, list):
+                    y_pred_train = [i[..., pos_labels_ind] for i in pp_train]
+                else:
+                    y_pred_train = pp_train[..., pos_labels_ind]
+                if isinstance(pp_test, list):
+                    y_pred_test = [i[..., pos_labels_ind] for i in pp_test]
+                else:
+                    y_pred_test = pp_test[..., pos_labels_ind]
+                infer['predict_proba'] = (y_pred_train, y_pred_test)
+            else:
+                y_pred_train, y_pred_test = infer['predict_proba']
+        elif getattr(metric, 'needs_threshold', False):
+            if not infer['decision_function']:
+                y_pred_train = pipeline.decision_function(x_train)
+                y_pred_test = pipeline.decision_function(x_test)
+                infer['decision_function'] = (y_pred_train, y_pred_test)
+            else:
+                y_pred_train, y_pred_test = infer['decision_function']
+        else:
+            if not infer['predict']:
+                y_pred_train = pipeline.predict(x_train)
+                y_pred_test = pipeline.predict(x_test)
+                infer['predict'] = (y_pred_train, y_pred_test)
+            else:
+                y_pred_train, y_pred_test = infer['predict']
+        return y_pred_train, y_pred_test
+
+    def _pprint(self, metric, score, classes):
+        if metric.score_func.__name__ == 'confusion_matrix':
             labels = metric[1].get('labels', classes)
-            score_train = tabulate.tabulate(pd.DataFrame(data=score_train,
-                                                         columns=labels,
-                                                         index=labels),
-                                            headers='keys', tablefmt='psql').replace('\n', '\n    ')
-            score_test = tabulate.tabulate(pd.DataFrame(data=score_test,
-                                                        columns=labels,
-                                                        index=labels),
-                                           headers='keys', tablefmt='psql').replace('\n', '\n    ')
-        elif metric[0].__name__ == 'classification_report':
-            if isinstance(score_train, dict):
-                score_train = tabulate.tabulate(pd.DataFrame(score_train),
-                                                headers='keys', tablefmt='psql').replace('\n', '\n    ')
-                score_test = tabulate.tabulate(pd.DataFrame(score_test),
-                                               headers='keys', tablefmt='psql').replace('\n', '\n    ')
+            score = tabulate.tabulate(
+                pd.DataFrame(data=score, columns=labels, index=labels),
+                headers='keys', tablefmt='psql'
+            ).replace('\n', '\n    ')
+        elif metric.score_func.__name__ == 'classification_report':
+            if isinstance(score, dict):
+                score = tabulate.tabulate(
+                    pd.DataFrame(score), headers='keys', tablefmt='psql'
+                ).replace('\n', '\n    ')
             else:
-                score_train = score_train.replace('\n', '\n    ')
-                score_test = score_test.replace('\n', '\n    ')
-        elif isinstance(score_train, np.ndarray):
+                score = score.replace('\n', '\n    ')
+        elif isinstance(score, np.ndarray):
             # pretty printing numpy arrays
-            score_train = np.array2string(score_train, prefix='    ')
-            score_test = np.array2string(score_test, prefix='    ')
-        self.logger.log(25, f"Train:\n    {score_train}\n"
-                            f"Test:\n    {score_test}")
-        self.logger.log(5, f"Train:\n    {score_train}\n"
-                           f"Test:\n    {score_test}")
-        return
+            score = np.array2string(score, prefix='    ')
+        return score
 
     # [deprecated] need rearrange
     # def _via_scorers(self, scorers, pipeline,

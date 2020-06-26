@@ -33,7 +33,8 @@ The target for each sub-configuration is to create an instance.
 * takes `init` and consecutive pass it to `steps` with specified kwargs.
 * return resulting object, that can be used as kwargs for any step in others
 sections. To specify the order in which sections handled, the 'priority'
-key is available in each sub-configuration
+key is available in each sub-configuration. `section_id`/`configuration_id`
+should not contains double underscore '__'.
 
 For flexibility, it is possible to:
 * Specify global value for common kwargs in steps via `global` key.
