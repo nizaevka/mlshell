@@ -278,7 +278,7 @@ class Validator(object):
     def _via_metrics(self, metrics, pipeline, train, test, logger=logger, **kwargs):
         """Calculate ccore via score functions.
 
-        Utilize inference, more efficient than use scorers.
+        Reutilize inference, more efficient than via scorers.
 
         """
         if not metrics:
@@ -294,13 +294,15 @@ class Validator(object):
                  'decision_function': None,
                  'predict': None}
         for name, metric in metrics.items():
+            logger.log(5, f"{name}:")
+            for dataset in datasets:
+
             try:
-                y_pred_train, y_pred_test = self._get_y_pred()
+                y_pred = self._get_y_pred(dataset)
             except AttributeError as e:
                 # Pipeline has not 'predict_proba', 'decision_function'.
                 logger.warning(f"Ignore metric: {e}")
                 continue
-
             # Update metric kwargs with pass_custom kwarg from pipeline.
             if getattr(metric, 'needs_custom_kwargs', False):
                 if hasattr(pipeline, 'steps'):
@@ -308,19 +310,14 @@ class Validator(object):
                         if step[0] == 'pass_custom':
                             temp = step[1].kwargs.get(metric.id, {})
                             metric.kwargs.update(temp)
-
             # Score on train.
             score_train = metric.score_func(y_train, y_pred_train,
                                             **metric.kwargs)
             # Score on test.
             score_test = metric.score_func(y_test, y_pred_test,
                                            **metric.kwargs)
-
             score_train = metric.pprint(score_train)
             score_test = metric.pprint(score_test)
-            score_train = self._pprint(metric, score_train, classes)
-            score_test = self._pprint(metric, score_test, classes)
-            logger.log(5, f"{name}:")
             logger.log(5, f"Train:\n    {score_train}\n"
                           f"Test:\n    {score_test}")
 
@@ -366,24 +363,6 @@ class Validator(object):
                 y_pred_train, y_pred_test = infer['predict']
         return y_pred_train, y_pred_test
 
-    def _pprint(self, metric, score, classes):
-        if metric.score_func.__name__ == 'confusion_matrix':
-            labels = metric[1].get('labels', classes)
-            score = tabulate.tabulate(
-                pd.DataFrame(data=score, columns=labels, index=labels),
-                headers='keys', tablefmt='psql'
-            ).replace('\n', '\n    ')
-        elif metric.score_func.__name__ == 'classification_report':
-            if isinstance(score, dict):
-                score = tabulate.tabulate(
-                    pd.DataFrame(score), headers='keys', tablefmt='psql'
-                ).replace('\n', '\n    ')
-            else:
-                score = score.replace('\n', '\n    ')
-        elif isinstance(score, np.ndarray):
-            # pretty printing numpy arrays
-            score = np.array2string(score, prefix='    ')
-        return score
 
     # [deprecated] need rearrange
     # def _via_scorers(self, scorers, pipeline,
