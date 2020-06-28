@@ -28,18 +28,12 @@ meta
     не все обязательны или все?
     pos_labels_ind в валидаторе
     classes, pos_labels_ind, pos_labels в резолвере
-    categoric_ind_name, numeric_ind_name в резолвере (на самом деле только keys())
+    categoric_ind_name, numeric_ind_name в резолвере
 dump
 split
 ...
 
-TODO:
-* categoric_ind_name/numeric_ind_name used in resolver if hp_name exist and set
-'auto'/['auto']
-
-
 TODO: check
-* categoric_ind_name/numeric_ind_name move under meta
 * [deprecated] If None, auto add zero values under 'target' id.
         try:
             targets_df = raw[target_names]

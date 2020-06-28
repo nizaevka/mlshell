@@ -30,7 +30,7 @@ class HpResolver(object):
             Hyper-parameter identifier.
         dataset : mlshell.Dataset
             Dataset to to extract from.
-        pipeline : sklearn.pipeline.Pipeline interface
+        pipeline : mlshell.Pipeline
             Pipeline contain `hp_name` in get_params().
         **kwargs : dict
             Additional kwargs to pass in corresponding resolver endpoint.
@@ -56,20 +56,14 @@ class HpResolver(object):
         """
         if hp_name ==\
                 'process_parallel__pipeline_categoric__select_columns__kwargs':
-            if 'categoric_ind_name' in dataset:
-                categoric_ind_name = dataset.meta['categoric_ind_name']
-            else:
-                categoric_ind_name = self._extract_ind_name(dataset)[1]
+            categoric_ind_name = dataset.meta['categoric_ind_name']
             value = {'indices': list(categoric_ind_name.keys())}
         elif hp_name ==\
                 'process_parallel__pipeline_numeric__select_columns__kwargs':
-            if 'numeric_ind_name' in dataset:
-                numeric_ind_name = dataset.meta['numeric_ind_name']
-            else:
-                numeric_ind_name = self._extract_ind_name(dataset)[2]
+            numeric_ind_name = dataset.meta['numeric_ind_name']
             value = {'indices': list(numeric_ind_name.keys())}
         elif hp_name == 'estimate__apply_threshold__threshold':
-            value = self.th_resolver(pipeline, dataset, **kwargs)
+            value = self.th_resolver(dataset, pipeline, **kwargs)
         elif hp_name == 'estimate__apply_threshold__kwargs':
             value = {i: dataset.meta[i]
                      for i in ['pos_labels_ind', 'pos_labels', 'classes']}
@@ -78,25 +72,6 @@ class HpResolver(object):
         if value != 'auto':
             print(f"Resolve hp: {hp_name}")
         return value
-
-    def _extract_ind_name(self, dataset):
-        """Extract categoric/numeric names and index."""
-        data = dataset.data
-        meta = dataset.meta
-        categoric_ind_name = {}
-        numeric_ind_name = {}
-        count = 0
-        for ind, column_name in enumerate(data):
-            if column_name in meta['targets']:
-                count += 1
-                continue
-            if column_name in meta['categor_features']:
-                # Loose categories names.
-                categoric_ind_name[ind - count] =\
-                    (column_name, np.unique(data[column_name]))
-            else:
-                numeric_ind_name[ind - count] = (column_name,)
-        return data, categoric_ind_name, numeric_ind_name
 
     def th_resolver(self, dataset, pipeline, **kwargs):
         """Get threshold range from ROC curve on OOF probabilities predictions.

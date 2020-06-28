@@ -1,25 +1,14 @@
-﻿"""ML workflow class.
+﻿"""
+The :mod:`mlshell.workflow` contains examples of `Workflow` class to produce
+results for typical machine learning task .
+
+`Workflow` class uses unified interface to work with underlying
+pipelines/datasets/metrics. Current implementation specifies methods to
+fit/predict/optimize/validate/dump pipeline and plot results.
+
+
 TODO: in fit, optimize maybe want use only part of dataset => allow kwargs in split
-    also get_X() get_y()  mayve change to data, target attributes with generation.
-
-TODO: All API check
-    https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
-    multiclass, multioutput
-    https://scikit-learn.org/stable/modules/multiclass.html#multiclass
-TODO: There were error in old with load if new workflow, function addresses changes.
-    now i use special {'indices':'data__categoric_ind_names'}
-TODO: add clusterer
-
-TODO:
-    better numpy style, easy  to replace
-    do google then change
-    https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_numpy.html
-    https://scikit-learn.org/stable/developers/develop.html#rolling-your-own-estimator
-TODO:
-    resolve scoring more beautiful
-TODO:
-    think about replace get_x, get_y with cycled generators
-
+    .sub(index)
 
 # TODO: Move out to related methods.
 (dict): if user skip declaration for any parameter the default one will be used.
@@ -92,11 +81,12 @@ TODO:
 """
 
 
-import mlshell.custom
+import mlshell.pycnfg as pycnfg
 import mlshell.default
 from mlshell.libs import *
 from mlshell.callbacks import dic_flatter, json_keys2int
 
+__all__ = ['Workflow', 'Pipe']
 
 def checker(function_to_decorate, options=None):
     """Decorator to check alteration in hash(self.data_df) after call method"""
@@ -117,7 +107,7 @@ def checker(function_to_decorate, options=None):
     return wrapper
 
 
-class Workflow(mlshell.Producer):
+class Workflow(pycnfg.Producer):
     """Class for ml workflow.
 
     Decription what await from dataset/pipeline/metrics structure.
@@ -199,38 +189,10 @@ class Workflow(mlshell.Producer):
         self.np_error_stat = {}
         np.seterrcall(self.np_error_callback)
 
-        # fullfill in self.unify_data()
-        self.classes_ = None
-        self.n_classes = None
-        self.neg_label = None
-        self.pos_labels = None
-        self.pos_labels_ind = None
-        self.categoric_ind_name = None
-        self.numeric_ind_name = None
-        self.data_hash = None
-        # [deprected] make separate function call
-        # self.unify_data(data)
-
         # for pass custom only (thread-unsafe)
         self.custom_scorer = {'n/a': None}
         self.cache_custom_kwargs = {'n/a':{}}
         self.current_pipeline_id = 'n/a'
-
-        # fit
-        self.refit = None
-        self.scorers = None
-        # fullfill in self.split()
-        self.train_index = None
-        self.test_index = None
-        self.x_train = None
-        self.y_train = None
-        self.x_test = None
-        self.y_test = None
-        # fulfill in self.fit()
-        self.best_params_ = {}
-        self.modifiers = []
-        # fulfill in self.gen_gui_params()
-        self.gui_params = {}
 
     def __hash__(self):
         # TODO: hash of it`s self
