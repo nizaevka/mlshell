@@ -189,17 +189,22 @@ class Dataset(dict):
         test = Dataset(dict(self, **{'data': df.loc[test_index]}))
         return train, test
 
-    def dump_prediction(self, filepath, y_pred, **kwargs):
+    def dump_pred(self, filepath, y_pred, **kwargs):
         """Dump columns to disk.
 
         Parameters
         ----------
         filepath: str
-            Target filepath without extension.
+            Filepath without extension.
         y_pred: array-like
             pipeline.predict() result.
         **kwargs: dict
         `   Additional kwargs to pass in .to_csv(**kwargs).
+
+        Returns
+        -------
+        fullpath : str
+            Full filepath.
 
         """
         y_true = self.y
@@ -207,10 +212,11 @@ class Dataset(dict):
         obj = pd.DataFrame(index=y_true.index.values,
                            data={zip(y_true.columns, y_pred)})\
             .rename_axis(y_true.index.name)
-        with open(f"{filepath}.csv", 'w', newline='') as f:
+        fullpath = f"{filepath}_pred.csv"
+        with open(fullpath, 'w', newline='') as f:
             obj.to_csv(f, mode='w', header=True,
                        index=True, sep=',', line_terminator='\n', **kwargs)
-        return None
+        return fullpath
 
 
 class DataIO(object):
@@ -242,7 +248,7 @@ class DataIO(object):
         ----------
         dataset : Dataset
             Template for dataset.
-        filepath : str, optional
+        filepath : str
             Absolute path to csv file or relative to 'self.project_dir' started
             with './'.
         random_skip : bool, optional (default=False)

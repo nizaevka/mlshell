@@ -35,8 +35,8 @@ import os
 
 import joblib
 import mlshell
-import sklearn.utils.estimator_checks
 import mlshell.pycnfg as pycnfg
+import sklearn.utils.estimator_checks
 
 __all__ = ['Pipeline', 'PipelineProducer']
 
@@ -101,17 +101,25 @@ class Pipeline(object):
         """Check if pipeline regressor."""
         return sklearn.base.is_regressor(self.pipeline)
 
-    def dump(self, file):
+    def dump(self, filepath, **kwargs):
         """Dump pipeline on disk.
 
         Parameters
         ----------
-        file: str
-            Filepath.
+        filepath : str
+            Filepath without extension.
+        **kwargs : dict
+        `   Additional kwargs to pass in dump(**kwargs).
+
+        Returns
+        -------
+        fullpath : str
+            Full filepath.
 
         """
-        joblib.dump(self.pipeline, file)
-        return None
+        fullpath = f'{filepath}.model'
+        joblib.dump(self.pipeline, fullpath, **kwargs)
+        return fullpath
 
 
 class PipelineProducer(pycnfg.Producer):
@@ -121,8 +129,9 @@ class PipelineProducer(pycnfg.Producer):
 
     Parameters
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with resulted objects from previous executed producers:
+        {'section_id__config__id', object,}
     oid : str
         Unique identifier of produced object.
     path_id : str
@@ -132,13 +141,14 @@ class PipelineProducer(pycnfg.Producer):
 
     Attributes
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with resulted objects from previous executed producers:
+        {'section_id__config__id', object,}
     oid : str
         Unique identifier of produced object.
     logger : logger object
         Default logger logging.getLogger().
-    project_path: str
+    project_path : str
         Absolute path to project dir.
 
     """
@@ -154,7 +164,7 @@ class PipelineProducer(pycnfg.Producer):
 
         Parameters
         ----------
-        pipeline : Pipeline
+        pipeline : mlshell.Pipeline
             Pipeline template, will be updated.
         steps: list, class, optional (default=none)
             Steps of pipeline, passed to sklearn.pipeline.Pipeline.
@@ -168,7 +178,7 @@ class PipelineProducer(pycnfg.Producer):
 
         Returns
         -------
-        pipeline : Pipeline
+        pipeline : mlshell.Pipeline
             Resulted pipeline.
 
         Notes
@@ -183,28 +193,51 @@ class PipelineProducer(pycnfg.Producer):
                                                        generate_only=False)
         return pipeline
 
-    def load(self, pipeline, filepath=None, **kwargs):
+    def load(self, pipeline, filepath, **kwargs):
         """Load fitted model from disk.
 
         Parameters
         ----------
-        pipeline : Pipeline
+        pipeline : mlshell.Pipeline
             Pipeline template, will be updated.
-        filepath : str, optional (default='data/train.csv')
-            Path to csv file relative to `project_dir`.
+        filepath : str
+            Absolute path load file or relative to 'self.project_dir' started
+            with './'.
         kwargs : dict
             Additional parameters to pass in load().
 
         Returns
         -------
-        pipeline : Pipeline
+        pipeline : mlshell.Pipeline
             Resulted pipeline.
 
         """
         self.logger.info("|__  LOAD PIPELINE")
+        if filepath.startswith('./'):
+            filepath = f"{self.project_path}/{filepath[2:]}"
+
         pipeline.pipeline = joblib.load(filepath, **kwargs)
         self.logger.info('Load fitted model from file:\n'
                          '    {}'.format(filepath))
+        return pipeline
+
+    def info(self, pipeline, **kwargs):
+        """Log pipeline info.
+
+        Parameters
+        ----------
+        pipeline : mlshell.Pipeline
+            Pipeline to explore.
+        **kwargs : kwargs
+            Additional parameters to pass in low-level functions.
+
+        Returns
+        -------
+        pipeline : mlshell.Pipeline
+            For compliance with producer logic.
+
+        """
+        self._print_steps(pipeline.pipeline, **kwargs)
         return pipeline
 
     def _memory_resolve(self, memory):
@@ -233,6 +266,23 @@ class PipelineProducer(pycnfg.Producer):
                 clss = steps
             steps = clss(**kwargs).steps
         return steps
+
+    def _print_steps(self, pipeline, **kwargs):
+        """"Nice print of pipeline steps."""
+        params = pipeline.pipeline.get_params()
+        self.logger.debug('Pipeline steps:')
+        if 'steps' not in params:
+            return
+        for i, step in enumerate(params['steps']):
+            step_name = step[0]
+            # step_hp = {key: params[key] for key in params.keys()
+            #            if step_name + '__' in key}
+            self.logger.debug(f"  ({i})  {step[0]}\n"
+                              f"    {step[1]}")
+            self.logger.debug('    hp:\n'
+                              '   {jsbeautifier.beautify(str(step_hp))}')
+        self.logger.debug('+' * 100)
+        return
 
 
 if __name__ == '__main__':

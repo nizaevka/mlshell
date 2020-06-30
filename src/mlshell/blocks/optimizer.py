@@ -1,12 +1,18 @@
-"""Note
+"""
+The :mod:`mlshell.blocks.optimizer` contains examples of `Optimizer` class to
+to optimize pipeline hyper-parameters.
+
+TODO:
 dump_runs better here, cause we can change scheme
 
 two otimizer, two otimize() function in workflow
 best_params in pipeline mergable, also loked up hp_grid mergable
 """
 
-from mlshell.libs import *
 import mlshell
+import mlshell.custom
+import sklearn
+import pandas as pd
 
 
 class SklearnOptimizerMixin(object):
@@ -206,64 +212,81 @@ class SklearnOptimizerMixin(object):
         # dic_flatter(dic, dic_flat)
         # pd.DataFrame(dic_flat)
 
-    def _get_n_iter(self, n_iter, hp_grid):
-        """Set gs number of runs"""
+    def _resolve_n_iter(self, n_iter, hp_grid):
+        """Set number of runs in grid search."""
         # calculate from hps ranges if user 'gs__runs' is not given
-        if n_iter is None:
-            try:
-                # 1.0 if hp_grid={}
-                n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0]
-                                  for i in hp_grid.values()])
-            except AttributeError as e:
-                raise ValueError("Error: distribution for hyperparameter grid is used,"
-                                 " specify 'gs__runs' in params.")
+        if n_iter is not None:
+            return n_iter
+        try:
+            # 1.0 if hp_grid={}
+            n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0]
+                              for i in hp_grid.values()])
+        except AttributeError as e:
+            raise ValueError("Distribution is used for hyperparameter grid, "
+                             "specify 'runs' in gs_params.")
         return n_iter
 
 
 class RandomizedSearchOptimizer(SklearnOptimizerMixin):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, pipeline, hp_grid, scoring, **kwargs):
         super().__init__()
+        n_iter = self._resolve_n_iter(kwargs.pop('n_iter', 10), hp_grid)
+        self.optimizer = sklearn.model_selection.RandomizedSearchCV(
+            pipeline, hp_grid, scoring=scoring, n_iter=n_iter, **kwargs)
 
-        # [alternative]: move out __init__ and inherent from RandomizedSearchCV directly
-        #    actually monkeypatching is bad practice
-        #    and then user can`t change this behavior.
-        if kwargs.get('n_iter', False) is None:
-            kwargs['n_iter'] = self._get_n_iter(kwargs['n_iter'], kwargs.get('hp_grid', {}))
-
-        self.optimizer = sklearn.model_selection.RandomizedSearchCV(*args, **kwargs)
-
-    def fit(self, x, y, **fit_params):
-        """Tune hp on train by cv."""
-        self.optimizer.fit(x, y, **fit_params)
-
-        # self.__dict__.update(self.optimizer.__dict__)
-        # need for dump
-        # self.pipeline = self.optimizer.__dict__.get('best_estimator_', self.pipeline)
-        return self
+    def fit(self, *args, **fit_params):
+        self.optimizer.fit(*args, **fit_params)
+        return None
 
 
-class ThresholdOptimizer(SklearnOptimizerMixin):
-    """ Separate threshold optimizer to avoid multiple full pipeline fit."""
-    def __init__(self, logger, pipeline, **kwargs):
+class MockOptimizer(SklearnOptimizerMixin):
+    """Threshold optimizer.
+
+    Provide interface for separate optimize step to brute force threshold in
+    classification without full pipeline fit.
+
+    """
+    def __init__(self, pipeline, hp_grid, scoring, **kwargs):
+        """
+
+        Parameters
+        ----------
+        pipeline
+        hp_grid
+        scoring
+        hp_mock : list of str
+            Pipeline hp to mock for brute force.
+        **kwargs
+
+
+        """
         super().__init__()
-        self.logger = logger
-        self.pipeline = pipeline
+        n_iter = self._resolve_n_iter(kwargs.pop('n_iter', 10), hp_grid)
+        mock_pipeline = self._resolve_pipeline(pipeline, hp_grid)
+        self.optimizer = sklearn.model_selection.RandomizedSearchCV(
+            mock_pipeline, hp_grid, scoring=scoring, n_iter=n_iter, **kwargs)
 
-        hp_grid = kwargs.get('hp_grid', {})
-        if kwargs.get('n_iter', False) is None:
-            kwargs['n_iter'] = self._get_n_iter(kwargs['n_iter'], kwargs.get('hp_grid', {}))
+    def _resolve_pipeline(self, pipeline, hp_grid):
+        """Reproduce pipeline steps structure."""
+        # Default (if not hp_grid).
+        mock_pipeline = pipeline
+        params = pipeline.get_params()
+        for hp_name in hp_grid:  # 'a__b__c'
+            # Copy whole original step, contain hp_name last parameter
+            # and recover upstream name structure (envelop all except last).
+            # If only one subname, copy whole pipeline.
+            lis = hp_name.split('__')  # ['a', 'b', 'c']
+            step_name = '__'.join(lis[:-1])  # ['a', 'b']
 
-        self.th_name = kwargs.get('th_name')
-        # reproduce pipeline hp name structure
-        # TODO: extract from pipeline
-        mock_pipeline = mlshell.custom.ThresholdClassifier(self.classes_, self.pos_label_ind,
-                                                           self.pos_label, self.neg_label),
-        # envelop all except last
-        for subname in self.th_name.split('__')[-2::-1]:
-            mock_pipeline = sklearn.pipeline.Pipeline(steps=[(subname, mock_pipeline)])
+            if step_name:
+                for subname in lis[-2::-1]:  # ['b', 'a']
+                    # Check if subname already exist.
 
-        self.optimizer_th_ = sklearn.model_selection.RandomizedSearchCV(
-            mock_pipeline, hp_grid, **kwargs)
+                    mock_pipeline = sklearn.pipeline.Pipeline(
+                        steps=[(subname, params[step_name])])
+            else:
+                mock_pipeline = pipeline
+        return mock_pipeline
 
     def fit(self, x, y, **fit_params):
         optimizer = self.optimizer

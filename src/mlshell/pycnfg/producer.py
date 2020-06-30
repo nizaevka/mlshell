@@ -10,13 +10,14 @@ It useful to save time when reusing a configuration.
 
 import glob
 import json
-import os
 import logging
+import os
 
 import dill
+import jsbeautifier
+import mlshell.pycnfg as pycnfg
 import numpy as np
 import pandas as pd
-import mlshell.pycnfg as pycnfg
 
 
 class Producer(object):
@@ -26,15 +27,17 @@ class Producer(object):
 
     Parameters
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with resulted objects from previous executed producers:
+        {'section_id__config__id', object}.
     oid : str
         Unique identifier of produced object.
 
     Attributes
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with resulted objects from previous executed producers:
+        {'section_id__config__id', object,}
     oid : str
         Unique identifier of produced object.
     logger : logger object
@@ -71,6 +74,8 @@ class Producer(object):
 
         """
         self.logger.info(f"|__ CONFIGURATION: {self.oid}")
+        self.logger.debug(f"Used params:\n"
+                          f"    {jsbeautifier.beautify(str(steps))}")
         res = init
         for step in steps:
             method = step[0]

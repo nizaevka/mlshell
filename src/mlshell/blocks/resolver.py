@@ -7,8 +7,8 @@ import numpy as np
 import sklearn
 
 
-class HpResolver(object):
-    """Resolve hyperparameter based on dataset value.
+class Resolver(object):
+    """Resolve hyper-parameter based on dataset.
 
     Interface: resolve, th_resolver
 
@@ -18,20 +18,20 @@ class HpResolver(object):
     """
     _required_parameters = []
 
-    def __init__(self,):
+    def __init__(self):
         pass
 
-    def resolve(self, hp_name, dataset, pipeline, **kwargs):
+    def resolve(self, hp_name, pipeline, dataset, **kwargs):
         """Resolve hyper-parameter value.
 
         Parameters
         ----------
         hp_name : str
             Hyper-parameter identifier.
-        dataset : mlshell.Dataset
-            Dataset to to extract from.
         pipeline : mlshell.Pipeline
             Pipeline contain `hp_name` in get_params().
+        dataset : mlshell.Dataset
+            Dataset to to extract from.
         **kwargs : dict
             Additional kwargs to pass in corresponding resolver endpoint.
 
@@ -63,7 +63,7 @@ class HpResolver(object):
             numeric_ind_name = dataset.meta['numeric_ind_name']
             value = {'indices': list(numeric_ind_name.keys())}
         elif hp_name == 'estimate__apply_threshold__threshold':
-            value = self.th_resolver(dataset, pipeline, **kwargs)
+            value = self.th_resolver(pipeline, dataset, **kwargs)
         elif hp_name == 'estimate__apply_threshold__kwargs':
             value = {i: dataset.meta[i]
                      for i in ['pos_labels_ind', 'pos_labels', 'classes']}
@@ -73,7 +73,7 @@ class HpResolver(object):
             print(f"Resolve hp: {hp_name}")
         return value
 
-    def th_resolver(self, dataset, pipeline, **kwargs):
+    def th_resolver(self, pipeline, dataset, **kwargs):
         """Get threshold range from ROC curve on OOF probabilities predictions.
 
         If necessary to grid search threshold simultaneously with other hps,
@@ -89,10 +89,10 @@ class HpResolver(object):
 
         Parameters
         ----------
+        pipeline : mlshell.Pipeline
+            Pipeline to resolve thresholds for.
         dataset : mlshell.Dataset
             Dataset to to extract from.
-        pipeline : mlshell.Pipeline
-            Estimator.
         **kwargs : dict
             Kwargs['cross_val_predict'] to pass in `sklearn.model_selection`.
             cross_val_predict. Sub-key 'method' value always should be set to
@@ -124,7 +124,7 @@ class HpResolver(object):
                                 'pos_labels_ind')(dataset.meta)
         # Extended sklearn.model_selection.cross_val_predict (TimeSplitter).
         y_pred_proba, index = mlshell.custom.cross_val_predict(
-            pipeline.pipeline, x, y=y, **kwargs['cross_val_predict'])
+            pipeline, x, y=y, **kwargs['cross_val_predict'])
         # y_true!=y for TimeSplitter.
         y_true = y.values[index] if hasattr(y, 'loc') else y[index]
         # Calculate roc_curve, sample th close to tpr/(tpr+fpr) maximum.

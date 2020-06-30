@@ -24,6 +24,7 @@ class LevelFilter(object):
 class CustomFormatter(logging.Formatter):
     """Custom formatter for logger configuration."""
     def format(self, record):
+        if levelname
         record.message.replace('|__ ', '\u25CF ')
         record.message.replace('    |__ ', '\u25CF \u25B6 ')
         return record
@@ -40,7 +41,7 @@ CONFIG = {
     "handlers": {
         "test_handler": {
             "class": "logging.FileHandler",
-            "formatter": "default",
+            "formatter": "custom",
             "filename": 'test.log',
             "level": 5,
             "filters": ['test_level_filter']
@@ -49,7 +50,7 @@ CONFIG = {
             "class": "logging.handlers.RotatingFileHandler",
             "maxBytes": 25000000,  # 25mb 25*10^6 byte.
             "backupCount": 3,      # Amount of backup files.
-            "formatter": "default",
+            "formatter": "custom",
             "filename": 'debug.log',  # Init only, will be replaced.
             "level": "DEBUG",
         },
@@ -57,7 +58,7 @@ CONFIG = {
             "class": "logging.handlers.RotatingFileHandler",
             "maxBytes": 25000000,
             "backupCount": 5,
-            "formatter": "default",
+            "formatter": "custom",
             "filename": 'info.log',
             "level": "INFO",  # 20
         },
@@ -65,13 +66,13 @@ CONFIG = {
             "class": "logging.handlers.RotatingFileHandler",
             "maxBytes": 25000000,
             "backupCount": 5,
-            "formatter": "default",
+            "formatter": "custom",
             "filename": 'info.log',
             "level": 25,
         },
         "warning_handler": {
             "class": "logging.FileHandler",
-            "formatter": "custom",
+            "formatter": "default",
             "filename": 'warning.log',
             "level": "WARNING",  # 30
         },
@@ -89,13 +90,13 @@ CONFIG = {
         },
         "console_handler": {
             "class": "logging.StreamHandler",
-            "formatter": "default",
+            "formatter": "custom",
             "level": "INFO",
             "stream": None,  # Default in std.err (marked).
         },
         "http_handler": {
             "class": "logging.handlers.HTTPHandler",
-            "formatter": "default",  # Ignore custom (as use LogRecord object).
+            "formatter": "custom",  # Ignore custom (as use LogRecord object).
             "level": "ERROR",
             "host": 'www.example.com',
             "url": 'https://wwww.example.com/address',
@@ -113,11 +114,11 @@ CONFIG = {
     },
     "formatters": {
         "default": {
-            "format": "%(message)s%(delimeter)s"
+            "format": "%(levelname)s: %(message)s%(delimeter)s"
         },
         "custom": {
             "()": CustomFormatter,
-            "format": "%(message)s%(delimeter)s",  # %(levelname)s:
+            "format": "%(message)s%(delimeter)s",
         },
     }
 }

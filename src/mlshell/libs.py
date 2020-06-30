@@ -14,7 +14,7 @@ import json
 import tempfile
 import random as rd
 import uuid
-from hashlib import md5
+import hashlib
 import warnings
 import time
 import atexit
@@ -93,17 +93,14 @@ atexit.register(playsound, 600, 500)
 atexit.register(playsound, 400, 2000)  # will be the first
 # turn off FutureWarnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
-# turn on: inf as NaN
-pd.options.mode.use_inf_as_na = True
-np.seterr(all='call')
-# need both, without np CV no reproducible
-# lgbm model random_state ignored
 
 # [deprecated] ny default, not fixed at all
 # by default fixed everywhere
 # to disable, need to set None explicit in endpoint
 # https://scikit-learn.org/stable/developers/develop.html#random-numbers
 # better use random_state everythere
+# need both, without np CV no reproducible
+# lgbm model random_state ignored
 # rd.seed(42)
 # np.random.seed(42)
 

@@ -196,7 +196,7 @@ class Handler(object):
         configs = self._parse_conf(conf, default_conf)
         return configs
 
-    def exec(self, configs):
+    def exec(self, configs, objects=None):
         """Execute configurations in priority.
 
         For each configuration:
@@ -208,14 +208,17 @@ class Handler(object):
 
         Parameters
         ----------
-        configs : list of tuple [('section_id__config__id', config), ...]
-            List of configurations, prepared for execution.
+        configs : list of tuple
+            List of configurations, prepared for execution:
+            [('section_id__config__id', config), ...]
+        objects : dict, None, optional (default=None)
+            Dict of initial objects. If None, {}.
 
         Returns
         -------
-        objects : dict {'section_id__config__id', object,}
-            Dictionary with resulted objects from `configs` execution.
-
+        objects : dict
+            Dictionary with resulted objects from `configs` execution"
+            {'section_id__config__id': object}
         Notes
         -----
         `producer`/`init` auto initialized.
@@ -224,7 +227,9 @@ class Handler(object):
         {'init': {}, 'steps': [], 'producer': pycnfg.Producer, 'patch': {},}
 
         """
-        objects = {}
+        if objects is None:
+            objects = {}
+
         for config in configs:
             oid, val = config
             objects[oid] = self._exec(oid, val, objects)

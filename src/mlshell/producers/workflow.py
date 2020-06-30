@@ -7,9 +7,6 @@ pipelines/datasets/metrics. Current implementation specifies methods to
 fit/predict/optimize/validate/dump pipeline and plot results.
 
 
-TODO: in fit, optimize maybe want use only part of dataset => allow kwargs in split
-    .sub(index)
-
 # TODO: Move out to related methods.
 (dict): if user skip declaration for any parameter the default one will be used.
 
@@ -82,333 +79,264 @@ TODO: in fit, optimize maybe want use only part of dataset => allow kwargs in sp
 
 
 import mlshell.pycnfg as pycnfg
-import mlshell.default
-from mlshell.libs import *
-from mlshell.callbacks import dic_flatter, json_keys2int
+import mlshell
+import hashlib
+import pathlib
+import inspect
+import jsbeautifier
+import numpy as np
+import pandas as pd
+import os
+import threading
+import time
+import sklearn
+import copy
 
-__all__ = ['Workflow', 'Pipe']
+__all__ = ['Workflow']
 
-def checker(function_to_decorate, options=None):
-    """Decorator to check alteration in hash(self.data_df) after call method"""
-    # TODO: multioptional
-    #     add self._np_error_stat flush and check at the end!
-    #     update hash check
-    # https://stackoverflow.com/questions/10294014/python-decorator-best-practice-using-a-class-vs-a-function/10300995
+
+def checker(func, options=None):
+    """Decorator.
+
+    Logs:
+    * Alteration in objects.
+    * Numpy errors.
+
+     """
     if options is None:
         options = []
     def wrapper(*args, **kwargs):
         self = args[0]
-        # before = pd.util.hash_pandas_object(self.data_df).sum()
-        function_to_decorate(*args, **kwargs)
-        # after = pd.util.hash_pandas_object(self.data_df).sum()
-        # assert before == after, ""
-        self.logger.info('Errors:\n'
-                         '    {}'.format(self.np_error_stat))
+        hash_before = {key: hash(val) for key, val in self.object.items()}
+        func(*args, **kwargs)
+        hash_after = {key: hash(val) for key, val in self.object.items()}
+        hash_diff = {key: {'before': hash_before[key],
+                           'after': hash_after[key]} for key in hash_before
+                            if hash_before[key]!=hash_after[key] }
+        if hash_diff:
+            self.logger.info(f"Object(s) hash changed:\n"
+                             f"    {hash_diff}")
+        if self._np_error_stat:
+            self.logger.info('Numpy error(s) occurs:\n'
+                             '    {}'.format(self._np_error_stat))
+            self._np_error_stat = {}
     return wrapper
 
 
 class Workflow(pycnfg.Producer):
-    """Class for ml workflow.
+    """Interface to produce ml results.
 
-    Decription what await from dataset/pipeline/metrics structure.
+    Interface: fit, predict, optimize, validate, dump, plot.
+
+    Parameters
+    ----------
+    objects : dict
+        Dictionary with resulted objects from previous executed producers:
+        {'section_id__config__id', object}.
+    oid : str
+        Unique identifier of produced object.
+    path_id : str
+        Project path identifier in `objects`.
+    logger_id : str
+        Logger identifier in `objects`.
+
+    Attributes
+    ----------
+    objects : dict
+        Dictionary with resulted objects from previous executed producers:
+        {'section_id__config__id', object,}
+    oid : str
+        Unique identifier of produced object.
+    logger : logger object
+        Default logger logging.getLogger().
+    project_path : str
+        Absolute path to project dir.
+
+    See also
+    --------
+    :class:`mlshell.Dataset` dataset interface.
+    :class:`mlshell.Pipeline` pipeline inteface.
+    :class:`mlshell.Optimizer` optimizer inteface.
+    :class:`mlshell.Resolver` default hp resolver.
 
     """
+    _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    _required_parameters = []
+    def __init__(self, objects, oid, path_id, logger_id):
+        pycnfg.Producer.__init__(self, objects, oid)
+        self.logger = objects[logger_id]
+        self.project_path = objects[path_id]
+        self._optional()
 
-    def __init__(self, project_path='', logger=None, endpoint_id='default_workflow',
-                 datasets=None, pipelines=None, metrics=None, params=None):
-        """Initialize workflow object
+    def _optional(self):
+        # Turn on: inf as NaN.
+        pd.options.mode.use_inf_as_na = True
+        # Handle numpy errors.
+        np.seterr(all='call')
+        self._check_results_size(self.project_path)
+        self._np_error_stat = {}
+        np.seterrcall(self._np_error_callback)
 
-        Args:
-            project_path (str): path to project dir.
-            logger (logging.Logger): logger object.
-            params (dict): user workflow configuration params.
-
-        Attributes:
-            self.project_path (str): path to project dir.
-            self.logger (:obj:'logger'): logger object.
-            self.p (dict): user workflow configuration params, for skipped one used default.
-            self.p_hash (str): md5 hash of params.
-            self.data_df (pd.DataFrame): data before split.
-            self.np_error_stat (dict): storage for np.error raises.
-            self.classes_(np.ndarray): class labels in classification.
-            self.n_classes (int): number of target classes in classification.
-            self.neg_label (target type): negative label.
-
-        Note:
-            dataframe should have columns={'targets', 'feature_<name>', 'feature_categor_<name>'}
-
-                * 'feature_categor_<name>': any dtype (include binary).
-
-                    order is not important.
-
-                * 'feature_<name>': any numeric dtype (should support float(val), np.issubdtype(type(val), np.number))
-
-                    order is important.
-
-                * 'targets': any dtype
-
-                    for classification `targets` should be binary, ordinalencoded.
-                    | positive label should be > others in np.unique(y) sort.
-
-        """
-        self.project_path = project_path
-        self.logger = logger if logger else logging.Logger(__class__.__name__)
-        super().__init__(self.project_path, self.logger)
-
-        self.endpoint_id = endpoint_id
-        self.logger.info("\u25CF INITITALIZE WORKFLOW")
-        self.datasets = datasets if datasets else {}
-        self.pipelines = pipelines if pipelines else {}
-        self.metrics = metrics if metrics else {}
-        self.params = params if params else {}
-
-        self.check_results_size(project_path)
-
-        # depends on pipeline_id and dataset_id
-        self._runs = {}
-
-        # [deprecated]
-        # merge in read conf
-        # check_params_vals in fit
-        # # use default if skipped in params
-        # temp = copy.deepcopy(mlshell.default.DEFAULT_PARAMS)
-        # if params is not None:
-        #     self.check_params_keys(temp, params)
-        #     temp.update(params)
-        # self.check_params_vals(temp)
-        # self.p = temp
-
-        self.logger.info('Used params:\n    {}'.format(jsbeautifier.beautify(str(self.params))))
-
-        # [not full before init()]
-        # self.logger.info('Workflow metods:\n    {}'.format(jsbeautifier.beautify(str(self.__dict__))))
-
-        # hash of hp_params
-        self.np_error_stat = {}
-        np.seterrcall(self.np_error_callback)
-
-        # for pass custom only (thread-unsafe)
-        self.custom_scorer = {'n/a': None}
-        self.cache_custom_kwargs = {'n/a':{}}
-        self.current_pipeline_id = 'n/a'
-
-    def __hash__(self):
-        # TODO: hash of it`s self
-        return md5(str(self.params).encode('utf-8')).hexdigest()
-
-    def check_results_size(self, project_path):
+    def _check_results_size(self, project_path):
         root_directory = pathlib.Path(f"{project_path}/results")
-        size = sum(f.stat().st_size for f in root_directory.glob('**/*') if f.is_file())
+        size = sum(f.stat().st_size for f in root_directory.glob('**/*')
+                   if f.is_file())
         size_mb = size/(2**30)
-        # check if > n Mb
-        n = 5
+        n = 5  # Check if dir > n Mb.
         if size_mb > n:
-            self.logger.warning(f"Warning: results/ directory size {size_mb:.2f}Gb more than {n}Gb")
+            self.logger.warning(f"Warning: results/ directory size "
+                                f"{size_mb:.2f}Gb more than {n}Gb")
 
-    def np_error_callback(self, *args):
+    def _np_error_callback(self, *args):
         """Numpy errors handler, count errors by type"""
-        if args[0] in self.np_error_stat.keys():
-            self.np_error_stat[args[0]] += 1
+        if args[0] in self._np_error_stat.keys():
+            self._np_error_stat[args[0]] += 1
         else:
-            self.np_error_stat[args[0]] = 1
-
-    # TODO: NOT SURE YET
-    def check_data_format(self, data, params):
-        """check data format"""
-
-        # TODO: move to data check
-        if 'targets' not in data.columns:
-            raise KeyError("input dataframe should contain 'targets' column, set zero values columns if absent")
-        if not all(['feature_' in column for column in data.columns if 'targets' not in column]):
-            raise KeyError("all name of dataframe features columns should start with 'feature_'")
-
-        # TODO: pipeline level
-        # mayby only with th_strategy != 0
-        if params['pipeline__type'] == 'classifier':
-            if self.n_classes > 2:
-                raise ValueError('Currently only binary classification supported.')
-
-    # =============================================== add/pop ============================================================
-    def add_dataset(self, dataset, dataset_id):
-        """Add dataset to workflow internal storage.
-
-        Args:
-            dataset (): .
-            dataset_id (str): .
-
-        """
-        # [alternative]
-        # dataset = self.data_check(dataset)
-        self.datasets.update({dataset_id: dataset})
-        return
-
-    def pop_dataset(self, dataset_ids):
-        """Pop data from wotkflow data storage.
-
-        Args:
-            dataset_ids (str, iterable): ids to pop.
-        Return:
-            popped data dict.
-        """
-        if isinstance(dataset_ids, str):
-            dataset_ids = [dataset_ids]
-        return {dataset_id: self.datasets.pop(dataset_id, None)
-                for dataset_id in dataset_ids}
-
-    def add_pipeline(self, pipeline, pipeline_id):
-        """Add pipeline to workflow internal storage.
-
-        Args:
-            pipeline (): .
-            pipeline_id (str): .
-
-        """
-        self.pipelines.update({pipeline_id: pipeline})
-        return
-
-    def pop_pipeline(self, pipe_ids):
-        """Pop pipeline from wotkflow pipeline storage.
-
-        Args:
-            pipe_ids (str, iterable): ids to pop.
-        Return:
-            popped pipelines dict.
-        """
-        if isinstance(pipe_ids, str):
-            pipe_ids = [pipe_ids]
-        return {pipe_id: self.pipelines.pop(pipe_id, None)
-                for pipe_id in pipe_ids}
-
-    # =============================================== gridsearch =======================================================
-# [deprecated] hard-code type always better.
-#     def _check_arg(self, arg, func=None):
-#         """Check if argument is id or object."""
-#         if isinstance(arg, str):
-#             return arg
-#         else:
-#             assert False, 'Argument should be str'
-#             # TODO[beta]: пока оставлю так,пусть дата и пайплайн всегда через config задаются, потом можно расширить
-#             # fit() принимает pipeline_id вместо  pipeline, но read_conf резолвит pipeline
-#             # вообще у даты и пайплайн особый статус, но с другими параметрами должна быть синхронность
-#             # Лучше так: можно и id  и напрямую пайплайн, дату, это будет логично.
-#             # тогда не будет отличатся от других. Только там внутри есть хранилища зависимые от айдишников.
-#             # надо дефолтный айди тогда создавать!
-#             # pipeline should contain pipeline.pipeine
-#
-#             # Generate arbitrary.
-#             # id = str(int(time.time()))
-#             # Add to storage under id.
-#             # func(arg, id)
-#             # return id
+            self._np_error_stat[args[0]] = 1
 
     @checker
     # @memory_profiler
-    def fit(self, res, pipeline_id='default', dataset_id='train',
-            fit_params=None, hp=None,
-            resolve_params=None, objects=None, **kwargs):
-        """Tune hp, fit best.
-            https://scikit-learn.org/stable/modules/grid_search.html#grid-search
+    def fit(self, res, pipeline_id, dataset_id,
+            hp=None, resolver=None, resolve_params=None,
+            fit_params=None):
+        """Fit pipeline.
 
-        Args:
-            gs_flag (bool): If True tune hp with GridSearch else fit on self.x_train.
+        Parameters
+        ----------
+        res : dict
+            For compliance with producer logic.
+        pipeline_id : str
+            Pipeline identifier in `objects`. Will be fitted on dataset.train.
+        dataset_id : str
+            Dataset identifier in `objects`.
+        hp : dict, None, optional (default=None)
+            Hyper-parameters to use in pipeline: {`hp_name`: val/container}.
+            If container provided, zero position will be used. If None, {}
+        resolver : mlshell.Resolver, None, optional (default=None)
+            If hp value = 'auto', hp will be resolved via `resolver`.resolve().
+            Auto initialized if necessary. If None, mlshell.Resolver used.
+        resolve_params : dict, None, optional (default=None)
+            Additional kwargs to pass in `resolver`.resolve(*args,
+            **resolve_params[hp_name]). If None, {}.
+        fit_params : dict, None, optional (default=None)
+            Additional kwargs to pass in `pipeline`.fit(*args,
+            **fit_params). If None, {}.
 
-        Note:
-            RandomizedSearch could duplicate runs (sample with replacement if at least one hp set with distribution)
-            The verbosity level:
-                * if non zero, progress messages are printed.
-                * If more than 10, all iterations are reported.
-                * Above 50, the output is sent to stdout.
-                 The frequency of the messages increases with the verbosity level.
+        Returns
+        -------
+        res : dict
+            Unchanged input, for compliance with producer logic.
 
-            If gs_flag is True run grid search else just fit estimator
+        Notes
+        -----
+        Pipeline updated in `objects` attribute.
+
         """
-        if fit_params is None:
-            fit_params = {}
+        self.logger.info("|__ FIT PIPELINE")
         if hp is None:
             hp = {}
+        if resolver is None:
+            resolver = mlshell.Resolver
+        if inspect.isclass(resolver):
+            resolver = resolver()
         if resolve_params is None:
             resolve_params = {}
-        if objects is None:
-            objects = {}
+        if fit_params is None:
+            fit_params = {}
 
-        # [deprecated]
-        # pipeline_id = self._check_arg(pipeline)
-        # dataset_id = self._check_arg(dataset)
-        # dataset = self.datasets[dataset_id]
-        # pipeline = self.pipelines[pipeline_id]
+        pipeline = self.objects[pipeline_id]
+        dataset = self.objects[dataset_id]
+        pipeline = self._set_hp(
+            hp, pipeline, resolver, dataset, resolve_params)
 
-        pipeline = objects[pipeline_id]
-        dataset = objects[dataset_id]
-
-        # resolve and set hps
-        pipeline = self._set_hps(pipeline, dataset, resolver, **kwargs)
-        # optional
-        self._print_steps(pipeline)
-        # [deprecated] excessive
-        # if kwargs.get('debug', False):
-        #     self.debug_pipeline_(pipeline, dataset)
-
-        train, test = dataset.split()
-        # [deprecated] now more abstract
-        # x_train, y_train, _, _ = dataset.split()
-
-        self.logger.info("\u25CF FIT PIPELINE")
-        # [deprecated] separate fit and optimize
-        # if not kwargs.get('gs',{}).get('flag', False):
-        pipeline.fit(train.get_x(), train.get_y(), **kwargs.get('fit_params', {}))
-        # [deprecated] dump not needed, no score evaluation
-        # best_run_index = 0
-        # runs = {'params': [self.estimator.get_params(),]}
-        objects[pipeline_id] = pipeline
+        train = dataset.train
+        pipeline.fit(train.x, train.y, **fit_params)
+        pipeline.dataset_id = dataset_id
+        self.objects[pipeline_id] = pipeline
         return res
 
-    def optimize(self, res, pipeline_id=None, dataset_id=None,
-                 optimizer, resolver, **kwargs):
+    @checker
+    def optimize(self, res, pipeline_id, dataset_id, hp_grid=None,
+                 scoring=None, resolver=None, resolve_params=None,
+                 optimizer=None, gs_params=None, fit_params=None):
+        """Optimize pipeline.
 
+        Parameters
+        ----------
+        res : dict
+            For compliance with producer logic.
+        pipeline_id : str
+            Pipeline identifier in `objects`. Will be fitted on dataset.train.
+        dataset_id : str
+            Dataset identifier in `objects`.
+        hp_grid : dict, None, optional (default=None)
+            Hyper-parameters to grid search: {`hp_name`: optimizer format}.
+            If None, {}.
+        scoring : List of str, None, optimizer format, optional (default=None)
+            If None, 'accuracy' or 'r2' depends on estimator type. If list of
+            str, try to resolve via `objects`/sklearn built-in: {'metric_id':
+            resolved scorer}. Otherwise passed to optimizer unchanged.
+        resolver : mlshell.Resolver, None, optional (default=None)
+            If hp value = ['auto'] in `hp_grid`, hp will be resolved via
+            `resolver`.resolve(). Auto initialized if class provided. If None,
+            mlshell.Resolver used.
+        resolve_params : dict, None, optional (default=None)
+            Additional kwargs to pass in `resolver`.resolve(*args,
+            **resolve_params[hp_name]). If None, {}.
+        optimizer : mlshell.Optimizer, None, optional (default=None)
+            Class to optimize `hp_grid`. If None, mlshell.Optimizer.
+            optimizer(pipeline, hp_grid, scoring, **gs_params).fit(x, y,
+            **fit_params) will be called.
+        fit_params : dict, None, optional (default=None)
+            Additional kwargs to pass in `optimizer`.fit(*args,
+            **fit_params). If None, {}.
+        gs_params :  dict, None, optional (default=None)
+            Additional kwargs to `optimizer`(pipeline, hp_grid, scoring,
+             **gs_params) initialization. If None, {}.
 
-        # [deprecated]
-        # pipeline_id = self._check_arg(pipeline)
-        # dataset_id = self._check_arg(dataset)
-        # dataset = self.datasets[dataset_id]
-        # pipeline = self.pipelines[pipeline_id]
-        pipeline = objects[pipeline_id]
-        dataset = objects[dataset_id]
+        Returns
+        -------
+        res : dict
+            Input`s key added/updated:
+             {'runs': TODO:}.
+        Notes
+        -----
+        TODO:
+        Pipeline updated in `objects` attribute only if 'runs' contain
+        'best_estimator_'.
 
+        """
+        self.logger.info("|__ OPTIMIZE HYPER-PARAMETERS")
+        if hp_grid is None:
+            hp_grid = {}
+        if resolver is None:
+            resolver = mlshell.Resolver
+        if inspect.isclass(resolver):
+            resolver = resolver()
+        if resolve_params is None:
+            resolve_params = {}
+        if fit_params is None:
+            fit_params = {}
+        if optimizer is None:
+            optimizer = mlshell.RandomizedSearchOptimizer
 
-        # For pass_custom.
-        self.current_pipeline_id = pipeline_id
-        # Resolve and set hps.
-        pipeline = self._set_hps(pipeline, dataset, resolver, **kwargs)
+        pipeline = self.objects[pipeline_id]
+        dataset = self.objects[dataset_id]
+        # Resolve and set hp. Otherwise could be problem if hp_grid={}, as
+        # pipeline initially could have unresolved.
+        pipeline = self._set_hp(
+            {}, pipeline, resolver, dataset, resolve_params)
         # Resolve hp_grid.
-        hp_grid = kwargs['gs_params'].pop('hp_grid', {})
-        if hp_grid:
-            hp_grid = self._resolve_hps(hp_grid, resolver, dataset, pipeline, **kwargs.get('resolve_params', {}))
-
-
-        # TODO:
-        #  если метрики не заданы, копируется для классификатора и регрессора,
-        #  их надо испольовать автоматом.
-        #  также проверь есть ли что в случае пустого скоринга.
-        key = 'metric'
-        if key not in p:
-            name = p['pipeline']['type']
-            p[key] = copy.deepcopy(dp[key][name])
-
+        hp_grid = self._resolve_hp(
+            hp_grid, pipeline, resolver, dataset, resolve_params)
         # Resolve scoring.
-        scoring = kwargs['gs_params'].pop('scoring', {})
-        if isinstance(scoring, list):
-            for metric_id in scoring:
-                scoring = {metric_id: self.object[i] for i in metric_id}
-        # Allow to set directly dict, not only list.
-        kwargs['gs_params']['scoring'] = scoring
-        train, test = dataset.split()
+        scoring = self._resolve_scoring(scoring, pipeline)
 
-        self.logger.info("\u25CF \u25B6 OPTIMIZE HYPERPARAMETERS")
-        optimizer = optimizer(pipeline.pipeline, hp_grid, **kwargs.get('gs_params', {}))
-        optimizer.fit(train.get_x(), train.get_y(), **kwargs.get('fit_params', {}))
+        train = dataset.train
+        optimizer = optimizer(pipeline, hp_grid, scoring, **gs_params)
+        optimizer.fit(train.x, train.y, **fit_params)
 
+        # TODO maybe separate endpoint
         # Results logs/dump to disk in run dir.
         dirpath = '{}/results/runs'.format(self.project_path)
         if not os.path.exists(dirpath):
@@ -416,244 +344,157 @@ class Workflow(pycnfg.Producer):
         filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
         optimizer.dump_runs(self.logger, filepath)
 
-        self._runs[(pipeline_id, dataset_id)] = optimizer.update_best(self._runs.get((pipeline_id, dataset_id), {}))
-        # [deprecated] for one pipeline could be different optimizer`s interface
-        # pipeline.update_params(optimizer)
-        if 'best_estimator_' in self._runs[(pipeline_id, dataset_id)]:
-            self.pipelines[pipeline_id] = self._runs[(pipeline_id, dataset_id)].get('best_estimator_')
-        # [deprecated] not informative
-        # else:
-        #     self.logger.warning("Warning: optimizer.update_best don`t contain 'best_estimator_':\n"
-        #                         "    optimizer results will not be used for pipeline.")
+        if 'runs' not in res:
+            res['runs'] = {}
+        runs = res['runs']
+        key = (pipeline_id, dataset_id)
+        runs[key] = optimizer.update_best(runs.get(key, {}))
+        if 'best_estimator_' in runs[key]:
+            self.objects[pipeline_id] = runs[key].get('best_estimator_')
 
-    def _set_hps(self, pipeline, dataset, resolver, **kwargs):
-        hps = pipeline.pipeline.get_params()
-        # [deprecated] currently pipeline change inplace
-        # hps.update(pipeline.get('best_params_', {}))
-        hps.update(self._get_zero_position(kwargs.get('hp', {})))
-        hps = self._resolve_hps(hps, resolver, dataset, pipeline,
-                                **kwargs.get('resolve_params', {}))
-        pipeline.pipeline.set_params(**hps)
-        return pipeline
-
-    def _get_zero_position(self, hps):
-        """Get zero position if hp_grid provided.
-
-        Notes
-        -----
-        In case of generator/iterator change in hp_grid will be irreversible.
-
-        """
-        # get zero position params from hp
-        zero_hps = {}
-        for name, vals in hps.items():
-            # check if not distribution in hp
-            if hasattr(type(vals), '__iter__'):
-                # container type
-                iterator = iter(vals)
-                zero_hps.update(**{name: iterator.__next__()})
-        return zero_hps
-
-    def _resolve_hps(self, hps, resolver, dataset, pipeline,  resolve_params):
-        """Resolve hyper-parameter based on dataset value.
-
-        For example, categorical features indices are dataset dependent.
-        Resolve lets to set it before fit/optimize step.
+    # @memory_profiler
+    def validate(self, res, pipeline_id, dataset_id, metric_id,
+                 validator=None):
+        """Predict and score on validation set.
 
         Parameters
         ----------
-        hps : dict {hp_name: val or [val}
-            Pipeline.get_params() output or hp_grid. If val=='auto' or ['auto']
-            hp will be resolved.
-        resolver : mlshell.HpResolver interface
-            Interface to resolve hps.
-        pipeline : mlshell.Pipeline interface
-            Pipeline, passed to `resolver`
-        dataset : mlshell.Dataset interface
-            Dataset, passed to `resolver`.
-        **resolve_params: : dict {hp_name: kwargs}
-            Additional parameters to pass in `resolver.resolve(*arg,
-            **resolve_params['hp_name'])` for specific hp.
+        res : dict
+            For compliance with producer logic.
+        pipeline_id : str
+            Pipeline identifier in `objects`. Will be validated on
+            dataset.train and dataset.test.
+        dataset_id : str
+            Dataset identifier in `objects`.
+        metric_id : srt, list of str
+            Metric(s) identifier in `objects`.
+        validator : mlshell.Validator, None, optional (default=None)
+            Auto initialized if class provided. If None, mlshell.Validator used.
 
         Returns
         -------
-        hps: dict
-            Resolved input hyper-parameters.
+        res : dict
+            Unchanged input, for compliance with producer logic.
 
         """
-        for hp_name, val in hps.items():
-            if val == 'auto' or val == ['auto']:
-                kwargs = resolve_params.get(hp_name, {})
-                value = resolver(self.project_path, self.logger)\
-                    .resolve(hp_name, dataset, pipeline, **kwargs)
-                hps[hp_name] = value if val == 'auto' else [value]
-        return hps
-
-    # [deprecated] explicit param to resolve in hp_grid
-    # def _set_hps(self, pipeline, data, kwargs):
-    #     hps = pipeline.get_params().update(self._get_zero_position(kwargs))
-    #     hps = self._resolve_hps(hps, data, kwargs)
-    #     pipeline.set_params(**hps)
-    #     return pipeline
-
-    # def _resolve_hps(self, hps, data, kwargs):
-    #     for hp_name in hps:
-    #         # step_name = step[0]
-    #         # step_hp = {key: p[key] for key in p.keys() if step_name + '__' in key}
-    #         val = hps[hp_name]
-    #         if self._is_data_hp(val):
-    #             key = val.split('__')[-1]
-    #             hps[hp_name] = self.get_from_data_(data, key)
-    #         elif isinstance(val, dict):
-    #             # dict case
-    #             for k,v in val.items():
-    #                 if self._is_data_hp(v):
-    #                     key = v.split('__')[-1]
-    #                     val[k] = self.get_from_data_(data, key)
-    #         elif hasattr(type(val), '__iter__') and\
-    #                 hasattr(type(val), '__getitem__'):
-    #             # sequence case
-    #             for k, v in enumerate(val):
-    #                 if self._is_data_hp(v):
-    #                     key = v.split('__')[-1]
-    #                     val[k] = self.get_from_data_(data, key)
-    #     return hps
-    # def _is_data_hp(self, val):
-    #     return isinstance(val, str) and val.startswith('data__')
-
-    def _print_steps(self, pipeline):
-        # nice print of pipeline
-        params = pipeline.pipeline.get_params()
-        self.logger.debug('Pipeline steps:')
-        for i, step in enumerate(params['steps']):
-            step_name = step[0]
-            step_hp = {key: params[key] for key in params.keys() if step_name + '__' in key}
-            self.logger.debug('  ({})  {}\n    {}'.format(i, step[0], step[1]))
-            self.logger.debug('    hp:\n   {}'.format(jsbeautifier.beautify(str(step_hp))))
-        self.logger.debug('+' * 100)
-        return
-
-    # =============================================== validate =========================================================
-    # @memory_profiler
-    def validate(self, pipeline_id, dataset_id, metric_id, validator):
-        """Predict and score on validation set."""
-        self.logger.info("\u25CF VALIDATE ON HOLDOUT")
+        self.logger.info("|__ VALIDATE")
+        if validator is None:
+            validator = mlshell.Validator
+        if inspect.isclass(validator):
+            validator = validator()
         if not isinstance(metric_id, list):
             metric_id = [metric_id]
 
-        dataset = self.datasets[dataset_id]
-        pipeline = self.pipelines[pipeline_id]
-        train, test = dataset.split()
-        metrics = [self.object[i] for i in metric_id]
-        validator.via_metrics(pipeline, metrics, [train, test], self.logger)
-        # [deprecated] not all metrics can be converted to scorers
-        # validator.via_scorers(self.metrics_to_scorers(self.metrics, self.metrics),
-        # pipeline, train, test)
-        return
+        dataset = self.objects[dataset_id]
+        pipeline = self.objects[pipeline_id]
+        metrics = [self.objects[i] for i in metric_id]
 
-    # =============================================== dump ==========================================================
-    def dump(self, pipeline_id, dirpath=None):
-        """Dump fitted model on disk/string.
+        validator.validate(pipeline, metrics, [dataset.train, dataset.test],
+                           self.logger)
+        return res
 
-        Note:
-            pickle can dump on disk/string
-                 s = _pickle.dumps(self.estimator)
-                 est = pickle.loads(s)
-            joblib more efficient on disk
-                dump(est, path)
-                est = load('filename.joblib')
+    def dump(self, res, pipeline_id, dirpath=None, **kwargs):
+        """Dump fitted model.
+
+        Parameters
+        ----------
+        res : dict
+            For compliance with producer logic.
+        pipeline_id : str
+            Pipeline identifier in `objects`. Will be dumped via pipeline.dump.
+        dirpath : str, optional(default=None)
+            Absolute path dump dir or relative to 'self.project_dir' started
+            with './'. If None,"self.project_path/results/models" is used.
+        **kwargs: dict
+        `   Additional kwargs to pass in pipeline.dump(**kwargs).
+
+
+        Returns
+        -------
+        res : dict
+            Unchanged input, for compliance with producer logic.
+
+        Notes
+        -----
+        Resulted filename includes prefix:
+        "{workflow_id}_{pipeline_id}_{fit_dataset_id}_{best_score}_
+        {pipeline_hash}_{fit_dataset_hash}"
+        If pipeline not fitted 'fit_dataset_id' = None (or id unknown).
+        The `best_score` available only after optimize step(s) if optimizer
+        supported.
 
         """
-        self.logger.info("\u25CF DUMP MODEL")
-        pipeline = self.pipelines[pipeline_id]
-        # dump to disk in models dir
+        self.logger.info("|__ DUMP MODEL")
         if not dirpath:
-            dirpath = '{}/results/models'.format(self.project_path)
-
+            dirpath = f"{self.project_path}/results/models"
+        elif dirpath.startswith('./'):
+            dirpath = f"{self.project_path}/{dirpath[2:]}"
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
 
-        fit_dataset_id = getattr(pipeline, 'dataset_id', None)
-        best_score = str(self._runs
-                         .get((pipeline_id, fit_dataset_id), {})
-                         .get('best_score_', '')).lower()
-        filepath = f"{dirpath}/{self.endpoint_id}_{pipeline_id}_" \
-                   f"{fit_dataset_id}_{best_score}_{hash(self)}_" \
-                   f"{hash(pipeline)}_{hash(self.datasets[fit_dataset_id])}_" \
-                   f"dump.model"
-        if not os.path.exists(filepath):
-            # Prevent double dumping.
-            pipeline.dump(filepath)
-            self.logger.log(25, 'Save fitted model to file:\n  {}'.format(filepath))
-        else:
-            self.logger.warning('Warnning: skip dump: model file already exists\n    {}\n'.format(filepath))
+        pipeline = self.objects[pipeline_id]
+        filepath = self._prefix(res, dirpath, pipeline, pipeline_id)
+        fullpath = pipeline.dump(filepath, **kwargs)
+        self.logger.log(25, f"Save fitted model to file:\n"
+                            f"    {fullpath}")
+        return res
 
-        # alternative:
-        # with open(file, 'wb') as f:
-        #     pickle.dump(self.estimator, f)
-        return filepath
-
-    # =============================================== load ==========================================================
-    # [deprecated] there special class to load pipeline and set
-    # def load(self, file):
-    #     """Load fitted model on disk/string.
-
-    #     Note:
-    #         Better use only the same version of sklearn.
-
-    #     """
-    #     self.logger.info("\u25CF LOAD MODEL")
-    #     pipeline = joblib.load(file)
-    #     self.logger.info('Load fitted model from file:\n    {}'.format(file))
-
-    #     # alternative
-    #     # with open(f"{self.project_path}/sump.model", 'rb') as f:
-    #     #     self.estimator = pickle.load(f)
-
-    # =============================================== predict ==========================================================
     # @memory_profiler
-    def predict(self, pipeline_id, dataset_id, dirpath=None):
-        """Predict on new dataset.
+    def predict(self, res, pipeline_id, dataset_id, dirpath=None, **kwargs):
+        """Predict and dump.
 
-        Args:
-            data (pd.DataFrame): data ready for workflow unification.
-            raw_names (dict): {'index': 'index_names', 'targets': 'target_names', 'feature_names'}.
-            estimator (sklearn-like estimator, optional (default=None)): fitted estimator,
-                if None use from workflow object.
+        Parameters
+        ----------
+        res : dict
+            For compliance with producer logic.
+        pipeline_id : str
+            Pipeline identifier in `objects`.
+        dataset_id : str
+            Dataset identifier in `objects`, to predict on subset.
+        dirpath : str, optional(default=None)
+            Absolute path dump dir or relative to 'self.project_dir' started
+            with './'. If None,"self.project_path/results/models" is used.
+        **kwargs: dict
+        `   Additional kwargs to pass in dataset.dump_pred(**kwargs).
+
+        Returns
+        -------
+        res : dict
+            Unchanged input, for compliance with producer logic.
+
+        Notes
+        -----
+        Resulted filename includes prefix:
+        "{workflow_id}_{pipeline_id}_{fit_dataset_id}_{best_score}
+        _{pipeline_hash}_{fit_dataset_hash}
+        _{predict_dataset_id}_{predict_dataset_hash}"
+        The `best_score` available only after optimize step(s) if optimizer
+        supported.
 
         """
-        self.logger.info("\u25CF PREDICT ON TEST")
-
-        pipeline = self.pipelines[pipeline_id]
-        dataset = self.datasets[dataset_id]
-        train, test = dataset.split()
-        assert train == test
-        x = test.get_x()
-
-        # [deprecated]
-        # data_df, _, _ = self.unify_data(data)
-        # x_df = data_df.drop(['targets'], axis=1)  # was used for compatibility with unifier
-
-        y_pred = pipeline.predict(x)
-
-        # Dump to disk in predictions dir.
+        self.logger.info("|__ PREDICT")
         if not dirpath:
-            dirpath = '{}/results/models'.format(self.project_path)
+            dirpath = f"{self.project_path}/results/models"
+        elif dirpath.startswith('./'):
+            dirpath = f"{self.project_path}/{dirpath[2:]}"
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
 
-        fit_dataset_id = pipeline.__dict__.get('dataset_id', None)
-        best_score = str(self._runs.get((pipeline_id, fit_dataset_id), {}).get('best_score_', '')).lower()
-        filepath = f"{dirpath}/{self.endpoint_id}_{pipeline_id}_{fit_dataset_id}_" \
-                   f"{best_score}_{hash(self)}_{hash(pipeline)}_{hash(self.datasets[fit_dataset_id])}_" \
-                   f"{dataset_id}_{hash(self.datasets[dataset_id])}_predictions"
+        pipeline = self.objects[pipeline_id]
+        dataset = self.objects[dataset_id]
+        test = dataset.test
+        x = test.x
+        y_pred = pipeline.predict(x)
+        filepath = self._prefix(res, dirpath, pipeline, pipeline_id,
+                                dataset, dataset_id)
+        fullpath = test.dump_pred(filepath, y_pred, **kwargs)
+        self.logger.log(25, f"Save predictions for {dataset_id} to file:"
+                            f"\n    {fullpath}")
+        return res
 
-        test.dump(filepath, y_pred)
-        self.logger.log(25, f"Save predictions dataset {dataset_id} to file:\n    {filepath}")
-
-    # =============================================== gui param ========================================================
-    def gui(self, pipeline_id, dataset_id, hp_grid, optimizer_id, cls,  **kwargs):
-        self.logger.info("\u25CF GUI")
+    def plot(self, pipeline_id, dataset_id, hp_grid, optimizer_id, cls,
+             **kwargs):
+        self.logger.info("|__ GUI")
 
         pipeline = self.pipelines[pipeline_id]
         dataset = self.datasets[dataset_id]
@@ -671,11 +512,114 @@ class Workflow(pycnfg.Producer):
 
         # we need only hp_grid flat:
         # either hp here in args
-        # either combine tested hps for all optimizers if hp = {}
+        # either combine tested hp for all optimizers if hp = {}
         runs = self._runs.get((pipeline_id, dataset_id), {})
         gui = cls(pipeline, dataset, runs, **kwargs)
         threading.Thread(target=gui.plot(), args=(), daemon=True).start()
         return
+
+    # ========================== fit/optimize =================================
+    def _set_hp(self, hp, pipeline, resolver, dataset, resolve_params):
+        """Get => update => resolve => set pipeline hp."""
+        _hp_full = pipeline.get_params()
+        _hp_full.update(self._get_zero_position(hp))
+        hp = self._resolve_hp(_hp_full, pipeline, resolver, dataset,
+                                **resolve_params)
+        pipeline.set_params(**hp)
+        return pipeline
+
+    def _get_zero_position(self, hp):
+        """Get zero position if hp_grid provided.
+
+        Notes
+        -----
+        In case of generator/iterator in hp value,  hp_grid changes will be
+        irreversible.
+
+        """
+        # Get zero position params from hp.
+        zero_hp = {}
+        for name, vals in hp.items():
+            # Check if not distribution in hp.
+            if hasattr(type(vals), '__iter__'):
+                # Container type.
+                iterator = iter(vals)
+                zero_hp.update(**{name: iterator.__next__()})
+        return zero_hp
+
+    def _resolve_hp(self, hp, pipeline, resolver, dataset, resolve_params):
+        """Resolve hyper-parameter based on dataset value.
+
+        For example, categorical features indices are dataset dependent.
+        Resolve lets to set it before fit/optimize step.
+
+        Parameters
+        ----------
+        hp : dict
+            {hp_name: val/container}. If val=='auto'/['auto'] hp will be
+            resolved.
+        pipeline : mlshell.Pipeline
+            Pipeline, passed to `resolver`
+        resolver : mlshell.Resolver
+            Interface to resolve hp.
+        dataset : mlshell.Dataset
+            Dataset, passed to `resolver`.
+        **resolve_params: : dict {hp_name: kwargs}
+            Additional parameters to pass in `resolver.resolve(*arg,
+            **resolve_params['hp_name'])` for specific hp.
+
+        Returns
+        -------
+        hp: dict
+            Resolved input hyper-parameters.
+
+        """
+        for hp_name, val in hp.items():
+            if val == 'auto' or val == ['auto']:
+                kwargs = resolve_params.get(hp_name, {})
+                value = resolver.resolve(hp_name, pipeline, dataset, **kwargs)
+                hp[hp_name] = value if val == 'auto' else [value]
+        return hp
+
+    def _resolve_scoring(self, scoring, pipeline):
+        """Resolve scoring for grid search.
+
+        Notes
+        -----
+        If None, 'accuracy' or 'r2' depends on estimator type.
+        If list, resolve known metric id via `objects` and sklearn built-in.
+        Otherwise passed unchanged.
+
+        """
+        if scoring is None:
+            # Hard-code (default estimator could not exist).
+            if pipeline.is_classifier():
+                scoring = 'accuracy'
+            elif pipeline.is_regressor():
+                scoring = 'r2'
+        elif isinstance(scoring, list):
+            # Resolve if exist, else use sklearn built-in.
+            for metric_id in scoring:
+                scoring = {metric_id: self.objects[i] if i in self.objects
+                           else sklearn.metrics.SCORERS[metric_id]
+                           for i in metric_id}
+        return scoring
+
+    # ========================== dump/predict =================================
+    def _prefix(self, res, dirpath, pipeline, pipeline_id,
+                dataset=0, dataset_id=''):
+        """Generate informative file prefix."""
+        dataset_id_hash = hash(dataset)
+        fit_dataset_id = getattr(pipeline, 'dataset_id', None)
+        fit_dataset_hash = hash(self.objects.get(fit_dataset_id, 0))
+        best_score = str(res.get('runs', {})
+                            .get((pipeline_id, fit_dataset_id), {})
+                            .get('best_score_', '')
+                         ).lower()
+        filepath = f"{dirpath}/{self.oid}_{pipeline_id}_{fit_dataset_id}_" \
+                   f"{best_score}_{hash(pipeline)}_{fit_dataset_hash}_" \
+                   f"{dataset_id}_{dataset_id_hash}"
+        return filepath
 
 
 if __name__ == '__main__':

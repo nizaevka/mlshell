@@ -400,8 +400,7 @@ class Prepare(object):
         return score, meta
 
 
-
-class GUI(Draw):
+class Plotter(Draw):
     def __init__(self, base_plot, params, logger):
         super().__init__()
         if logger is None:

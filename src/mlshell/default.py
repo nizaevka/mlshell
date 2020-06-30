@@ -1,10 +1,10 @@
 """The module contains default configuration and pipeline steps."""
 
 
-from mlshell.libs import *
+import mlshell.pycnfg as pycnfg
+import sklearn
 import mlshell.custom
-import mlshell.optimize
-import mlshell.validate
+import numpy as np
 
 __all__ = ['DEFAULT_PARAMS', 'PipelineSteps']
 
@@ -64,7 +64,7 @@ PIPELINES = {
 
 
 METRICS = {
-    'classifier': {
+    'accuracy': {
         'init': None,
         'producer': mlshell.MetricProducer,
         'global': {},
@@ -77,7 +77,7 @@ METRICS = {
             }),
         ],
     },
-    'regressor': {
+    'r2': {
         'init': None,
         'producer': mlshell.MetricProducer,
         'global': {},
@@ -126,20 +126,21 @@ WORKFLOWS = {
                 'dataset_id': 'train',
                 'fit_params': {},
                 'hp': {},
+                'resolver': mlshell.Resolver,
                 'resolve_params': {},
             },),
             ('optimize', {
-                'optimizer': mlshell.optimize.RandomizedSearchOptimizer,  # optimizer
-                'validator': mlshell.validate.Validator,
-                'resolver': mlshell.HpResolver,
+                'optimizer': mlshell.RandomizedSearchOptimizer,  # optimizer
+                'validator': mlshell.Validator,
+                'resolver': mlshell.Resolver,
                 'pipeline_id': None,  # multiple pipeline? no, user can defined separately if really needed
                 'dataset_id': 'train',
+                'hp_grid': {},
+                'scoring': None,
                 'gs_params': {
-                   'hp_grid': {},
-                   'n_iter': None,  # ! my resolving (1, hp_grid number), otherwise 'NoneType' object cannot be interpreted as an integer
-                   'scoring': None,  # no resolving (default estimator scoring)
+                   'n_iter': None,
                    'n_jobs': 1,
-                   'refit': None, # no resolving
+                   'refit': None,  # no resolving
                    'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
                    'verbose': 1,
                    'pre_dispatch': 'n_jobs',
@@ -312,7 +313,7 @@ class PipelineSteps(object):
                 ('predict_proba',
                     mlshell.custom.PredictionTransformer(estimator)),
                 ('apply_threshold',
-                    mlshell.custom.ThresholdClassifier(threshold=0.5,
+                    mlshell.custom.ThresholdClassifier(threshold=None,
                                                        kwargs='auto')),
                     ])
         elif estimator_type == 'classifier' and not th_step:

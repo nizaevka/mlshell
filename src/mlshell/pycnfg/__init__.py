@@ -2,8 +2,8 @@
 """Pycnfg, universal Python configuration."""
 
 
-from .handle import Handler
-from .produce import Producer
+from .handler import Handler
+from .producer import Producer
 from .utils import find_path, run
 from .default import DEFAULT
 

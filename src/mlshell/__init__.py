@@ -3,22 +3,23 @@
 
 
 from .__version__ import __version__
+from .default import PipelineSteps, DEFAULT_PARAMS
 from .producers.logger import LoggerProducer
 from .producers.dataset import DatasetProducer, Dataset
 from .producers.pipeline import PipelineProducer, Pipeline
-from .default import PipelineSteps, DEFAULT_PARAMS
-from .resolve import HpResolver
-from .optimize import RandomizedSearchOptimizer, ThresholdOptimizer
-from .validate import Validator
-from .general import Workflow
-from .gui import GUI
-from .eda import EDA
+from .producers.metric import MetricProducer, Metric
+from .producers.workflow import Workflow
+from .blocks.resolver import Resolver
+from .blocks.validator import Validator
+from .blocks.optimizer import RandomizedSearchOptimizer, ThresholdOptimizer
+from .blocks.plotter import Plotter
+from .blocks.eda import EDA
 
-__all__ = ['DatasetProducer', 'PipelineProducer', 'Workflow'
-           'Dataset', 'Pipeline',
-           'HpResolver', 'GUI', 'EDA',
+__all__ = ['DatasetProducer', 'PipelineProducer', 'Workflow', 'MetricProducer',
+           'Dataset', 'Pipeline', 'Metric',
+           'Resolver', 'Validator', 'Plotter', 'EDA',
            'PipelineSteps', 'DEFAULT_PARAMS',
-           'RandomizedSearchOptimizer', 'ThresholdOptimizer', 'Validator']
+           'RandomizedSearchOptimizer', 'ThresholdOptimizer']
 
 
 # import platform

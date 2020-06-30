@@ -232,8 +232,9 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
 
     Parameters
     ----------
-    threshold : float [0,1], None, list of float [0,1]
-        For multioutput target list of [n_outouts].
+    threshold : float [0,1], list of float [0,1], None, optional(default=None)
+        For multioutput target list of [n_outouts]. If None, np.argmax, so in
+        binary case equivalent to 0.5.
 
     Args:
         classes (array of shape (n_classes), or a list of n_outputs such arrays if n_outputs > 1):
@@ -300,7 +301,8 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
 
             if threshold[i] is None:
                 # just take the max
-                res.append(self.classes_[i].take(np.argmax(x[i], axis=1), axis=0))
+                res.append(self.classes_[i].take(np.argmax(x[i], axis=1),
+                                                 axis=0))
             else:
                 if n_classes > 2:
                     # Multi-class classification.

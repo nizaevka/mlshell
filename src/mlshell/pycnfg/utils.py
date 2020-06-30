@@ -68,20 +68,24 @@ def find_path(script_name=False, filepath=None):
         return project_dir
 
 
-def run(conf, default_conf=None):
+def run(conf, default_conf=None, objects=None):
     """Wrapper over configuration handler.
 
     Parameters
     ----------
     conf : dict
-        Configuration to pass in `pycnfg.Handler().read()`.
-    default_conf : None, dict, optional (default=None)
-        Default configurations to pass in `pycnfg.Handler().read()`.
+        Configuration to pass in `pycnfg.Handler.read()`.
+    default_conf : dict, None, optional (default=None)
+        Default configurations to pass in `pycnfg.Handler.read()`.
+    objects : dict, None, optional (default=None)
+        Dict of initial objects to pass in `pycnfg.Handler.exec()`:
+        {'object_id': object}
 
     Returns
     -------
-    objects : dict {'configuration_id': object}.
-        Dict of objects created by execution all configurations.
+    objects : dict
+        Dict of objects created by execution all configurations:
+        {'section_id__configuration_id': object}.
 
     See Also
     --------
@@ -91,7 +95,7 @@ def run(conf, default_conf=None):
     """
     handler = pycnfg.Handler()
     configs = handler.read(conf=conf, default_conf=default_conf)
-    objects = handler.exec(configs)
+    objects = handler.exec(configs, objects=objects)
     return objects
 
 
