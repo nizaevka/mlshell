@@ -17,3 +17,27 @@ class MockOptimizer():
 #                 steps=[(subname, params[step_name])])
 #     else:
 #         mock_pipeline = pipeline
+    def runs_compliance(self, runs, runs_th_, best_index):
+        """"Combine GS results to csv dump."""
+        # runs.csv compliance
+        # add param
+        default_th = self.pipeline.get_params()['estimate__apply_threshold__threshold']
+        runs['param_estimate__apply_threshold__threshold'] = np.full(len(runs['params']), fill_value=default_th)
+        runs_th_['param_estimate__apply_threshold__threshold'] =\
+            runs_th_.pop('param_threshold', np.full(len(runs_th_['params']),
+                                                    fill_value=default_th))
+        # update runs.params with param
+        for run in runs['params']:
+            run['estimate__apply_threshold__threshold'] = default_th
+        for run in runs_th_['params']:
+            run.update(runs['params'][best_index])
+            run['estimate__apply_threshold__threshold'] = run.pop('threshold', default_th)
+        # add all cv_th_ runs as separate rows with optimizer.best_params_ default values
+        runs_df = pd.DataFrame(runs)
+        runs_th_df = pd.DataFrame(runs_th_)
+        sync_columns = [column for column in runs_th_df.columns if not column.endswith('time')]
+
+        runs_df = runs_df.append(runs_th_df.loc[:, sync_columns], ignore_index=True)
+        # replace Nan with optimizer.best_params_
+        runs_df.fillna(value=runs_df.iloc[best_index], inplace=True)
+        return runs_df

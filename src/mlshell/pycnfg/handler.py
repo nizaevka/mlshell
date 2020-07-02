@@ -127,6 +127,7 @@ import importlib.util
 import inspect
 import sys
 import types
+import time
 
 import mlshell.pycnfg as pycnfg
 
@@ -194,6 +195,8 @@ class Handler(object):
         if default_conf is None:
             default_conf = copy.deepcopy(pycnfg.DEFAULT)
         configs = self._parse_conf(conf, default_conf)
+        assert pycnfg.ID is None, "pycnfg.ID already set."
+        pycnfg.ID = int(time.time())
         return configs
 
     def exec(self, configs, objects=None):

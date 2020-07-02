@@ -6,28 +6,28 @@ used in `mlshell.Workflow`. For new pipeline formats no need to edit `Workflow`
 
 As one of realization, `RandomizedSearchOptimizer` class provided to optimize
 pipeline hyper-parameters with sklearn.model_selection.RandomizedSearchCV.
-Some hp grid search no needs to fit whole pipeline steps, for efficient
-searching special subclasses provided:
-`ThresholdOptimizer` to brute force classification threshold for "positive"
-class as separate optimization stage.
-`KwargsOptimizer` to brute force arbitrary score function parameters as
-separate optimization stage.
+Some hp grid search no needs to fit whole pipeline steps, 'MockOptimizer'
+provides interface to efficient brute force prediction-related parameters
+as separate optimize step. For example: classification threshold or score
+function kwargs. 'MockOptimizer' avoids pipeline refit for such cases.
 
 """
 
-import mlshell
-import mlshell.custom
-import sklearn
-import pandas as pd
 import copy
-import tabulate
-import jsbeautifier
-import numpy as np
 import time
 import uuid
 
+import jsbeautifier
+import mlshell
+import mlshell.custom
+import mlshell.pycnfg as pycnfg
+import numpy as np
+import pandas as pd
+import sklearn
+import tabulate
 
-class Optimizer(object):  # SklearnOptimizerMixin
+
+class Optimizer(object):
     """Unified optimizer interface.
 
     Implements interface to access arbitrary optimizer.
@@ -81,7 +81,7 @@ class Optimizer(object):  # SklearnOptimizerMixin
                     List of get_params() for all runs in stages.
                 'best_params_' : dict
                     Best estimator `params`[`optimizer.best_index_`].
-                'best_estimator_' : mlshell.Pipeline TODO: underlying?
+                'best_estimator_' : sklearn etimator  TODO: test
                     Best estimator `optimizer.best_estimator_` or
                     `optimizer.estimator.set_params(**best_params_))` if
                     `best_estimator_` attribute is absent.
@@ -111,6 +111,7 @@ class Optimizer(object):  # SklearnOptimizerMixin
 
         best_estimator_ = getattr(curr, 'best_estimator_', None)
         if best_estimator_ is None:
+            # If not 'refit'.
             best_estimator_ = curr.estimator.set_params(**best_params_)
 
         best_score_ = getattr(curr, 'best_score_', float('-inf'))
@@ -144,16 +145,12 @@ class Optimizer(object):  # SklearnOptimizerMixin
             Additional kwargs to pass in low-level dumper.
 
         """
-        self._pprint(logger, self.optimizer)
-        # [deprecated] pass explicit.
-        # should be mlshell.Pipeline, in ThresholdClassifier need full pipeline
-        # if hasattr(self.optimizer, 'best_estimator_'):
-        #     pipeline = getattr(self.optimizer, 'best_estimator_')
-        # else:
-        #     pipeline = getattr(self.optimizer, 'estimator')
         runs = copy.deepcopy(self.optimizer.cv_results_)
-        best_run_ind = self.optimizer.best_index_
-        self._dump_runs(logger, dirpath, pipeline, dataset, runs, best_run_ind, **kwargs)
+        best_ind = self.optimizer.best_index_
+
+        self._pprint(logger, self.optimizer)
+        self._dump_runs(logger, dirpath, pipeline, dataset, runs, best_ind,
+                        **kwargs)
         return None
 
     def _pprint(self, logger, optimizer):
@@ -209,7 +206,8 @@ class Optimizer(object):  # SklearnOptimizerMixin
                 modifiers.append(key)
         return modifiers
 
-    def _dump_runs(self, logger, dirpath, pipeline, dataset, runs, best_run_ind, **kwargs):
+    def _dump_runs(self, logger, dirpath, pipeline, dataset, runs, best_ind,
+                   **kwargs):
         """Dumps grid search results.
 
         Parameters
@@ -224,7 +222,7 @@ class Optimizer(object):  # SklearnOptimizerMixin
             Dataset used for optimizer.fit.
         runs : dict or pandas.Dataframe
             Grid search results `optimizer.cv_results_`.
-        best_run_ind : int
+        best_ind : int
             Index of run with best score in `runs`.
         **kwargs : dict
             Additional kwargs to pass in low-level dumper.
@@ -233,18 +231,12 @@ class Optimizer(object):  # SklearnOptimizerMixin
         -----
         In resulted file <timestamp>_runs.csv each row corresponds to run,
         columns:
-        * 'id' random UUID for run (hp combination).
-        * all pipeline parameters.
-        * grid search output.
-        * pipeline info
-        'pipeline__id'.
-        'pipeline__hash'.
-        'pipeline__type' regressor or classifier.
-        * data
-        * 'dataset__id'.
-        * 'dataset__hash' pd.util.hash_pandas_object hash of data before split.
-        * 'dataset_index' TODO: index for whole dataset?
-        * conf.py id.  TODO: global conf id.
+        * 'id' random UUID for run (hp combination),
+        * all pipeline parameters,
+        * grid search output,
+        * pipeline info: 'pipeline__id', 'pipeline__hash'. 'pipeline__type',
+        * dataset info: 'dataset__id', 'dataset__hash',
+        * conf.py identifier.
 
         """
         # Create df with runs pipeline params.
@@ -252,19 +244,18 @@ class Optimizer(object):  # SklearnOptimizerMixin
         # Add results
         df = self._runs_results(df, runs)
         # Add unique id.
-        run_id_list = [str(uuid.uuid4()) for _ in range(df.shape[0])]
-        df['id'] = run_id_list
+        id_list = [str(uuid.uuid4()) for _ in range(df.shape[0])]
+        df['id'] = id_list
         # Add pipeline info.
         df['pipeline__id'] = pipeline.oid
         df['pipeline__hash'] = hash(pipeline)
         df['pipeline__type'] = 'regressor' if pipeline.is_regressor()\
             else 'classifier'
         # Add dataset info.
-        df['dataset__id'] = dataset.oid
+        df['dataset__id'] = dataset.oid  # section__config__subset
         df['dataset__hash'] = hash(dataset)
-        df['dataset__subset']
         # Add configuration id.
-        df['params__hash'] = self.p_hash
+        df['config__id'] = pycnfg.ID
 
         # Cast 'object' type to str before dump, otherwise it is too long.
         object_labels = list(df.select_dtypes(include=['object']).columns)
@@ -275,7 +266,7 @@ class Optimizer(object):  # SklearnOptimizerMixin
             df.to_csv(f, mode='a', header=f.tell() == 0, index=False,
                       line_terminator='\n')
         logger.log(25, f"Save run(s) results to file:\n    {filepath}")
-        logger.log(25, f"Best run id:\n    {run_id_list[best_run_ind]}")
+        logger.log(25, f"Best run id:\n    {id_list[best_ind]}")
 
     def _runs_hp(self, runs, pipeline):
         # Make list of get_params() for each run.
@@ -303,53 +294,23 @@ class Optimizer(object):  # SklearnOptimizerMixin
 
 
 class RandomizedSearchOptimizer(Optimizer):
-    def __init__(self, pipeline, hp_grid, scoring, mock=False, **kwargs):
-        """
+    def __init__(self, pipeline, hp_grid, scoring, **kwargs):
+        """Wrapper around sklearn.model_selection.RandomizedSearchCV.
 
         Parameters
         ----------
-        pipeline
-        hp_grid
-        scoring
-        mock : bool, optional (default=False)
-            If True, remove pipeline steps where hp path/sub-path not in
-            hp_grid keys. For example, 'a_b_c' remains all 'a' sub-paths.
-            Applied only if pipeline created with sklearn.pipeline.Pipeline.
-            If hp_grid is {}, remain full pipeline.
-        **kwargs
+        *args: list
+            Args passed to `sklearn.model_selection.RandomizedSearchCV`.
+            Only `dict` type for hp_grid currently supported.
+        **kwargs : dict
+            Kwargs passed to `sklearn.model_selection.RandomizedSearchCV`.
+            kwargs['n_iter']=None replaced with number of hp combinations.
 
-        Notes
-        -----
-        Be careful, if pipeline use `pass_custom` and mock set True without
-        adding `pass_custom__kwargs` to hp_grid, corresponding custom score(s)
-        will use last applied kwargs. The problem that it can be from another
-        pipeline optimization, so better always remain pass_custom when mock.
-
-        TODO: what with result pipeline? is it saved to self.objects?
         """
         super().__init__()
         n_iter = self._resolve_n_iter(kwargs.pop('n_iter', 10), hp_grid)
-        if hp_grid and mock and hasattr(pipeline, 'steps'):
-            pipeline = self._mock_pipeline(pipeline, hp_grid)
         self.optimizer = sklearn.model_selection.RandomizedSearchCV(
             pipeline, hp_grid, scoring=scoring, n_iter=n_iter, **kwargs)
-
-    def fit(self, *args, **fit_params):
-        self.optimizer.fit(*args, **fit_params)
-        return None
-
-    def _mock_pipeline(self, pipeline, hp_grid):
-        """Remain steps only if in hp_grid."""
-        r_step = []
-        for step in pipeline.steps:
-            if step[0] == 'pass_custom':
-                print("Warning: Better always remain pass_custom when mock.")
-            for hp_name in hp_grid:
-                paths = hp_name.split('__')
-                if step[0] == paths[0]:
-                    r_step.append(step)
-        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
-        return mock_pipeline
 
     def _resolve_n_iter(self, n_iter, hp_grid):
         """Set number of runs in grid search."""
@@ -360,65 +321,125 @@ class RandomizedSearchOptimizer(Optimizer):
             # 1.0 if hp_grid = {}.
             n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0]
                               for i in hp_grid.values()])
-        except AttributeError as e:
+        except AttributeError:
             raise ValueError("Distribution is used for hyperparameter grid, "
                              "specify 'runs' in gs_params.")
         return n_iter
 
 
-class KwargsOptimizer(RandomizedSearchOptimizer):
-    pass
-
-
-class ThresholdOptimizer(RandomizedSearchOptimizer):
+class MockOptimizer(RandomizedSearchOptimizer):
     """Threshold optimizer.
 
-    Provide interface for separate optimize step to brute force threshold in
-    classification without full pipeline fit.
+    Provides interface to efficient brute force prediction-related parameters
+    in separate optimize step. For example: classification threshold or score
+    function kwargs. 'MockOptimizer' avoids pipeline refit for such cases.
+    It calls mlshell.custom.cross_val_predict with specified 'method' and
+    optimize score on output prediction.
+
+    Parameters
+    ----------
+    hp_grid : dict
+        Specify only "hp" supported mock optimization. If {}, no mock applied.
+    method : 'predict_proba', 'predict'
+        See sklearn.model_selection.cross_val_predict `method` argument.
+    *args: list
+        Args passed to `sklearn.model_selection.RandomizedSearchCV`.
+        Only `dict` type for hp_grid currently supported.
+    **kwargs : dict
+        Kwargs passed to `sklearn.model_selection.RandomizedSearchCV`.
+        kwargs['n_iter']=None replaced with number of hp combinations.
+
+    Notes
+    -----
+    Applied only if pipeline created with sklearn.pipeline.Pipeline, otherwise
+    or if hp_grid is {}, refit pipeline for each hp combination.
+
+    To brute force threshold, set method to 'predict_proba'.
+    To brute force score kwargs alone set method to 'predict', else if in
+    combination with threshold set to 'predict_proba'.
 
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, pipeline, hp_grid, scoring,
+                 method='predict_proba', **kwargs):
+        self.method =  method
+        self.pipeline = pipeline
+        if hasattr(pipeline, 'steps') and hp_grid:
+            mock_pipeline = self._mock_pipeline(pipeline, hp_grid)
+        else:
+            mock_pipeline = pipeline
+        super().__init__(mock_pipeline, hp_grid, scoring, **kwargs)
 
     def fit(self, x, y, **fit_params):
         optimizer = self.optimizer
 
-        y_pred_proba, index = mlshell.custom.cross_val_predict(
-            optimizer.estimator, x, y=y, fit_params=fit_params,
-            groups=None, cv=optimizer.cv, method='predict_proba')
+        # y_pred depends on method.
+        y_pred, index = mlshell.custom.cross_val_predict(
+            self.pipeline, x, y=y, fit_params=fit_params,
+            groups=None, cv=optimizer.cv, method=self.method)
+        optimizer.fit(y_pred, y[index], **fit_params)
 
-        optimizer.fit(y_pred_proba, y[index], **fit_params)
+        optimizer = self._mock_optimizer(optimizer, x, y, fit_params)
+        self.optimizer = optimizer
+        return None
 
-        # TODO: deprecated?
-        if optimizer.refit:
-            best_th_ = optimizer.best_params_[self.th_name]
-            self.pipeline.set_params(**{self.th_name: best_th_})
+    def _mock_pipeline(self, pipeline, hp_grid):
+        """Remain steps only if in hp_grid.
+
+        Notes
+        -----
+        If 'a_b_c' in hp_grid, remains 'a_b' sub-path.
+
+        If resulted mock pipeline has no predict method,
+        ('estimate_del', mlshell.custom.IdEstimator) added.
+
+        Always remains 'pass_custom' step. If pipeline use `pass_custom` and
+        `pass_custom__kwargs` not in hp_grid, corresponding custom score(s)
+        will use last applied kwargs. The problem that it can be from another
+         pipeline optimization.
+
+        """
+        r_step = []
+        params = pipeline.get_params()
+        for step in pipeline.steps:
+            if step[0] == 'pass_custom':
+                # always remain pass_custom when mock.
+                r_step.append(step)
+        for hp_name in hp_grid:  # 'a__b__c'
+            path = hp_name.split('__')[:-1]  # 'a__b'
+            if not path.startswith('pass_custom'):  # already in.
+               r_step.append(params[path])
+        # Check if fit step exist.
+        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
+        if not hasattr(mock_pipeline, 'predict'):
+            # Add IdEstimator step (in optimizer only change 'params').
+            r_step.append(('estimate_del', mlshell.custom.IdEstimator))
+        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
+        return mock_pipeline
+
+    def _mock_optimizer(self, optimizer, x, y, fit_params):
+        if hasattr(optimizer, 'refit') and optimizer.refit:
+            self.pipeline.set_params(**optimizer.best_params_)
             # Needs refit, otherwise not reproduce results.
             self.pipeline.fit(x, y, **fit_params)
 
-        return None
+        # Recover structure as if fit original pipeline.
+        for run in optimizer.cv_results_['params']:
+            extended = self.pipeline.get_params.update(run)
+            run.update(extended)
+            # Remove mock estimator.
+            for key in run:
+                if key.startswith('estimate_del'):
+                    del run[key]
+        for attr, val in {
+            'estimator': self.pipeline,
+            'best_estimator_': self.pipeline,
+            'cv_results': optimizer.cv_results}.items():
+            try:
+                setattr(optimizer, attr, val)
+            except AttributeError:
+                continue
+        return optimizer
 
-    def runs_compliance(self, runs, runs_th_, best_index):
-        """"Combine GS results to csv dump."""
-        # runs.csv compliance
-        # add param
-        default_th = self.pipeline.get_params()['estimate__apply_threshold__threshold']
-        runs['param_estimate__apply_threshold__threshold'] = np.full(len(runs['params']), fill_value=default_th)
-        runs_th_['param_estimate__apply_threshold__threshold'] =\
-            runs_th_.pop('param_threshold', np.full(len(runs_th_['params']),
-                                                    fill_value=default_th))
-        # update runs.params with param
-        for run in runs['params']:
-            run['estimate__apply_threshold__threshold'] = default_th
-        for run in runs_th_['params']:
-            run.update(runs['params'][best_index])
-            run['estimate__apply_threshold__threshold'] = run.pop('threshold', default_th)
-        # add all cv_th_ runs as separate rows with optimizer.best_params_ default values
-        runs_df = pd.DataFrame(runs)
-        runs_th_df = pd.DataFrame(runs_th_)
-        sync_columns = [column for column in runs_th_df.columns if not column.endswith('time')]
 
-        runs_df = runs_df.append(runs_th_df.loc[:, sync_columns], ignore_index=True)
-        # replace Nan with optimizer.best_params_
-        runs_df.fillna(value=runs_df.iloc[best_index], inplace=True)
-        return runs_df
+if __name__ == '__main__':
+    pass

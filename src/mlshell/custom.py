@@ -211,7 +211,9 @@ class CustomSelectorEstimator(sklearn.base.BaseEstimator):
         return self
 
 
-class PredictionTransformer(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin, sklearn.base.MetaEstimatorMixin):
+class PredictionTransformer(sklearn.base.BaseEstimator,
+                            sklearn.base.TransformerMixin,
+                            sklearn.base.MetaEstimatorMixin):
     """Class to add brutforce of th in GridSearch"""
 
     def __init__(self, classifier):
@@ -224,6 +226,17 @@ class PredictionTransformer(sklearn.base.BaseEstimator, sklearn.base.Transformer
 
     def transform(self, x):
         return self.clf.predict_proba(x)
+
+
+class IdEstimator(sklearn.base.BaseEstimator):
+    """Always predict input x."""
+    def __init__(self):
+
+    def fit(self, x, y, **fit_params):
+        return self
+
+    def predict(self, x):
+        return x
 
 
 # TODO: remain binary simple variant
@@ -323,8 +336,8 @@ class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMix
 
 
 class SkippableTransformer(sklearn.decomposition.TruncatedSVD):
-    def __init__(self, skip=False, n_components=2, algorithm="randomized", n_iter=5,
-                 random_state=None, tol=0.):
+    def __init__(self, skip=False, n_components=2, algorithm="randomized",
+                 n_iter=5, random_state=None, tol=0.):
         self.skip = skip
         super().__init__(n_components, algorithm, n_iter, random_state, tol)
 
@@ -348,7 +361,7 @@ class SkippableTransformer(sklearn.decomposition.TruncatedSVD):
 
 
 class SMWrapper(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
-    """ A universal sklearn-style wrapper for statsmodels regressors """
+    """A universal sklearn-style wrapper for statsmodels regressor."""
 
     def __init__(self, model_class, fit_intercept=True):
         self.model_class = model_class

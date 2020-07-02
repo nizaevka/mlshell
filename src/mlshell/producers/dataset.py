@@ -72,7 +72,7 @@ class Dataset(dict):
     """Unified data interface.
 
     Implements interface to access arbitrary data.
-    Interface: x, y, data, meta, split, dump_prediction and dict api.
+    Interface: x, y, data, meta, subset, dump_prediction and whole dict api.
 
     Parameters
     ----------
@@ -87,34 +87,30 @@ class Dataset(dict):
         Underlying data.
     meta : dict
         Includes index/targets/features identifiers:
-        {
-            'oid': str
-                Dataset identifier.
-            'index': list
-                List of index label(s).
-            'features': list
-                List of feature label(s).
-            'categoric_features': list
-                List of categorical feature label(s).
-            'targets': list
-                List of target label(s),
-            'indices': list
-                List of rows indices.
-            'pos_labels': list, optional
-                List of "positive" label(s) in target(s), classification only.
-            categoric_ind_name : dict, optional
-                {'column_index': ('feature_name', ['cat1', 'cat2'])}
-                Dictionary with categorical feature indices as key, and tuple
-                ('feature_name', categories) as value.
-            numeric_ind_name : dict, optional
-                {'columns_index':('feature_name',)}
-                Dictionary with numeric features indices as key, and tuple
-                ('feature_name', ) as value.
-        }
-    train_index : array-like, optional
-        Train indices.
-    test_index : array-like, optional
-        Test indices.
+        {'oid': str
+            Dataset identifier.
+        'index': list
+            List of index label(s).
+        'features': list
+            List of feature label(s).
+        'categoric_features': list
+            List of categorical feature label(s).
+        'targets': list
+            List of target label(s),
+        'indices': list
+            List of rows indices.
+        'pos_labels': list, optional
+            List of "positive" label(s) in target(s), classification only.
+        categoric_ind_name : dict, optional
+            {'column_index': ('feature_name', ['cat1', 'cat2'])}
+            Dictionary with categorical feature indices as key, and tuple
+            ('feature_name', categories) as value.
+        numeric_ind_name : dict, optional
+            {'columns_index':('feature_name',)}
+            Dictionary with numeric features indices as key, and tuple
+            ('feature_name', ) as value.}
+    subsets : dict
+        {'subset_id' : array-like subset indices, ..}.
 
     Notes
     -----
@@ -133,11 +129,11 @@ class Dataset(dict):
     @property
     def oid(self):
         """str: dataset identifier."""
-        return self['oid']
+        return self['_oid']
 
     @oid.setter
     def oid(self, value):
-        self['oid'] = value
+        self['_oid'] = value
 
     @property
     def x(self):
@@ -155,39 +151,24 @@ class Dataset(dict):
 
     @property
     def meta(self):
-        """dict: attribute access to meta."""
+        """dict: access meta."""
         return self['meta']
 
     @property
     def data(self):
-        """pd.DataFrame : attribute access to data."""
+        """pd.DataFrame : access data."""
         return self['data']
 
-    def split(self):
-        """Split dataset on train and test.
-
-        Returns
-        -------
-        train : Dataset
-            Train dataset. Inherit input dataset keys, except `data`.
-        test : Dataset
-            Test dataset. Inherit input dataset keys, except `data`.
-
-        Notes
-        -----
-        If train_index is None/absent and test_index is None/absent:
-        train=test=whole dataset.
-
-        """
-        df = self.get('data', None)
-        train_index = self.get('train_index', None)
-        test_index = self.get('test_index', None)
-        if train_index is None and test_index is None:
-            train_index = test_index = df.index
-        # Inherit keys, except 'data'.
-        train = Dataset(dict(self, **{'data': df.loc[train_index]}))
-        test = Dataset(dict(self, **{'data': df.loc[test_index]}))
-        return train, test
+    def subset(self, subset_id):
+        """mlshell.Dataset : access subset. """
+        df = self['data']
+        index = self['subsets'][subset_id]
+        # Inherit only meta.
+        dataset = Dataset(dict(self, **{'data': df.loc[index],
+                                        'subsets': {},
+                                        '_oid': f"{self['_oid']}__{subset_id}"}
+                               ))
+        return dataset
 
     def dump_pred(self, filepath, y_pred, **kwargs):
         """Dump columns to disk.
@@ -262,7 +243,7 @@ class DataIO(object):
         Returns
         -------
         dataset : Dataset
-            Key added {'data': pandas.DataFrame}.
+            Key added {'data': pandas.DataFrame,}.
 
         Notes:
         ------
@@ -346,9 +327,12 @@ class DataPreprocessor(object):
         Returns
         -------
         dataset : Dataset
-            Resulted dataset. Key updated: 'data'. Key added:
+            Resulted dataset. Key updated: 'data'. Keys added:
+            'subsets': dict
+                Storage for data subset(s) index, fulfills for example in split
+                {'subset_id': index }.
             'meta' : dict
-                extracted auxiliary information from data
+                Extracted auxiliary information from data:
             {
                 'index': list
                     List of index label(s).
@@ -408,6 +392,7 @@ class DataPreprocessor(object):
         data = self._combine(index, targets, features, meta)
         dataset.update({'data': data,
                         'meta': meta,
+                        'subsets': {},   # TODO:
                         **kwargs})
         return dataset
 
@@ -439,7 +424,6 @@ class DataPreprocessor(object):
     def split(self, dataset, **kwargs):
         """Split dataset on train, test.
 
-
         Parameters
         ----------
         dataset : Dataset
@@ -452,9 +436,9 @@ class DataPreprocessor(object):
         Returns
         -------
         dataset : Dataset
-            Resulted dataset. Keys added:
-            {'train_index' : array-like train rows indices,
-             'test_index' : array-like test rows indices.}
+            Resulted dataset. 'subset 'value updated:
+            {'train': array-like train rows indices,
+             'test': array-like test rows indices,}
 
         Notes
         -----

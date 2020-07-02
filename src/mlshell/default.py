@@ -233,44 +233,49 @@ def _isbinary_columns(arr: np.ndarray) -> np.ndarray:
 class PipelineSteps(object):
     """Class to create pipeline steps.
 
-        Parameters
-        ----------
-        estimator : object with sklearn.pipeline.Pipeline interface
-            Estimator to use in the last step.
-            If `estimator_type`='regressor':
-            sklearn.compose.TransformedTargetRegressor(regressor=`estimator`)
-            If `estimator_type`='classifier' and `th_step`=True:
-            sklearn.pipeline.Pipeline(steps=[
-                ('predict_proba',
-                    mlshell.custom.PredictionTransformer(`estimator`)),
-                ('apply_threshold',
-                    mlshell.custom.ThresholdClassifier(threshold=0.5,
-                                                       kwargs='auto')),
-                        ])
-            If `estimator_type`='classifier' and `th_step`=False:
-            sklearn.pipeline.Pipeline(steps=[('classifier', `estimator`)])
-        estimator_type : str
-            'estimator` or 'regressor'.
-        th_step : bool
-            If True and 'classifier', ddd `mlshell.custom.ThresholdClassifier`
-            sub-step. Otherwise ignored.
+    Parameters
+    ----------
+    estimator : object with sklearn.pipeline.Pipeline interface
+        Estimator to use in the last step.
+        If `estimator_type`='regressor':
+        sklearn.compose.TransformedTargetRegressor(regressor=`estimator`)
+        If `estimator_type`='classifier' and `th_step`=True:
+        sklearn.pipeline.Pipeline(steps=[
+            ('predict_proba',
+                mlshell.custom.PredictionTransformer(`estimator`)),
+            ('apply_threshold',
+                mlshell.custom.ThresholdClassifier(threshold=0.5,
+                                                   kwargs='auto')),
+                    ])
+        If `estimator_type`='classifier' and `th_step`=False:
+        sklearn.pipeline.Pipeline(steps=[('classifier', `estimator`)])
+    estimator_type : str
+        'estimator` or 'regressor'.
+    th_step : bool
+        If True and 'classifier', ddd `mlshell.custom.ThresholdClassifier`
+        sub-step. Otherwise ignored.
 
-        Attributes
-        ----------
-        steps : list
-            Pipeline steps to pass in `sklearn.pipeline.Pipeline`.
+    Attributes
+    ----------
+    steps : list
+        Pipeline steps to pass in `sklearn.pipeline.Pipeline`.
 
-        Notes
-        -----
-        Assemble steps in class are made for convenience.
-        By default, 4 parameters await for resolution:
-            'process_parallel__pipeline_categoric__select_columns__kwargs'
-            'process_parallel__pipeline_numeric__select_columns__kwargs'
-            'estimate__apply_threshold__threshold'
-            'estimate__apply_threshold__kwargs'
+    Notes
+    -----
+    Assemble steps in class are made for convenience.
+    By default, 4 parameters await for resolution:
+        'process_parallel__pipeline_categoric__select_columns__kwargs'
+        'process_parallel__pipeline_numeric__select_columns__kwargs'
+        'estimate__apply_threshold__threshold'
+        'estimate__apply_threshold__kwargs'
 
-        'pass_custom' step should be the first or absent.
-        'estimate' step should be the last, by default:
+    'pass_custom' step allows brute force arbitrary parameters in uniform style
+    with pipeline hp, as if score contains additional nested loops (name is
+    hard-coded).
+    'apply_threshold' allows grid search classification thresholds as pipeline
+    hyper-parameter.
+
+    'estimate' step should be the last.
 
     """
     _required_parameters = ['estimator', 'estimator_type']
