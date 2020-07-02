@@ -60,18 +60,20 @@ class Pipeline(object):
     Calling unspecified methods are redirected to underlying pipeline object.
 
     """
-    def __init__(self, pipeline=None, dataset_id=None):
+    def __init__(self, pipeline=None, oid=None, dataset_id=None):
         """
         Parameters
         ----------
-        pipeline : sklearn estimator, None, optional
-            (default=None)
+        pipeline : sklearn estimator, None, optional (default=None)
             Pipeline to wrap.
+        oid : str
+            Instance identifier.
         dataset_id : str, None, optional (default=None),
             Train dataset identifier if pipeline is fitted, otherwise None.
 
         """
         self.pipeline = pipeline
+        self.oid = oid
         self.dataset_id = dataset_id
 
     def __getattr__(self, name):

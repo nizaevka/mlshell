@@ -365,7 +365,7 @@ class Workflow(pycnfg.Producer):
         optimizer.fit(train.x, train.y, **fit_params)
 
         self.logger.info("    |__ DUMP RUNS")
-        optimizer.dump_runs(self.logger, dirpath, **dump_params)
+        optimizer.dump_runs(self.logger, dirpath, pipeline, dataset, **dump_params)
 
         if 'runs' not in res:
             res['runs'] = {}

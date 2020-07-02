@@ -72,6 +72,10 @@ class Producer(object):
         configs : list of tuple [('section_id__config__id', config), ...]
             List of configurations, prepared for execution.
 
+        Notes
+        -----
+        Object identifier `oid` added, if produced object has `oid` attribute.
+
         """
         self.logger.info(f"|__ CONFIGURATION: {self.oid}")
         self.logger.debug(f"Used params:\n"
@@ -86,7 +90,8 @@ class Producer(object):
             kwargs = self._object_resolve(kwargs, self.objects)
             res = getattr(self, method)(res, **kwargs)
         # Add identifier.
-        res.oid = self.oid
+        if hasattr(res, 'oid'):
+            res.oid = self.oid
         res = self._check(res)
         return res
 

@@ -23,6 +23,8 @@ import copy
 import tabulate
 import jsbeautifier
 import numpy as np
+import time
+import uuid
 
 
 class Optimizer(object):  # SklearnOptimizerMixin
@@ -125,7 +127,7 @@ class Optimizer(object):  # SklearnOptimizerMixin
         }
         return nxt
 
-    def dump_runs(self, logger, dirpath, **kwargs):
+    def dump_runs(self, logger, dirpath, pipeline, dataset, **kwargs):
         """Dump results.
 
         Parameters
@@ -134,18 +136,24 @@ class Optimizer(object):  # SklearnOptimizerMixin
             Logger to logs runs summary.
         dirpath : str
             Absolute path to dump dir.
+        pipeline : mlshell.Pipeline
+            Pipeline used for optimizer.fit.
+        dataset : mlshell.Dataset
+            Dataset used for optimizer.fit.
         **kwargs : dict
             Additional kwargs to pass in low-level dumper.
 
         """
         self._pprint(logger, self.optimizer)
-        if hasattr(self.optimizer, 'best_estimator_'):
-            pipeline = getattr(self.optimizer, 'best_estimator_')
-        else:
-            pipeline = getattr(self.optimizer, 'estimator')
+        # [deprecated] pass explicit.
+        # should be mlshell.Pipeline, in ThresholdClassifier need full pipeline
+        # if hasattr(self.optimizer, 'best_estimator_'):
+        #     pipeline = getattr(self.optimizer, 'best_estimator_')
+        # else:
+        #     pipeline = getattr(self.optimizer, 'estimator')
         runs = copy.deepcopy(self.optimizer.cv_results_)
         best_run_ind = self.optimizer.best_index_
-        self._dump_runs(logger, dirpath, pipeline, runs, best_run_ind, **kwargs)
+        self._dump_runs(logger, dirpath, pipeline, dataset, runs, best_run_ind, **kwargs)
         return None
 
     def _pprint(self, logger, optimizer):
@@ -201,7 +209,7 @@ class Optimizer(object):  # SklearnOptimizerMixin
                 modifiers.append(key)
         return modifiers
 
-    def _dump_runs(self, logger, dirpath, pipeline, runs, best_run_ind, **kwargs):
+    def _dump_runs(self, logger, dirpath, pipeline, dataset, runs, best_run_ind, **kwargs):
         """Dumps grid search results.
 
         Parameters
@@ -210,8 +218,10 @@ class Optimizer(object):  # SklearnOptimizerMixin
             Logger to logs runs summary.
         dirpath : str
             Absolute path to dump dir.
-        pipeline : mlshell.Pipeline TODO:
-            Tuned pipeline.
+        pipeline : mlshell.Pipeline
+            Pipeline used for optimizer.fit.
+        dataset : mlshell.Dataset
+            Dataset used for optimizer.fit.
         runs : dict or pandas.Dataframe
             Grid search results `optimizer.cv_results_`.
         best_run_ind : int
@@ -225,8 +235,11 @@ class Optimizer(object):  # SklearnOptimizerMixin
         columns:
         * 'id' random UUID for run (hp combination).
         * all pipeline parameters.
-        * 'pipeline__type' regressor or classifier.
-        * 'pipeline__estimator__name' estimator.__name__. TODO?
+        * grid search output.
+        * pipeline info
+        'pipeline__id'.
+        'pipeline__hash'.
+        'pipeline__type' regressor or classifier.
         * data
         * 'dataset__id'.
         * 'dataset__hash' pd.util.hash_pandas_object hash of data before split.
@@ -234,74 +247,59 @@ class Optimizer(object):  # SklearnOptimizerMixin
         * conf.py id.  TODO: global conf id.
 
         """
+        # Create df with runs pipeline params.
+        df = pd.DataFrame(self._runs_hp(runs, pipeline))
+        # Add results
+        df = self._runs_results(df, runs)
+        # Add unique id.
+        run_id_list = [str(uuid.uuid4()) for _ in range(df.shape[0])]
+        df['id'] = run_id_list
+        # Add pipeline info.
+        df['pipeline__id'] = pipeline.oid
+        df['pipeline__hash'] = hash(pipeline)
+        df['pipeline__type'] = 'regressor' if pipeline.is_regressor()\
+            else 'classifier'
+        # Add dataset info.
+        df['dataset__id'] = dataset.oid
+        df['dataset__hash'] = hash(dataset)
+        df['dataset__subset']
+        # Add configuration id.
+        df['params__hash'] = self.p_hash
 
-        # TODO: runs_compliance needed? test _dump_runs
-        # Get full params for each run.
-        nums = len(runs['params'])
-        lis = list(range(nums))
+        # Cast 'object' type to str before dump, otherwise it is too long.
+        object_labels = list(df.select_dtypes(include=['object']).columns)
+        df[object_labels] = df[object_labels].astype(str)
+        # Dump.
+        filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
+        with open(filepath, 'a', newline='') as f:
+            df.to_csv(f, mode='a', header=f.tell() == 0, index=False,
+                      line_terminator='\n')
+        logger.log(25, f"Save run(s) results to file:\n    {filepath}")
+        logger.log(25, f"Best run id:\n    {run_id_list[best_run_ind]}")
+
+    def _runs_hp(self, runs, pipeline):
+        # Make list of get_params() for each run.
+        lis = list(range(len(runs['params'])))
         # Clone params (not attached data).
         est_clone = sklearn.clone(pipeline)
         for i, param in enumerate(runs['params']):
             est_clone.set_params(**param)
             lis[i] = est_clone.get_params()
-        # Too big to print.
-        df = pd.DataFrame(lis)
+        return lis
+
+    def _runs_results(self, df, runs):
         # Merge df with runs with replace, exchange args if don`t need replace.
         # cv_results consist suffix param_.
         param_labels = set(i for i in runs.keys() if 'param_' in i)
         if param_labels:
             other_labels = set(runs.keys())-param_labels
             update_labels = set(df.columns).intersection(other_labels)
-            runs = pd.DataFrame(runs).drop(list(param_labels), axis=1, errors='ignore')
+            runs = pd.DataFrame(runs).drop(list(param_labels), axis=1,
+                                           errors='ignore')
             df = pd.merge(df, runs, how='outer', on=list(update_labels),
                           left_index=True, right_index=True,
                           suffixes=('_left', '_right'))
-        # pipeline
-        # df = pd.DataFrame(res.cv_results_)
-        # rows = df.shape[0]
-        # df2 = pd.DataFrame([pipeline.get_params()])
-
-        # unique id for param combination
-        run_id_list = [str(uuid.uuid4()) for _ in range(nums)]
-
-        df['id'] = run_id_list
-        df['data__hash'] = self.data_hash
-        df['pipeline__type'] = self.p['pipeline__type']
-        df['pipeline__estimator__name'] = self.p['pipeline__estimator'].__class__.__name__
-        df['gs__splitter'] = self.p['gs__splitter']
-        df['data__split_train_size'] = self.p['data__split_train_size']
-        df['data__source'] = jsbeautifier.beautify(str({
-            key: self.p[key] for key in self.p if key.startswith('data')
-        }))
-        df['params__hash'] = self.p_hash
-        # df=df.assign(**{'id':run_id_list, 'data__hash':data_hash_list, .. })
-
-        # cast to string before dump and print, otherwise it is too long
-        # alternative: json.loads(json.dumps(data)) before create df
-        object_labels = list(df.select_dtypes(include=['object']).columns)
-        df[object_labels] = df[object_labels].astype(str)
-
-        filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
-        with open(filepath, 'a', newline='') as f:
-            df.to_csv(f, mode='a', header=f.tell() == 0, index=False, line_terminator='\n')
-        logger.log(25, f"Save run(s) results to file:\n    {filepath}")
-        logger.log(25, f"Best run id:\n    {run_id_list[best_run_ind]}")
-        # alternative: to hdf(longer,bigger) hdfstore(can use as dict)
-        # df.to_hdf(filepath, key='key', append=True, mode='a', format='table')
-
-        # print (large only for debug)
-        # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-        #     self.logger.info('{}'.format(tabulate(df, headers='keys', tablefmt='psql')))
-
-        # if not path.exists(filepath):
-        #     df.to_csv(filepath, header=True, index=False)
-        # else:
-        #     df.to_csv(filepath, mode='a', header=False, index=False)
-
-        # отдельная таблица для params
-        # df2 = pd.DataFrame(self.p)
-        # df2.to_csv('{}/params.csv'.format(self.project_path), index=False)
-
+        return df
 
 
 class RandomizedSearchOptimizer(Optimizer):
