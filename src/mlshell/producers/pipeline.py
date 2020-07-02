@@ -50,22 +50,22 @@ class Pipeline(object):
 
     Attributes
     ----------
-    pipeline : object
+    pipeline : sklearn estimator
         Underlying pipeline.
     dataset_id : str
         If pipeline is fitted, train dataset identifier, otherwise None.
 
     Notes
     -----
-    Calling unknown methods are redirected to underlying pipeline object.
+    Calling unspecified methods are redirected to underlying pipeline object.
 
     """
     def __init__(self, pipeline=None, dataset_id=None):
         """
         Parameters
         ----------
-        pipeline : object with sklearn.pipeline.Pipeline interface, None,
-        optional (default=None)
+        pipeline : sklearn estimator, None, optional
+            (default=None)
             Pipeline to wrap.
         dataset_id : str, None, optional (default=None),
             Train dataset identifier if pipeline is fitted, otherwise None.

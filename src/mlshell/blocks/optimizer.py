@@ -1,108 +1,260 @@
 """
-The :mod:`mlshell.blocks.optimizer` contains examples of `Optimizer` class to
-to optimize pipeline hyper-parameters.
+The :mod:`mlshell.blocks.optimizer` contains example of 'Optimizer' class
+proposes unified interface to work with underlying pipeline. Intended to be
+used in `mlshell.Workflow`. For new pipeline formats no need to edit `Workflow`
+ class, only update `Optimizer` interface logic.
 
-TODO:
-dump_runs better here, cause we can change scheme
+As one of realization, `RandomizedSearchOptimizer` class provided to optimize
+pipeline hyper-parameters with sklearn.model_selection.RandomizedSearchCV.
+Some hp grid search no needs to fit whole pipeline steps, for efficient
+searching special subclasses provided:
+`ThresholdOptimizer` to brute force classification threshold for "positive"
+class as separate optimization stage.
+`KwargsOptimizer` to brute force arbitrary score function parameters as
+separate optimization stage.
 
-two otimizer, two otimize() function in workflow
-best_params in pipeline mergable, also loked up hp_grid mergable
 """
 
 import mlshell
 import mlshell.custom
 import sklearn
 import pandas as pd
+import copy
+import tabulate
+import jsbeautifier
+import numpy as np
 
 
-class SklearnOptimizerMixin(object):
+class Optimizer(object):  # SklearnOptimizerMixin
+    """Unified optimizer interface.
+
+    Implements interface to access arbitrary optimizer.
+    Interface: dump_runs, update_best and all underlying
+        optimizer object methods.
+
+    Attributes
+    ----------
+    optimizer : sklearn optimizer
+        Underlying optimizer.
+
+    Notes
+    -----
+    Calling unspecified methods are redirected to underlying optimizer object.
+
+    """
+
     def __init__(self):
         self.optimizer = None
 
+    def __getattr__(self, name):
+        """Redirect unknown methods to optimizer object."""
+        def wrapper(*args, **kwargs):
+            getattr(self.pipeline, name)(*args, **kwargs)
+        return wrapper
+
+    def __hash__(self):
+        return str(self.optimizer)
+
     def update_best(self, prev):
-        """
-            prev (dict): output from previous optimizers runs for this pipeline and data.
-                Initially set to {}
-        Note:
-            Workflow need 'best_estimator_' key to update pipeline.
-            Gui need list of params dict for each run.
-            Dump predict/model need best_score_.
-            More complicated logic on best_score_ or
+        """Combine current optimizer results with previous stages.
+
+        The logic of choosing the best run is set here. Currently best hp
+        combination and corresponding estimator taken from the last stage.
+        But if any hp brute force in more than one stage, more complicated rule
+        is required to merge runs.
+
+        Parameters
+        ----------
+        prev : dict
+            Previous stage update_best output for some pipeline-data pair.
+            Initially set to {}. See output format for all possible keys.
+
+        Returns
+        -------
+        nxt : dict
+            Result of merging runs on all optimization stages for some
+            pipeline-data pair.
+            {
+                'params': list of dict
+                    List of get_params() for all runs in stages.
+                'best_params_' : dict
+                    Best estimator `params`[`optimizer.best_index_`].
+                'best_estimator_' : mlshell.Pipeline TODO: underlying?
+                    Best estimator `optimizer.best_estimator_` or
+                    `optimizer.estimator.set_params(**best_params_))` if
+                    `best_estimator_` attribute is absent.
+                'best_score_' : tuple
+                    Best score ('scorer_id', `optimizer.best_score_`).
+                    'scorer_id' get from str(`optimizer.refit`). If
+                    best_score_ attribute is absent, ('', float('-inf')) used.
+             }
+
+        Notes
+        -----
+        `mlshell.Workflow` utilize:
+
+        * 'best_estimator_' key to update pipeline in `objects`.
+        * `params' in built-in plotter.
+        * 'best_score_' in file name for dump/dump_pred.
+
         """
         curr = self.optimizer
-
         best_index_ = getattr(curr, 'best_index_', None)
-        if not best_index_:
+        cv_results_ = getattr(curr, 'cv_results_', None)
+        if best_index_ is None or cv_results_ is None:
             return prev
 
-        cv_results_ = getattr(curr, 'cv_results_')
         params = cv_results_['params']
         best_params_ = params[best_index_]
+
         best_estimator_ = getattr(curr, 'best_estimator_', None)
-        if not best_estimator_:
+        if best_estimator_ is None:
             best_estimator_ = curr.estimator.set_params(**best_params_)
 
         best_score_ = getattr(curr, 'best_score_', float('-inf'))
-        refit = getattr(curr, 'refit', '')
-        score_name = refit if isinstance(refit, str) else ''
-        next_ = {
+        if best_score_ is float('-inf'):
+            scorer_id = ''
+        else:
+            scorer_id = str(getattr(curr, 'refit', ''))
+
+        nxt = {
             'best_estimator_': best_estimator_,
             'best_params_': best_params_,
-            'params': prev['params'].extend(params),
-            'best_score_': (score_name, best_score_),
+            'params': prev.get('params', []).extend(params),
+            'best_score_': (scorer_id, best_score_),
         }
-        return next_
+        return nxt
 
-    def dump_runs(self, logger, filepath):
-        self._pretty_print(logger, self.optimizer)
-        init_pipeline = getattr(self.optimizer, 'estimator')
-        pipeline = getattr(self.optimizer, 'best_estimator_', init_pipeline)
-        runs = copy.deepcopy(self.optimizer.cv_results_)
-        best_run_index = self.optimizer.best_index_
-        self._dump_runs(logger, filepath, pipeline, runs, best_run_index)
+    def dump_runs(self, logger, dirpath, **kwargs):
+        """Dump results.
 
-    def _dump_runs(self, logger, filepath, pipeline, runs, best_run_index):
-        """Dumps grid search results in <timestamp>_runs.csv
+        Parameters
+        ----------
+        logger : logging.Logger
+            Logger to logs runs summary.
+        dirpath : str
+            Absolute path to dump dir.
+        **kwargs : dict
+            Additional kwargs to pass in low-level dumper.
 
-        Args:
-            runs (dict or pd.Dataframe): contain GS results.
-            best_run_index (int): best score run index.
-
-        Note:
-            _runs.csv contain columns:
-
-                * all estimator parameters.
-                * 'id' random UUID for one run (hp combination).
-                * 'data__hash' pd.util.hash_pandas_object hash of data before split.
-                * 'params__hash' user params md5 hash (cause of function memory address will change at each workflow).
-                * 'pipeline__type' regressor or classifier.
-                * 'pipeline__estimator__name' estimator.__name__.
-                * 'gs__splitter'.
-                * 'data__split_train_size'.
-                * 'data__source' params['data'].
         """
-        print('OK')
-        return
+        self._pprint(logger, self.optimizer)
+        if hasattr(self.optimizer, 'best_estimator_'):
+            pipeline = getattr(self.optimizer, 'best_estimator_')
+        else:
+            pipeline = getattr(self.optimizer, 'estimator')
+        runs = copy.deepcopy(self.optimizer.cv_results_)
+        best_run_ind = self.optimizer.best_index_
+        self._dump_runs(logger, dirpath, pipeline, runs, best_run_ind, **kwargs)
+        return None
 
-        # TODO: runs_comppliance needed? test _dump_runs
-        logger.info("\u25CF \u25B6 DUMP RUNS")
-        # get full params for each run
+    def _pprint(self, logger, optimizer):
+        """Pretty print optimizer results.
+
+        Parameters
+        ----------
+        logger : logging.Logger
+            Logger to logs runs summary.
+        optimizer : sklearn optimizer
+            Underlying optimizer.
+
+        """
+        jsb = jsbeautifier.beautify
+        modifiers = self._find_modifiers(optimizer.cv_results_)
+        param_modifiers = set(f'param_{i}' for i in modifiers)
+        best_modifiers = {key: optimizer.best_params_[key] for key in modifiers
+                          if key in optimizer.best_params_}
+        runs_avg = {
+            'mean_fit_time': optimizer.cv_results_['mean_fit_time'].mean(),
+            'mean_score_time': optimizer.cv_results_['mean_score_time'].mean()
+        }
+        useful_keys = [key for key in optimizer.cv_results_
+                       if key in param_modifiers
+                       or 'mean_train' in key or 'mean_test' in key]
+        df = pd.DataFrame(optimizer.cv_results_)[useful_keys]
+
+        with pd.option_context('display.max_rows', None,
+                               'display.max_columns', None):
+            msg = tabulate.tabulate(df, headers='keys', tablefmt='psql')
+            logger.info(msg)
+        logger.info(f"GridSearch best index:\n    {optimizer.best_index_}")
+        logger.info(f"GridSearch time:\n    {runs_avg}")
+        logger.log(25, f"CV best modifiers:\n"
+                       f"    {jsb(str(best_modifiers))}")
+        logger.info(f"CV best configuration:\n"
+                    f"    {jsb(str(optimizer.best_params_))}")
+        logger.info(f"CV best mean test score:\n"
+                    f"    {getattr(optimizer, 'best_score_', 'n/a')}")
+        return None
+
+    def _find_modifiers(self, cv_results_):
+        """Find varied hp."""
+        modifiers = []
+        for key, val in cv_results_.items():
+            if not key.startswith('param_'):
+                continue
+            if isinstance(val, list):
+                size = len(val)
+            else:
+                size = val.shape[0]
+            if size > 1:
+                modifiers.append(key)
+        return modifiers
+
+    def _dump_runs(self, logger, dirpath, pipeline, runs, best_run_ind, **kwargs):
+        """Dumps grid search results.
+
+        Parameters
+        ----------
+        logger : logging.Logger
+            Logger to logs runs summary.
+        dirpath : str
+            Absolute path to dump dir.
+        pipeline : mlshell.Pipeline TODO:
+            Tuned pipeline.
+        runs : dict or pandas.Dataframe
+            Grid search results `optimizer.cv_results_`.
+        best_run_ind : int
+            Index of run with best score in `runs`.
+        **kwargs : dict
+            Additional kwargs to pass in low-level dumper.
+
+        Notes
+        -----
+        In resulted file <timestamp>_runs.csv each row corresponds to run,
+        columns:
+        * 'id' random UUID for run (hp combination).
+        * all pipeline parameters.
+        * 'pipeline__type' regressor or classifier.
+        * 'pipeline__estimator__name' estimator.__name__. TODO?
+        * data
+        * 'dataset__id'.
+        * 'dataset__hash' pd.util.hash_pandas_object hash of data before split.
+        * 'dataset_index' TODO: index for whole dataset?
+        * conf.py id.  TODO: global conf id.
+
+        """
+
+        # TODO: runs_compliance needed? test _dump_runs
+        # Get full params for each run.
         nums = len(runs['params'])
         lis = list(range(nums))
-        est_clone = sklearn.clone(pipeline)  # not clone attached data, only params
+        # Clone params (not attached data).
+        est_clone = sklearn.clone(pipeline)
         for i, param in enumerate(runs['params']):
             est_clone.set_params(**param)
             lis[i] = est_clone.get_params()
-        df = pd.DataFrame(lis)  # too big to print
-        # merge df with runs with replace (exchange args if don`t need replace)
-        # cv_results consist suffix param_
+        # Too big to print.
+        df = pd.DataFrame(lis)
+        # Merge df with runs with replace, exchange args if don`t need replace.
+        # cv_results consist suffix param_.
         param_labels = set(i for i in runs.keys() if 'param_' in i)
         if param_labels:
             other_labels = set(runs.keys())-param_labels
             update_labels = set(df.columns).intersection(other_labels)
             runs = pd.DataFrame(runs).drop(list(param_labels), axis=1, errors='ignore')
-            df = pd.merge(df, runs,
-                          how='outer', on=list(update_labels), left_index=True, right_index=True,
+            df = pd.merge(df, runs, how='outer', on=list(update_labels),
+                          left_index=True, right_index=True,
                           suffixes=('_left', '_right'))
         # pipeline
         # df = pd.DataFrame(res.cv_results_)
@@ -129,10 +281,11 @@ class SklearnOptimizerMixin(object):
         object_labels = list(df.select_dtypes(include=['object']).columns)
         df[object_labels] = df[object_labels].astype(str)
 
+        filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
         with open(filepath, 'a', newline='') as f:
             df.to_csv(f, mode='a', header=f.tell() == 0, index=False, line_terminator='\n')
         logger.log(25, f"Save run(s) results to file:\n    {filepath}")
-        logger.log(25, f"Best run id:\n    {run_id_list[best_run_index]}")
+        logger.log(25, f"Best run id:\n    {run_id_list[best_run_ind]}")
         # alternative: to hdf(longer,bigger) hdfstore(can use as dict)
         # df.to_hdf(filepath, key='key', append=True, mode='a', format='table')
 
@@ -149,76 +302,64 @@ class SklearnOptimizerMixin(object):
         # df2 = pd.DataFrame(self.p)
         # df2.to_csv('{}/params.csv'.format(self.project_path), index=False)
 
-    # [deprecated]
-    # def distribution_compliance(self, res, hp_grid):
-    #     for name, vals in hp_grid.items():
-    #         # check if distribution in hp_grid
-    #         if not hasattr(type(vals), '__iter__'):
-    #             # there are masked array in res
-    #             hp_grid[name] = pd.unique(np.ma.getdata(res[f'param_{name}']))
-    #     return hp_grid
 
-    def _find_modifiers(self, cv_results_):
-        # find varied hp
-        modifiers = []
-        for key, val in cv_results_.items():
-            if not key.startswith('param_'):
-                continue
-            if isinstance(val, list):
-                size = len(val)
-            else:
-                size = val.shape[0]
-            if size > 1:
-                modifiers.append(key)
-        return modifiers
 
-    def _pretty_print(self, logger, optimizer):
-        """Pretty print."""
+class RandomizedSearchOptimizer(Optimizer):
+    def __init__(self, pipeline, hp_grid, scoring, mock=False, **kwargs):
+        """
 
-        # [deprecated] excessive, not work with distributions
-        # self.logger.info('hp grid:\n    {}'.format(jsbeautifier.beautify(str(hp_grid))))
-        modifiers = self._find_modifiers(optimizer.cv_results_)
+        Parameters
+        ----------
+        pipeline
+        hp_grid
+        scoring
+        mock : bool, optional (default=False)
+            If True, remove pipeline steps where hp path/sub-path not in
+            hp_grid keys. For example, 'a_b_c' remains all 'a' sub-paths.
+            Applied only if pipeline created with sklearn.pipeline.Pipeline.
+            If hp_grid is {}, remain full pipeline.
+        **kwargs
 
-        param_modifiers = set('param_'+i for i in modifiers)
-        # outputs
-        runs_avg = {'mean_fit_time': optimizer.cv_results_['mean_fit_time'].mean(),
-                    'mean_score_time': optimizer.cv_results_['mean_score_time'].mean()}
-        df = pd.DataFrame(optimizer.cv_results_)[[key for key in optimizer.cv_results_ if key in param_modifiers
-                                                  or 'mean_train' in key or 'mean_test' in key]]
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-            # logger.debug('{}'.format(df.head()))
-            logger.info('{}'.format(tabulate.tabulate(df, headers='keys', tablefmt='psql')))
-        # Alternative: df.to_string()
+        Notes
+        -----
+        Be careful, if pipeline use `pass_custom` and mock set True without
+        adding `pass_custom__kwargs` to hp_grid, corresponding custom score(s)
+        will use last applied kwargs. The problem that it can be from another
+        pipeline optimization, so better always remain pass_custom when mock.
 
-        logger.info('GridSearch best index:\n    {}'.format(optimizer.best_index_))
-        logger.info('GridSearch time:\n    {}'.format(runs_avg))
-        logger.log(25, 'CV best modifiers:\n'
-                       '    {}'.format(jsbeautifier.beautify(str({key: optimizer.best_params_[key]
-                                                                       for key in modifiers
-                                                                       if key in optimizer.best_params_}))))
-        logger.info('CV best configuration:\n'
-                    '    {}'.format(jsbeautifier.beautify(str(optimizer.best_params_))))
-        logger.info('CV best mean test score:\n'
-                    '    {}'.format(optimizer.__dict__.get('best_score_', 'n/a')))  # not exist if refit callable
-        # [deprecated] long ago
-        # Alternative: nested dic to MultiIndex df
-        # l = res.cv_results_['mean_fit_time'].shape[0]
-        # dic = dict({'index':np.arange(l, dtype=np.float), 'train_score':res.cv_results_['mean_train_score'],
-        #              'test_score': res.cv_results_['mean_test_score']},
-        #              **{key:res.cv_results_[key] for key in res.cv_results_ if 'param_' in key})
-        # Example:
-        # dic = {'a': list(range(10)), 'b': {'c': list(range(10)), 'd': list(range(10))}}
-        # dic_flat = {}
-        # dic_flatter(dic, dic_flat)
-        # pd.DataFrame(dic_flat)
+        TODO: what with result pipeline? is it saved to self.objects?
+        """
+        super().__init__()
+        n_iter = self._resolve_n_iter(kwargs.pop('n_iter', 10), hp_grid)
+        if hp_grid and mock and hasattr(pipeline, 'steps'):
+            pipeline = self._mock_pipeline(pipeline, hp_grid)
+        self.optimizer = sklearn.model_selection.RandomizedSearchCV(
+            pipeline, hp_grid, scoring=scoring, n_iter=n_iter, **kwargs)
+
+    def fit(self, *args, **fit_params):
+        self.optimizer.fit(*args, **fit_params)
+        return None
+
+    def _mock_pipeline(self, pipeline, hp_grid):
+        """Remain steps only if in hp_grid."""
+        r_step = []
+        for step in pipeline.steps:
+            if step[0] == 'pass_custom':
+                print("Warning: Better always remain pass_custom when mock.")
+            for hp_name in hp_grid:
+                paths = hp_name.split('__')
+                if step[0] == paths[0]:
+                    r_step.append(step)
+        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
+        return mock_pipeline
 
     def _resolve_n_iter(self, n_iter, hp_grid):
         """Set number of runs in grid search."""
-        # calculate from hps ranges if user 'gs__runs' is not given
+        # Calculate from hps ranges if 'n_iter' is None.
         if n_iter is not None:
             return n_iter
         try:
-            # 1.0 if hp_grid={}
+            # 1.0 if hp_grid = {}.
             n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0]
                               for i in hp_grid.values()])
         except AttributeError as e:
@@ -227,108 +368,37 @@ class SklearnOptimizerMixin(object):
         return n_iter
 
 
-class RandomizedSearchOptimizer(SklearnOptimizerMixin):
-    def __init__(self, pipeline, hp_grid, scoring, **kwargs):
-        super().__init__()
-        n_iter = self._resolve_n_iter(kwargs.pop('n_iter', 10), hp_grid)
-        self.optimizer = sklearn.model_selection.RandomizedSearchCV(
-            pipeline, hp_grid, scoring=scoring, n_iter=n_iter, **kwargs)
-
-    def fit(self, *args, **fit_params):
-        self.optimizer.fit(*args, **fit_params)
-        return None
+class KwargsOptimizer(RandomizedSearchOptimizer):
+    pass
 
 
-class MockOptimizer(SklearnOptimizerMixin):
+class ThresholdOptimizer(RandomizedSearchOptimizer):
     """Threshold optimizer.
 
     Provide interface for separate optimize step to brute force threshold in
     classification without full pipeline fit.
 
     """
-    def __init__(self, pipeline, hp_grid, scoring, **kwargs):
-        """
-
-        Parameters
-        ----------
-        pipeline
-        hp_grid
-        scoring
-        hp_mock : list of str
-            Pipeline hp to mock for brute force.
-        **kwargs
-
-
-        """
-        super().__init__()
-        n_iter = self._resolve_n_iter(kwargs.pop('n_iter', 10), hp_grid)
-        mock_pipeline = self._resolve_pipeline(pipeline, hp_grid)
-        self.optimizer = sklearn.model_selection.RandomizedSearchCV(
-            mock_pipeline, hp_grid, scoring=scoring, n_iter=n_iter, **kwargs)
-
-    def _resolve_pipeline(self, pipeline, hp_grid):
-        """Reproduce pipeline steps structure."""
-        # Default (if not hp_grid).
-        mock_pipeline = pipeline
-        params = pipeline.get_params()
-        for hp_name in hp_grid:  # 'a__b__c'
-            # Copy whole original step, contain hp_name last parameter
-            # and recover upstream name structure (envelop all except last).
-            # If only one subname, copy whole pipeline.
-            lis = hp_name.split('__')  # ['a', 'b', 'c']
-            step_name = '__'.join(lis[:-1])  # ['a', 'b']
-
-            if step_name:
-                for subname in lis[-2::-1]:  # ['b', 'a']
-                    # Check if subname already exist.
-
-                    mock_pipeline = sklearn.pipeline.Pipeline(
-                        steps=[(subname, params[step_name])])
-            else:
-                mock_pipeline = pipeline
-        return mock_pipeline
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def fit(self, x, y, **fit_params):
         optimizer = self.optimizer
 
-        # First do it simple, test, then complicate.
-        # TODO: maybe move out in workflow, so unify with brut custom_score
-        #     method = x, predict_proba(for threshold), predict(for scorer)
-        #     Invokes the passed method name of the passed estimator.
-        #     but i not sure that it is possible: in some case mean score, in some OOF
-        #     If so i can not even redefine fit
-        # TODO: Everything with data+pipeline should separate from data and pipeline
-        #    resolver also should be in utils.sklearn. Workflow get as params this utils
-        #    pipeline.resolve should be in pipeline, but resolver in utils.sklearn with validator
-
-        y_pred_proba, _, y_true = mlshell.custom.cross_val_predict(
-            optimizer.estimator,
-            x, y=y, fit_params=fit_params,
+        y_pred_proba, index = mlshell.custom.cross_val_predict(
+            optimizer.estimator, x, y=y, fit_params=fit_params,
             groups=None, cv=optimizer.cv, method='predict_proba')
 
-        optimizer.fit(y_pred_proba, y_true, **fit_params)
+        optimizer.fit(y_pred_proba, y[index], **fit_params)
 
-        # [deprecated]
-        # best_th_ = optimizer.best_params_['threshold']
-        # runs_th_ = copy.deepcopy(optimizer.cv_results_)
-
-        # best_run_index = len(runs['params']) + optimizer.best_index_
-        # # better make in dump runs in auto regime (could be problem if CV differs)
-        # runs = self.runs_compliance(runs, runs_th_, optimizer.best_index_)
-
-        # self.best_params_['estimate__apply_threshold__threshold'] = best_th_
-        # self.modifiers.append('estimate__apply_threshold__threshold')
-        # self.p['gs__hp_grid']['estimate__apply_threshold__threshold'] = th_range
-
+        # TODO: deprecated?
         if optimizer.refit:
             best_th_ = optimizer.best_params_[self.th_name]
             self.pipeline.set_params(**{self.th_name: best_th_})
-            #  need refit, otherwise not reproduce results
+            # Needs refit, otherwise not reproduce results.
             self.pipeline.fit(x, y, **fit_params)
 
-        # recover sklearn optimizer structure
-        self.__dict__.update(self.optimizer.__dict__)
-        return self
+        return None
 
     def runs_compliance(self, runs, runs_th_, best_index):
         """"Combine GS results to csv dump."""

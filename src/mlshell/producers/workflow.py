@@ -6,6 +6,9 @@ results for typical machine learning task .
 pipelines/datasets/metrics. Current implementation specifies methods to
 fit/predict/optimize/validate/dump pipeline and plot results.
 
+Workflow support multi-stage optimization for some pipeline-dataset
+pair. Each stage results combined with previous stage to find the best
+hp combination and use it in the next stage.
 
 # TODO: Move out to related methods.
 (dict): if user skip declaration for any parameter the default one will be used.
@@ -258,7 +261,8 @@ class Workflow(pycnfg.Producer):
     @checker
     def optimize(self, res, pipeline_id, dataset_id, hp_grid=None,
                  scoring=None, resolver=None, resolve_params=None,
-                 optimizer=None, gs_params=None, fit_params=None):
+                 optimizer=None, gs_params=None, fit_params=None,
+                 dirpath=None, dump_params=None):
         """Optimize pipeline.
 
         Parameters
@@ -293,17 +297,35 @@ class Workflow(pycnfg.Producer):
         gs_params :  dict, None, optional (default=None)
             Additional kwargs to `optimizer`(pipeline, hp_grid, scoring,
              **gs_params) initialization. If None, {}.
+        dirpath : str, optional (default=None)
+            Absolute path to the dump result 'runs' dir or relative to
+            'self.project_dir' started with './'. If None, "self.project_path
+            /results/runs" is used. See Notes for runs description.
+        dump_params: dict, optional (default=None)
+        `   Additional kwargs to pass in optimizer.dump_runs(**dump_params). If
+            None, {}.
 
         Returns
         -------
         res : dict
             Input`s key added/updated:
-             {'runs': TODO:}.
+            {'runs': {'pipeline_id|dataset_id': optimizer.update_best output}}.
+
         Notes
         -----
-        TODO:
-        Pipeline updated in `objects` attribute only if 'runs' contain
+        Optimize step:
+        * Call grid search: optimizer(pipeline, hp_grid, scoring, **gs_params)
+        .fit(x, y, **fit_params).
+        * Call dump runs: optimizer.dump_runs(self.logger, dirpath,
+         **dump_params), where run = probing hp combination.
+        * Call optimizer.update_best(prev_runs) to combine previous
+        optimization stage for specific dataset-pipeline pair and find best.
+        * Pipeline object updated in `self.objects` only if 'runs' contain
         'best_estimator_'.
+
+        See Also
+        --------
+        :class:`mlshell.Optimizer` optimizer interface.
 
         """
         self.logger.info("|__ OPTIMIZE HYPER-PARAMETERS")
@@ -319,6 +341,12 @@ class Workflow(pycnfg.Producer):
             fit_params = {}
         if optimizer is None:
             optimizer = mlshell.RandomizedSearchOptimizer
+        if not dirpath:
+            dirpath = f"{self.project_path}/results/runs"
+        elif dirpath.startswith('./'):
+            dirpath = f"{self.project_path}/{dirpath[2:]}"
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
 
         pipeline = self.objects[pipeline_id]
         dataset = self.objects[dataset_id]
@@ -336,21 +364,17 @@ class Workflow(pycnfg.Producer):
         optimizer = optimizer(pipeline, hp_grid, scoring, **gs_params)
         optimizer.fit(train.x, train.y, **fit_params)
 
-        # TODO maybe separate endpoint
-        # Results logs/dump to disk in run dir.
-        dirpath = '{}/results/runs'.format(self.project_path)
-        if not os.path.exists(dirpath):
-            os.makedirs(dirpath)
-        filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
-        optimizer.dump_runs(self.logger, filepath)
+        self.logger.info("    |__ DUMP RUNS")
+        optimizer.dump_runs(self.logger, dirpath, **dump_params)
 
         if 'runs' not in res:
             res['runs'] = {}
         runs = res['runs']
-        key = (pipeline_id, dataset_id)
+        key = f"{pipeline_id}|{dataset_id}"
         runs[key] = optimizer.update_best(runs.get(key, {}))
         if 'best_estimator_' in runs[key]:
             self.objects[pipeline_id] = runs[key].get('best_estimator_')
+        return res
 
     # @memory_profiler
     def validate(self, res, pipeline_id, dataset_id, metric_id,
@@ -407,7 +431,6 @@ class Workflow(pycnfg.Producer):
             with './'. If None,"self.project_path/results/models" is used.
         **kwargs: dict
         `   Additional kwargs to pass in pipeline.dump(**kwargs).
-
 
         Returns
         -------
@@ -513,7 +536,7 @@ class Workflow(pycnfg.Producer):
         # we need only hp_grid flat:
         # either hp here in args
         # either combine tested hp for all optimizers if hp = {}
-        runs = self._runs.get((pipeline_id, dataset_id), {})
+        runs = self._runs.get(f"{pipeline_id}|{dataset_id}", {})
         gui = cls(pipeline, dataset, runs, **kwargs)
         threading.Thread(target=gui.plot(), args=(), daemon=True).start()
         return
