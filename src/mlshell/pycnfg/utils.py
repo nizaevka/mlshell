@@ -3,6 +3,7 @@
 
 import os
 import sys
+import time
 
 from IPython import get_ipython
 import mlshell.pycnfg as pycnfg
@@ -68,13 +69,17 @@ def find_path(script_name=False, filepath=None):
         return project_dir
 
 
-def run(conf, default_conf=None, objects=None):
+def run(conf, conf_id=None, default_conf=None, objects=None):
     """Wrapper over configuration handler.
 
     Parameters
     ----------
-    conf : dict
+    conf : dict or str
         Configuration to pass in `pycnfg.Handler.read()`.
+        {'section_id': {'configuration_id': configuration,},}.
+        If str, absolute path to file with `CNFG` variable.
+    conf_id: str, None, optional (default=None)
+        Configuration unique identifier. If None, int(time.time()).
     default_conf : dict, None, optional (default=None)
         Default configurations to pass in `pycnfg.Handler.read()`.
     objects : dict, None, optional (default=None)

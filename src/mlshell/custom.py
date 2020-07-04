@@ -1,23 +1,73 @@
-"""The module contains custom classes on base of sklearn classes
+"""
+The :mod:`mlshell.custom` contains custom sklearn-based classes.
 
-Note:
-    All estimators/transformers should specify all the parameters that can be set
-    at the class level in their ``__init__`` as explicit keyword
-    arguments (no ``*args`` or ``**kwargs``). Otherwise will be problem in GS.
+Notes
+-----
+All estimators/transformers should specify all ``__init__`` argument explicitly
+(no ``*args`` or ``**kwargs``), otherwise grid search not supports.
 
 """
 
 
 from abc import ABC
 
+import numpy as np
+import sklearn
 
-from mlshell.libs import *
+__all__ = ['FunctionTransformer', 'PowerTransformer', 'OneHotEncoder',
+           'CustomSelector', 'CustomReducer', 'PredictionTransformer',
+           'MockEstimator', 'ThresholdClassifier', 'CustomCV',
+           'cross_val_predict', 'partial_cross_val_predict']
 
 
-class SkippablePowerTransformer(sklearn.preprocessing.PowerTransformer):
-    """Skippable version of PowerTransformer."""
+class FunctionTransformer(sklearn.preprocessing.FunctionTransformer):
+    """Extended FunctionTransformer.
 
-    def __init__(self, method='yeo-johnson', standardize=True, copy=True, skip=False):
+     Skip argument added.
+
+     """
+    def __init__(self, func=None, inverse_func=None, validate=False,
+                 accept_sparse=False, check_inverse=True, kw_args=None,
+                 inv_kw_args=None, skip=False):
+        self.skip = skip
+        super().__init__(func=func, inverse_func=inverse_func,
+                         validate=validate, accept_sparse=accept_sparse,
+                         check_inverse=check_inverse, kw_args=kw_args,
+                         inv_kw_args=inv_kw_args)
+
+    def fit(self, x, y=None):
+        if self.skip:
+            return self
+        else:
+            return super().fit(x, y)
+
+    def fit_transform(self, x, y=None, **fit_params):
+        if self.skip:
+            return x
+        else:
+            return super().fit_transform(x, y, **fit_params)
+
+    def transform(self, x):
+        if self.skip:
+            return x
+        else:
+            return super().transform(x)
+
+    def inverse_transform(self, x):
+        if self.skip:
+            return x
+        else:
+            return super().inverse_transform(x)
+
+
+class PowerTransformer(sklearn.preprocessing.PowerTransformer):
+    """Extended PowerTransformer.
+
+     Skip argument added.
+
+     """
+    def __init__(self, method='yeo-johnson', standardize=True, copy=True,
+                 skip=False):
         self.skip = skip
         super().__init__(method=method, standardize=standardize, copy=copy)
 
@@ -39,159 +89,59 @@ class SkippablePowerTransformer(sklearn.preprocessing.PowerTransformer):
         else:
             return super().transform(x)
 
+    def inverse_transform(self, x):
+        if self.skip:
+            return x
+        else:
+            return super().inverse_transform(x)
 
-class SkippableOneHotEncoder(sklearn.preprocessing.OneHotEncoder):
-    """Skippable version of OneHotEncoder."""
 
-    def __init__(self, categories=None, drop=None, sparse=True, dtype=np.float64,
-                 handle_unknown='error', skip=False):
-        # can work if no categor functions x=[]
+class OneHotEncoder(sklearn.preprocessing.OneHotEncoder):
+    """Extended OneHotEncoder.
+
+    Skip argument added. Also if x=[], trigger skip.
+
+    """
+    def __init__(self, categories=None, drop=None, sparse=True,
+                 dtype=np.float64, handle_unknown='error', skip=False):
         self.skip = skip
-        super().__init__(categories=categories, drop=drop, sparse=sparse, dtype=dtype,
-                         handle_unknown=handle_unknown)
-        # [deprecated] forbade example with kwargs
-        # def __init__(self, **kwarg):
-        #     params = dict(categories=None, drop=None, sparse=True, dtype=np.float64,
-        #              handle_unknown='error', skip=False)
-        #     params.update(kwarg)
-        #     self.skip=params.pop('skip')
-        #     super().__init__(**params)
+        super().__init__(categories=categories, drop=drop, sparse=sparse,
+                         dtype=dtype, handle_unknown=handle_unknown)
 
     def fit(self, x, y=None):
-        self.check_empty(x)
+        self._check_empty(x)
         if self.skip:
             return self
         else:
             return super().fit(x, y)
 
     def fit_transform(self, x, y=None):
-        self.check_empty(x)
+        self._check_empty(x)
         if self.skip:
             return x
         else:
             return super().fit_transform(x, y)
 
     def transform(self, x):
-        self.check_empty(x)
+        self._check_empty(x)
         if self.skip:
             return x
         else:
             return super().transform(x)
 
-    def check_empty(self, x):
+    def _check_empty(self, x):
         if x.size == 0:
             self.skip = True
 
-
-class CustomReducer(sklearn.base.BaseEstimator):
-    """Class custom dimension reducer """
-
-    def __init__(self, skip=False):
-        self.skip = skip
-        if not skip:
-            raise NotImplementedError
-
-    def fit(self, x, y=None):
-        if self.skip:
-            return self
-        # TODO: unsupervised step to reduce dimension or analyse
-
-        # random_projection
-        # sklearn.random_projection.johnson_lindenstrauss_min_dim
-
-        # # cluster.FeatureAgglomeration
-        # >> > import numpy as np
-        # >> > from sklearn import datasets, cluster
-        # >> > digits = datasets.load_digits()
-        # >> > images = digits.images
-        # >> > x = np.reshape(images, (len(images), -1))
-        # >> > agglo = cluster.FeatureAgglomeration(n_clusters=32)
-        # >> > agglo.fit(x)
-        # FeatureAgglomeration(affinity='euclidean', compute_full_tree='auto',
-        #                      connectivity=None, linkage='ward', memory=None, n_clusters=32,
-        #                      pooling_func=...)
-        # >> > x_reduced = agglo.transform(x)
-        # >> > x_reduced.shape
-        # (1797, 32)
-
-        # reductor = decomposition.PCA()
-        return self
-
-    def transform(self, x):
-        if self.skip:
-            return x
-        x_transformed = None
-        return x_transformed
-
-    def fit_transform(self, x, y=None):
+    def inverse_transform(self, x):
         if self.skip:
             return x
         else:
-            self.fit(x, y).transform(x)
+            return super().inverse_transform(x)
 
 
-class CustomImputer(object):
-    """Class custom imputer."""
-
-    def __init__(self, *args, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-        sklearn.impute.SimpleImputer()
-        raise NotImplementedError
-        # replcae np.nan на уникальное + add indicator feature
-        # если просто заменить на 0, признак давать вклад в предсказание данного объекта не будет,
-        # то потеряем информацию без индикатора
-        # для линейных моделей - не должyj быть выбросом, можно сделать регрессию и предсказать
-        # для деревьев - просто отнесет в свою ветку
-        # надо кастомный класс, в зависимости от типа алгоритма своё ставить
-
-
-class CustomCV(sklearn.model_selection.BaseCrossValidator, ABC):
-    """Custom CV
-
-    Attributes:
-        n_splits (int): Number of splits. Must be at least 2. (default=5)
-
-    """
-
-    def __init__(self, n_splits=5):
-        super().__init__()
-        self.n_splits = n_splits
-        raise NotImplementedError
-
-    def split(self, x, y=None, groups=None):
-        """Generate indices to split data into training and test set.
-
-        Args:
-            x (array-like): shape (n_samples, n_features)
-                Training data, where n_samples is the number of samples
-                and n_features is the number of features.
-
-            y (array-like): shape (n_samples,)
-                Always ignored, exists for compatibility.
-
-            groups (array-like): shape (n_samples,), optional
-                Always ignored, exists for compatibility.
-
-        Yields:
-            train (ndarray):
-                The training set indices for that split.
-
-            test (ndarray):
-                The testing set indices for that split.
-                
-        """
-        # [Example]
-        n = x.shape[0]
-        i = 1
-        while i <= self.n_splits:
-            idx = np.arange(n * (i - 1) / self.n_splits, n * i / self.n_splits, dtype=int)
-            yield idx, idx
-            i += 1
-
-
-class CustomSelectorEstimator(sklearn.base.BaseEstimator):
-    """Class pseudo-estimator to scored column for selectors """
+class CustomSelector(sklearn.base.BaseEstimator):
+    """Pseudo-estimator to scored column for selectors."""
 
     def __init__(self, estimator_type='classifier', verbose=True, skip=False):
         self.skip = skip
@@ -211,13 +161,55 @@ class CustomSelectorEstimator(sklearn.base.BaseEstimator):
         return self
 
 
+class CustomReducer(sklearn.base.BaseEstimator,
+                    sklearn.base.TransformerMixin):
+    """Custom dimension reducer template."""
+
+    def __init__(self, skip=False):
+        self.skip = skip
+        if not skip:
+            raise NotImplementedError
+
+    def fit(self, x, y=None):
+        if self.skip:
+            return self
+        # TODO: unsupervised step to analyse/reduce dimension.
+
+        # random_projection
+        # sklearn.random_projection.johnson_lindenstrauss_min_dim
+
+        # cluster.FeatureAgglomeration
+        # >> import numpy as np
+        # >> from sklearn import datasets, cluster
+        # >> digits = datasets.load_digits()
+        # >> images = digits.images
+        # >> x = np.reshape(images, (len(images), -1))
+        # >> agglo = cluster.FeatureAgglomeration(n_clusters=32)
+        # >> agglo.fit(x)
+        # FeatureAgglomeration(affinity='euclidean', compute_full_tree='auto',
+        #                      connectivity=None, linkage='ward', memory=None,
+        #                      n_clusters=32, pooling_func=...)
+        # >> x_reduced = agglo.transform(x)
+        # >> x_reduced.shape
+        # (1797, 32)
+
+        # reductor = sklearn.decomposition.PCA()
+        return self
+
+    def transform(self, x):
+        if self.skip:
+            return x
+        x_transformed = None
+        return x_transformed
+
+
 class PredictionTransformer(sklearn.base.BaseEstimator,
                             sklearn.base.TransformerMixin,
                             sklearn.base.MetaEstimatorMixin):
-    """Class to add brutforce of th in GridSearch"""
+    """Transformer calls predict_proba on features."""
 
     def __init__(self, classifier):
-        """Replaces all features with `clf.predict_proba(x)`"""
+        """Replaces features with `clf.predict_proba(x)`"""
         self.clf = classifier
 
     def fit(self, x, y, **fit_params):
@@ -228,9 +220,10 @@ class PredictionTransformer(sklearn.base.BaseEstimator,
         return self.clf.predict_proba(x)
 
 
-class IdEstimator(sklearn.base.BaseEstimator):
-    """Always predict input x."""
+class MockEstimator(sklearn.base.BaseEstimator):
+    """Estimator always predict input features."""
     def __init__(self):
+        pass
 
     def fit(self, x, y, **fit_params):
         return self
@@ -239,146 +232,141 @@ class IdEstimator(sklearn.base.BaseEstimator):
         return x
 
 
-# TODO: remain binary simple variant
-class ThresholdClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMixin):
-    """Classify samples based on whether they are above of below `threshold`.
+class ThresholdClassifier(sklearn.base.BaseEstimator,
+                          sklearn.base.ClassifierMixin):
+    """Estimator to apply classification threshold.
+
+    Classify samples based on whether they are above of below `threshold`.
+    Awaits for predict_proba for features.
 
     Parameters
     ----------
     threshold : float [0,1], list of float [0,1], None, optional(default=None)
-        For multioutput target list of [n_outouts]. If None, np.argmax, so in
-        binary case equivalent to 0.5.
+        Classification threshold. For multi-output target list of [n_outputs]
+        awaited. If None, np.argmax, that is in binary case equivalent to 0.5.
+        If positive class probability P(pos_label) = 1 - P(neg_labels) > th_
+        for some sample, classifier predict pos_label for this sample, else
+        next label in neg_labels with max probability.
 
-    Args:
-        classes (array of shape (n_classes), or a list of n_outputs such arrays if n_outputs > 1):
-            Sorted target(s) classes.
-
-    Note:
-        binary classes only.
-        classes should be extracted from train, not full dataset.
+    **kwargs : dict
+        kwarg-layer need to set multiple params together in resolver/optimizer.
+        {
+        'classes': list of np.ndarray
+            List of sorted unique labels for each target(s) (n_outputs,
+            n_classes).
+        'pos_labels': list
+            List of "positive" label(s) for target(s) (n_outputs,).
+        'pos_labels_ind': list
+            List of "positive" label(s) index in np.unique(target) for
+            target(s) (n_outputs).
+        }
 
     """
-
     def __init__(self, threshold=None, **kwargs):
-        # kwargs layer need to resolve hp together.
-        classes = kwargs.get('classes', None)
-        pos_labels = kwargs.get('pos_labels', None)
-        pos_labels_ind = kwargs.get('pos_labels_ind', None)
-
-        if not classes:
-            raise ValueError("classes should be non-empty sequence.")
-        classes = classes if isinstance(classes, list) else [classes]
-        if any(not isinstance(i, np.ndarray) for i in classes):
-            raise ValueError("'classes' should be array of shape (n_classes),"
-                             " or a list of n_outputs such arrays if n_outputs > 1.")
-
-        if any(len(i) > 2 for i in classes):
-            raise ValueError('Currently only binary classification supported.')
-
-        self.classes_ = classes
-        self.pos_labels = pos_labels
-        self.pos_labels_ind = pos_labels_ind
+        self.classes = kwargs['classes']
+        self.pos_labels = kwargs['pos_labels']
+        self.pos_labels_ind = kwargs['pos_labels_ind']
         self.threshold = threshold
+        if any(not isinstance(i, np.ndarray) for i in self.classes):
+            raise ValueError("Each target 'classes' should be numpy.ndarray.")
 
     def fit(self, x, y, **fit_params):
         return self
 
     def predict(self, x):
-        """
-        Note:
-            x = predict_proba
-            in RF built-in:
-                return self.classes.take(np.argmax(x, axis=1), axis=0)
-
-        """
-
-        # x = predict_proba
+        # x - predict_proba.
         if not isinstance(x, list):
             # Compliance to multi-output.
             x = [x]
             threshold = [self.threshold]
         else:
             threshold = self.threshold
-
-        assert len(x) == len(self.classes_), "Multi-output inconsistent."
+        assert len(x) == len(self.classes), "Multi-output inconsistent."
 
         res = []
         for i in range(len(x)):
-            # Check that each train fold contain all classes, otherwise we
-            # can`t predict_proba. We can`t reconstruct probabilities
-            # (add zero), because don`t no which one class is absent.
+            # Check that each train fold contain all classes, otherwise can`t
+            # predict_proba, since can`t reconstruct probabilities (add zero),
+            # cause don`t know which one class is absent.
             n_classes = x[i].shape[1]
-            if n_classes != self.classes_[i].shape[0]:
-                raise ValueError('Not all class labels  in train folds:\n'
-                                 '    ThresholdClassifier can`t identify class probabilities.')
+            if n_classes != self.classes[i].shape[0]:
+                raise ValueError("Train folds missed some classes:\n"
+                                 "    ThresholdClassifier "
+                                 "can`t identify class probabilities.")
 
             if threshold[i] is None:
-                # just take the max
-                res.append(self.classes_[i].take(np.argmax(x[i], axis=1),
-                                                 axis=0))
+                # Take the one with max probability.
+                res.append(self.classes[i].take(np.argmax(x[i],
+                                                          axis=1), axis=0))
             else:
                 if n_classes > 2:
                     # Multi-class classification.
                     # Remain label with max prob.
                     mask = np.arange(n_classes) != self.pos_labels_ind
                     remain_x = x[i][..., mask]
-                    remain_classes = self.classes_[i][mask]
-                    neg_labels = remain_classes.take(np.argmax(remain_x, axis=1), axis=0)
+                    remain_classes = self.classes[i][mask]
+                    neg_labels = remain_classes.take(np.argmax(remain_x,
+                                                               axis=1), axis=0)
                 else:
                     # Binary classification.
                     mask = np.arange(n_classes) != self.pos_labels_ind
-                    neg_labels = self.classes_[i][mask]
-                res.append(np.where(x[i][..., self.pos_labels_ind] > threshold[i], [self.pos_labels], neg_labels))
+                    neg_labels = self.classes[i][mask]
+                res.append(
+                    np.where(x[i][..., self.pos_labels_ind] > threshold[i],
+                             [self.pos_labels], neg_labels)
+                )
         return res if len(res) > 1 else res[0]
 
     def predict_proba(self, x):
         return x
 
 
-class SkippableTransformer(sklearn.decomposition.TruncatedSVD):
-    def __init__(self, skip=False, n_components=2, algorithm="randomized",
-                 n_iter=5, random_state=None, tol=0.):
-        self.skip = skip
-        super().__init__(n_components, algorithm, n_iter, random_state, tol)
+class CustomCV(sklearn.model_selection.BaseCrossValidator, ABC):
+    """Custom CV template.
 
-    def fit(self, x, y=None):
-        if self.skip:
-            return self
-        else:
-            return super().fit(x, y)
+    Attributes
+    ----------
+    n_splits : int, optional (default=5)
+        Number of splits. Must be at least 2.
 
-    def fit_transform(self, x, y=None):
-        if self.skip:
-            return x
-        else:
-            return super().fit_transform(x, y)
+    """
+    def __init__(self, n_splits=5):
+        super().__init__()
+        self.n_splits = n_splits
+        raise NotImplementedError
 
-    def transform(self, x):
-        if self.skip:
-            return x
-        else:
-            return super().transform(x)
+    def split(self, x, y=None, groups=None):
+        """Generate indices to split data into training and test set.
 
+        Parameters
+        ----------
+        x : array-like of shape (n_samples, n_features)
+            Training data, where n_samples is the number of samples
+            and n_features is the number of features.
 
-class SMWrapper(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
-    """A universal sklearn-style wrapper for statsmodels regressor."""
+        y : array-like of shape (n_samples,)
+            Always ignored, exists for compatibility.
 
-    def __init__(self, model_class, fit_intercept=True):
-        self.model_class = model_class
-        self.fit_intercept = fit_intercept
-        self.model_ = None
-        self.results_ = None
+        groups : array-like of shape (n_samples,), optional (default=None)
+            Always ignored, exists for compatibility.
 
-    def fit(self, x, y):
-        if self.fit_intercept:
-            x = sm.add_constant(x)
-        self.model_ = self.model_class(y, x)
-        self.results_ = self.model_.fit()
+        Yield
+        -----
+        train : numpy.ndarray
+            The training set indices for that split.
 
-    def predict(self, x):
-        if self.fit_intercept:
-            x = sm.add_constant(x)
-        return self.results_.predict(x)
+        test : numpy.ndarray
+            The testing set indices for that split.
+
+        """
+        # Example.
+        n = x.shape[0]
+        i = 1
+        while i <= self.n_splits:
+            idx = np.arange(n * (i - 1) / self.n_splits, n * i / self.n_splits,
+                            dtype=int)
+            yield idx, idx
+            i += 1
 
 
 def cross_val_predict(*args, **kwargs):
@@ -418,7 +406,7 @@ def cross_val_predict(*args, **kwargs):
             temp_pp = y_pred_oof
             temp_ind = index_oof
             raise ValueError('debug')
-    except ValueError as e:
+    except ValueError:
         y_pred_oof, index_oof = partial_cross_val_predict(*args, **kwargs)
     if _debug:
         assert np.array_equal(temp_pp, y_pred_oof)
@@ -429,7 +417,7 @@ def cross_val_predict(*args, **kwargs):
 def partial_cross_val_predict(estimator, x, y, cv, fit_params=None,
                               method='predict_proba', **kwargs):
     """Extension to cross_val_predict for TimeSplitter."""
-    if not fit_params:
+    if fit_params is None:
         fit_params = {}
     if method is not 'predict_proba':
         raise ValueError("Currently only 'predict_proba' method supported.")
@@ -471,13 +459,6 @@ def partial_cross_val_predict(estimator, x, y, cv, fit_params=None,
         index_oof.append(r)
     index_oof = np.array(index_oof).T
     return y_pred_oof, index_oof
-
-
-# TODO: Better move to utills y_pred_to_probe, also get pos_labels_in
-def prob_to_pred(y_pred_proba, th_, pos_labels, neg_label, pos_labels_ind):
-    """Fix threshold on predict_proba"""
-    y_pred = np.where(y_pred_proba[:, pos_labels_ind] > th_, [pos_labels], [neg_label])
-    return y_pred
 
 
 if __name__ == '__main__':

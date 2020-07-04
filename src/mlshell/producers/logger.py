@@ -155,7 +155,7 @@ class LoggerProducer(pycnfg.Producer):
         super().__init__(objects, oid)
         self.project_path = objects[path_id]
 
-    def create(self, logger_name, fullpath, config=None,
+    def create(self, logger_name, fullpath=None, config=None,
                extra=None, clean=None, **kwargs):
         """Create logger object and corresponding file descriptors.
 
@@ -190,16 +190,16 @@ class LoggerProducer(pycnfg.Producer):
         `http_hanfler` used only if configuration provided in kwargs.
 
         """
-        if not fullpath:
+        if fullpath is None:
             fullpath = f"{self.project_path}/results/logs_{logger_name}"
         elif fullpath.startswith('./'):
             fullpath = f"{self.project_path}/{fullpath[2:]}"
-        if not config:
+        if config is None:
             config = copy.deepcopy(CONFIG)
-        if not extra:
+        if extra is None:
             # Add extra in every entry.
             extra = {'delimeter': '\n' + '=' * 100}
-        if not clean:
+        if clean is None:
             clean = ["debug_handler", "warning_handler",
                      "error_handler", "critical_handler"]
 

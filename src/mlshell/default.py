@@ -5,6 +5,8 @@ import mlshell.pycnfg as pycnfg
 import sklearn
 import mlshell.custom
 import numpy as np
+import pandas as pd
+import inspect
 
 __all__ = ['DEFAULT_PARAMS', 'PipelineSteps']
 
@@ -235,7 +237,7 @@ class PipelineSteps(object):
 
     Parameters
     ----------
-    estimator : object with sklearn.pipeline.Pipeline interface
+    estimator : sklearn estimator
         Estimator to use in the last step.
         If `estimator_type`='regressor':
         sklearn.compose.TransformedTargetRegressor(regressor=`estimator`)
@@ -282,28 +284,28 @@ class PipelineSteps(object):
 
     def __init__(self, estimator, estimator_type, th_step=False):
         self._steps = [
-            ('pass_custom',      sklearn.preprocessing.FunctionTransformer(func=self.set_scorer_kwargs, validate=False)),
-            ('select_rows',      sklearn.preprocessing.FunctionTransformer(func=self.subrows, validate=False)),
+            ('pass_custom',      mlshell.custom.FunctionTransformer(func=self.set_scorer_kwargs, validate=False, skip=True)),
+            ('select_rows',      mlshell.custom.FunctionTransformer(func=self.subrows, validate=False, skip=True)),
             ('process_parallel', sklearn.pipeline.FeatureUnion(transformer_list=[
                 ('pipeline_categoric', sklearn.pipeline.Pipeline(steps=[
-                   ('select_columns',      sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kwargs='auto')),  # {'indices': 'data__categoric_ind_name'}
-                   ('encode_onehot',       mlshell.custom.SkippableOneHotEncoder(handle_unknown='ignore', categories='auto', sparse=False, drop=None, skip=False)),
+                   ('select_columns',      mlshell.custom.FunctionTransformer(self.subcolumns, validate=False, skip=False, kwargs='auto')),  # {'indices': dataset.meta['categoric_ind_name']}
+                   ('encode_onehot',       mlshell.custom.OneHotEncoder(handle_unknown='ignore', categories='auto', sparse=False, drop=None, skip=False)),  # x could be [].
                 ])),
                 ('pipeline_numeric',   sklearn.pipeline.Pipeline(steps=[
-                    ('select_columns',     sklearn.preprocessing.FunctionTransformer(self.subcolumns, validate=False, kwargs='auto')),  # {'indices':  'data__numeric_ind_name'}
+                    ('select_columns',     mlshell.custom.FunctionTransformer(self.subcolumns, validate=False, skip=False, kwargs='auto')),  # {'indices': dataset.meta['numeric_ind_name']}
                     ('impute',             sklearn.pipeline.FeatureUnion([
                         ('indicators',         sklearn.impute.MissingIndicator(missing_values=np.nan, error_on_new=False)),
                         ('gaps',               sklearn.impute.SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0, copy=True)),
                         ])),
-                    ('transform_normal',   mlshell.custom.SkippablePowerTransformer(method='yeo-johnson', standardize=False, copy=False, skip=True)),
-                    ('scale_row_wise',     sklearn.preprocessing.FunctionTransformer(func=None, validate=False)),
+                    ('transform_normal',   mlshell.custom.PowerTransformer(method='yeo-johnson', standardize=False, copy=False, skip=True)),
+                    ('scale_row_wise',     mlshell.custom.FunctionTransformer(func=None, validate=False, skip=True)),
                     ('scale_column_wise',  sklearn.preprocessing.RobustScaler(quantile_range=(0, 100), copy=False)),
                     ('add_polynomial',     sklearn.preprocessing.PolynomialFeatures(degree=1, include_bias=False)),  # x => degree=1 => x, x => degree=0 => []
                     ('compose_columns',    sklearn.compose.ColumnTransformer([
-                        ("discretize",     sklearn.preprocessing.KBinsDiscretizer(n_bins=5, encode='onehot-dense', strategy='quantile'), self.bining_mask)], sparse_threshold=0, remainder='passthrough'))
+                        ("discretize",         sklearn.preprocessing.KBinsDiscretizer(n_bins=5, encode='onehot-dense', strategy='quantile'), self.bining_mask)], sparse_threshold=0, remainder='passthrough'))
                 ])),
             ])),
-            ('select_columns',   sklearn.feature_selection.SelectFromModel(estimator=mlshell.custom.CustomSelectorEstimator(estimator_type=estimator_type, verbose=False, skip=True), prefit=False)),
+            ('select_columns',   sklearn.feature_selection.SelectFromModel(estimator=mlshell.custom.CustomSelector(estimator_type=estimator_type, verbose=False, skip=True), prefit=False)),
             ('reduce_dimension', mlshell.custom.CustomReducer(skip=True)),
             ('estimate', self.last_step(estimator, estimator_type, th_step=th_step)),
         ]

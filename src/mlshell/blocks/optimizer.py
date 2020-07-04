@@ -78,13 +78,13 @@ class Optimizer(object):
             pipeline-data pair.
             {
                 'params': list of dict
-                    List of get_params() for all runs in stages.
+                    List of cv_results_['params'] for all runs in stages.
                 'best_params_' : dict
-                    Best estimator `params`[`optimizer.best_index_`].
+                    Best estimator tuned params from all optimization stages.
                 'best_estimator_' : sklearn etimator  TODO: test
                     Best estimator `optimizer.best_estimator_` or
                     `optimizer.estimator.set_params(**best_params_))` if
-                    `best_estimator_` attribute is absent.
+                    `best_estimator_` attribute is absent (not 'refit').
                 'best_score_' : tuple
                     Best score ('scorer_id', `optimizer.best_score_`).
                     'scorer_id' get from str(`optimizer.refit`). If
@@ -106,13 +106,14 @@ class Optimizer(object):
         if best_index_ is None or cv_results_ is None:
             return prev
 
-        params = cv_results_['params']
+        params = cv_results_['params']  # Only modifiers.
         best_params_ = params[best_index_]
-
         best_estimator_ = getattr(curr, 'best_estimator_', None)
         if best_estimator_ is None:
             # If not 'refit'.
             best_estimator_ = curr.estimator.set_params(**best_params_)
+        params_init = best_estimator_.get_params()
+        params_full = [{**params_init, **p} for p in params]
 
         best_score_ = getattr(curr, 'best_score_', float('-inf'))
         if best_score_ is float('-inf'):
@@ -122,8 +123,8 @@ class Optimizer(object):
 
         nxt = {
             'best_estimator_': best_estimator_,
-            'best_params_': best_params_,
-            'params': prev.get('params', []).extend(params),
+            'best_params_': prev.get('best_params_', {}).update(best_params_),
+            'params': prev.get('params', []).extend(params_full),
             'best_score_': (scorer_id, best_score_),
         }
         return nxt
@@ -279,17 +280,19 @@ class Optimizer(object):
         return lis
 
     def _runs_results(self, df, runs):
-        # Merge df with runs with replace, exchange args if don`t need replace.
-        # cv_results consist suffix param_.
+        """Add outputs columns."""
+        # For example: mean_test_score/mean_fit_time/...
+        # Hp already in df, runs (cv_results) consists suffix param_ for
+        # modifiers. For columns without suffix: merge with replace.
+        # If no params_labels, anyway one combination checked.
         param_labels = set(i for i in runs.keys() if 'param_' in i)
-        if param_labels:
-            other_labels = set(runs.keys())-param_labels
-            update_labels = set(df.columns).intersection(other_labels)
-            runs = pd.DataFrame(runs).drop(list(param_labels), axis=1,
-                                           errors='ignore')
-            df = pd.merge(df, runs, how='outer', on=list(update_labels),
-                          left_index=True, right_index=True,
-                          suffixes=('_left', '_right'))
+        other_labels = set(runs.keys())-param_labels
+        update_labels = [name for name in df.columns if name in other_labels]
+        runs = pd.DataFrame(runs).drop(list(param_labels), axis=1,
+                                       errors='ignore')
+        df = pd.merge(df, runs, how='outer', on=list(update_labels),
+                      left_index=True, right_index=True,
+                      suffixes=('_left', '_right'))
         return df
 
 
@@ -361,7 +364,7 @@ class MockOptimizer(RandomizedSearchOptimizer):
     """
     def __init__(self, pipeline, hp_grid, scoring,
                  method='predict_proba', **kwargs):
-        self.method =  method
+        self.method = method
         self.pipeline = pipeline
         if hasattr(pipeline, 'steps') and hp_grid:
             mock_pipeline = self._mock_pipeline(pipeline, hp_grid)
@@ -390,7 +393,7 @@ class MockOptimizer(RandomizedSearchOptimizer):
         If 'a_b_c' in hp_grid, remains 'a_b' sub-path.
 
         If resulted mock pipeline has no predict method,
-        ('estimate_del', mlshell.custom.IdEstimator) added.
+        ('estimate_del', mlshell.custom.MockEstimator) added.
 
         Always remains 'pass_custom' step. If pipeline use `pass_custom` and
         `pass_custom__kwargs` not in hp_grid, corresponding custom score(s)
@@ -407,12 +410,12 @@ class MockOptimizer(RandomizedSearchOptimizer):
         for hp_name in hp_grid:  # 'a__b__c'
             path = hp_name.split('__')[:-1]  # 'a__b'
             if not path.startswith('pass_custom'):  # already in.
-               r_step.append(params[path])
+                r_step.append(params[path])
         # Check if fit step exist.
         mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
         if not hasattr(mock_pipeline, 'predict'):
-            # Add IdEstimator step (in optimizer only change 'params').
-            r_step.append(('estimate_del', mlshell.custom.IdEstimator))
+            # Add MockEstimator step (not modifier, not change cv_results_).
+            r_step.append(('estimate_del', mlshell.custom.MockEstimator))
         mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
         return mock_pipeline
 
@@ -423,17 +426,8 @@ class MockOptimizer(RandomizedSearchOptimizer):
             self.pipeline.fit(x, y, **fit_params)
 
         # Recover structure as if fit original pipeline.
-        for run in optimizer.cv_results_['params']:
-            extended = self.pipeline.get_params.update(run)
-            run.update(extended)
-            # Remove mock estimator.
-            for key in run:
-                if key.startswith('estimate_del'):
-                    del run[key]
-        for attr, val in {
-            'estimator': self.pipeline,
-            'best_estimator_': self.pipeline,
-            'cv_results': optimizer.cv_results}.items():
+        for attr, val in {'estimator': self.pipeline,
+                          'best_estimator_': self.pipeline}.items():
             try:
                 setattr(optimizer, attr, val)
             except AttributeError:

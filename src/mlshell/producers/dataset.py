@@ -86,9 +86,8 @@ class Dataset(dict):
     data : pd.DataFrame
         Underlying data.
     meta : dict
-        Includes index/targets/features identifiers:
-        {'oid': str
-            Dataset identifier.
+        Extracted auxiliary information from data:
+        {
         'index': list
             List of index label(s).
         'features': list
@@ -99,16 +98,22 @@ class Dataset(dict):
             List of target label(s),
         'indices': list
             List of rows indices.
-        'pos_labels': list, optional
-            List of "positive" label(s) in target(s), classification only.
-        categoric_ind_name : dict, optional
+        'classes': list of np.ndarray
+            List of sorted unique labels for each target(s) (n_outputs,
+             n_classes).
+        'pos_labels': list
+            List of "positive" label(s) for target(s) (n_outputs,).
+        'pos_labels_ind': list
+            List of "positive" label(s) index in np.unique(target) for
+            target(s) (n_outputs).
+        categoric_ind_name : dict
             {'column_index': ('feature_name', ['cat1', 'cat2'])}
-            Dictionary with categorical feature indices as key, and tuple
-            ('feature_name', categories) as value.
-        numeric_ind_name : dict, optional
-            {'columns_index':('feature_name',)}
+            Dictionary with categorical feature indices as key, and
+            tuple ('feature_name', categories) as value.
+        numeric_ind_name : dict {'columns_index':('feature_name',)}
             Dictionary with numeric features indices as key, and tuple
-            ('feature_name', ) as value.}
+            ('feature_name', ) as value.)}
+        }
     subsets : dict
         {'subset_id' : array-like subset indices, ..}.
 
@@ -161,6 +166,9 @@ class Dataset(dict):
 
     def subset(self, subset_id):
         """mlshell.Dataset : access subset. """
+        if subset_id is '':
+            return self
+
         df = self['data']
         index = self['subsets'][subset_id]
         # Inherit only meta.
@@ -333,7 +341,7 @@ class DataPreprocessor(object):
                 {'subset_id': index }.
             'meta' : dict
                 Extracted auxiliary information from data:
-            {
+                {
                 'index': list
                     List of index label(s).
                 'features': list
@@ -344,13 +352,14 @@ class DataPreprocessor(object):
                     List of target label(s),
                 'indices': list
                     List of rows indices.
-                'classes': list
-                    List of unique labels for each target.
+                'classes': list of np.ndarray
+                    List of sorted unique labels for each target(s) (n_outputs,
+                     n_classes).
                 'pos_labels': list
-                    List of "positive" label(s) for each target.
+                    List of "positive" label(s) for target(s) (n_outputs,).
                 'pos_labels_ind': list
                     List of "positive" label(s) index in np.unique(target) for
-                    each target.
+                    target(s) (n_outputs).
                 categoric_ind_name : dict
                     {'column_index': ('feature_name', ['cat1', 'cat2'])}
                     Dictionary with categorical feature indices as key, and
@@ -358,7 +367,7 @@ class DataPreprocessor(object):
                 numeric_ind_name : dict {'columns_index':('feature_name',)}
                     Dictionary with numeric features indices as key, and tuple
                     ('feature_name', ) as value.)}
-            }
+                }
 
         Notes
         -----
@@ -521,18 +530,18 @@ class DataPreprocessor(object):
         -------
         targets: pd.DataFrame
             Unchanged input.
-        'classes': list
-            List of labels for each target.
-        'pos_labels': list
-            List of "positive" label(s) for each target.
-        'pos_labels_ind': list
+        classes: list of np.ndarray
+            List of sorted unique labels for target(s) (n_outputs, n_classes).
+        pos_labels: list
+            List of "positive" label(s) for target(s) (n_outputs,).
+        pos_labels_ind: list
             List of "positive" label(s) index in np.unique(target) for
-            each target.
+            target(s) (n_outputs,).
 
         """
         # Find classes, example: [array([1]), array([2, 7])].
         classes = [np.unique(j) for i, j in targets.iteritems()]
-        if not pos_labels:
+        if pos_labels is None:
             pos_labels_ind = -1
             pos_labels = [i[-1] for i in classes]  # [2,4]
         else:

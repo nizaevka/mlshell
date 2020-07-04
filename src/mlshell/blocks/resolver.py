@@ -1,3 +1,8 @@
+"""
+The :mod:`mlshell.resolver` contains class 'Resolver' to resolve
+hyper-parameters based on dataset.
+"""
+
 import operator
 
 import matplotlib.pyplot as plt
@@ -5,6 +10,8 @@ import mlshell
 import mlshell.custom
 import numpy as np
 import sklearn
+
+__all__ = ['Resolver']
 
 
 class Resolver(object):
@@ -171,9 +178,9 @@ class Resolver(object):
             [samples] or [n_outputs, samples]  for multi-output.
 
         """
-        if not metric:
+        if metric is None:
             metric = self._metric
-        if not sampler:
+        if sampler is None:
             sampler = self._sampler
         if y_true.ndim == 1:
             # Add dimension, for compliance to multi-output.

@@ -121,9 +121,9 @@ class Producer(object):
             Unchanged input for compliance with producer logic.
 
         """
-        if not prefix:
+        if prefix is None:
             prefix = self.oid
-        if not cachedir:
+        if cachedir is None:
             cachedir = f"{self.project_path}/temp/objects"
         elif cachedir.startswith('./'):
             cachedir = f"{self.project_path}/{cachedir[2:]}"
@@ -173,9 +173,9 @@ class Producer(object):
             Loaded cache.
 
         """
-        if not prefix:
+        if prefix is None:
             prefix = self.oid
-        if not cachedir:
+        if cachedir is None:
             cachedir = f"{self.project_path}/temp/objects"
         elif cachedir.startswith('./'):
             cachedir = f"{self.project_path}/{cachedir[2:]}"

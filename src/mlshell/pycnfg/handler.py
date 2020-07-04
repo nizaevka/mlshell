@@ -150,7 +150,7 @@ class Handler(object):
     def __init__(self):
         pass
 
-    def read(self, conf, default_conf=None):
+    def read(self, conf, conf_id=None, default_conf=None):
         """Read raw configuration and transform to executable.
 
         Parameters
@@ -159,6 +159,9 @@ class Handler(object):
             Set of configurations:
             {'section_id': {'configuration_id': configuration,},}.
             If str, absolute path to file with `CNFG` variable.
+        conf_id: str, None, optional (default=None)
+            Configuration unique identifier. If None, int(time.time()).
+
         default_conf : dict, optional (default=None)
             Set of default configurations:
             {'section_id': {'configuration_id': configuration, },}
@@ -196,7 +199,7 @@ class Handler(object):
             default_conf = copy.deepcopy(pycnfg.DEFAULT)
         configs = self._parse_conf(conf, default_conf)
         assert pycnfg.ID is None, "pycnfg.ID already set."
-        pycnfg.ID = int(time.time())
+        pycnfg.ID = conf_id if isinstance(conf_id, str) else int(time.time())
         return configs
 
     def exec(self, configs, objects=None):
@@ -363,7 +366,7 @@ class Handler(object):
         if not value[key_id]:
             # If global None use from conf (if only one provided)
             # for metrics not None is guaranteed before.
-            if not glob_val:
+            if glob_val is None:
                 if len(p[key]) > 1:
                     raise ValueError(
                         f"Multiple {key} configurations provided,"

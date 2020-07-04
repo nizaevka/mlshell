@@ -41,3 +41,15 @@ class MockOptimizer():
         # replace Nan with optimizer.best_params_
         runs_df.fillna(value=runs_df.iloc[best_index], inplace=True)
         return runs_df
+
+    # [deprecated] params only contains modifiers, not need full take full params.
+    for run in optimizer.cv_results_['params']:
+        # extended = self.pipeline.get_params().update(run)
+        # run.update(extended)
+        # Remove mock estimator.
+        for key in run:
+            if key.startswith('estimate_del'):
+                del run[key]
+    for attr, val in {'estimator': self.pipeline,
+                      'best_estimator_': self.pipeline,
+                      'cv_results': optimizer.cv_results}.items():

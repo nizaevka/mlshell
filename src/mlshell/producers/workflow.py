@@ -199,7 +199,7 @@ class Workflow(pycnfg.Producer):
 
     @checker
     # @memory_profiler
-    def fit(self, res, pipeline_id, dataset_id,
+    def fit(self, res, pipeline_id, dataset_id, subset_id='train',
             hp=None, resolver=None, resolve_params=None,
             fit_params=None):
         """Fit pipeline.
@@ -209,9 +209,12 @@ class Workflow(pycnfg.Producer):
         res : dict
             For compliance with producer logic.
         pipeline_id : str
-            Pipeline identifier in `objects`. Will be fitted on dataset.train.
+            Pipeline identifier in `objects`. Will be fitted on
+            `dataset_id__subset_id`.
         dataset_id : str
             Dataset identifier in `objects`.
+        subset_id : str, optional (default='train')
+            Data subset identifier to fit on. If '', use full dataset.
         hp : dict, None, optional (default=None)
             Hyper-parameters to use in pipeline: {`hp_name`: val/container}.
             If container provided, zero position will be used. If None, {}
@@ -252,17 +255,17 @@ class Workflow(pycnfg.Producer):
         pipeline = self._set_hp(
             hp, pipeline, resolver, dataset, resolve_params)
 
-        train = dataset.train
+        train = dataset.subset(subset_id)
         pipeline.fit(train.x, train.y, **fit_params)
         pipeline.dataset_id = dataset_id
         self.objects[pipeline_id] = pipeline
         return res
 
     @checker
-    def optimize(self, res, pipeline_id, dataset_id, hp_grid=None,
-                 scoring=None, resolver=None, resolve_params=None,
-                 optimizer=None, gs_params=None, fit_params=None,
-                 dirpath=None, dump_params=None):
+    def optimize(self, res, pipeline_id, dataset_id, subset_id='train',
+                 hp_grid=None, scoring=None, resolver=None,
+                 resolve_params=None, optimizer=None, gs_params=None,
+                 fit_params=None, dirpath=None, dump_params=None):
         """Optimize pipeline.
 
         Parameters
@@ -270,9 +273,12 @@ class Workflow(pycnfg.Producer):
         res : dict
             For compliance with producer logic.
         pipeline_id : str
-            Pipeline identifier in `objects`. Will be fitted on dataset.train.
+            Pipeline identifier in `objects`. Will be cross-validate on
+            `dataset_id__subset_id`.
         dataset_id : str
             Dataset identifier in `objects`.
+        subset_id : str, optional (default='train')
+            Data subset identifier to CV on. If '', use full dataset.
         hp_grid : dict, None, optional (default=None)
             Hyper-parameters to grid search: {`hp_name`: optimizer format}.
             If None, {}.
@@ -341,7 +347,7 @@ class Workflow(pycnfg.Producer):
             fit_params = {}
         if optimizer is None:
             optimizer = mlshell.RandomizedSearchOptimizer
-        if not dirpath:
+        if dirpath is None:
             dirpath = f"{self.project_path}/results/runs"
         elif dirpath.startswith('./'):
             dirpath = f"{self.project_path}/{dirpath[2:]}"
@@ -360,7 +366,7 @@ class Workflow(pycnfg.Producer):
         # Resolve scoring.
         scoring = self._resolve_scoring(scoring, pipeline)
 
-        train = dataset.train
+        train = dataset.subset(subset_id)
         optimizer = optimizer(pipeline, hp_grid, scoring, **gs_params)
         optimizer.fit(train.x, train.y, **fit_params)
 
@@ -379,7 +385,7 @@ class Workflow(pycnfg.Producer):
 
     # @memory_profiler
     def validate(self, res, pipeline_id, dataset_id, metric_id,
-                 validator=None):
+                 subset_id=('train', 'test'), validator=None):
         """Predict and score on validation set.
 
         Parameters
@@ -388,13 +394,15 @@ class Workflow(pycnfg.Producer):
             For compliance with producer logic.
         pipeline_id : str
             Pipeline identifier in `objects`. Will be validated on
-            dataset.train and dataset.test.
+            `dataset_id__subset_id`.
         dataset_id : str
             Dataset identifier in `objects`.
+        subset_id : str, tuple of str, optional (default=('train', 'test'))
+            Data subset(s) identifier(s) to validate on. '' for full dataset.
         metric_id : srt, list of str
             Metric(s) identifier in `objects`.
         validator : mlshell.Validator, None, optional (default=None)
-            Auto initialized if class provided. If None, mlshell.Validator used.
+            Auto initialized if class provided. If None, mlshell.Validator.
 
         Returns
         -------
@@ -409,12 +417,15 @@ class Workflow(pycnfg.Producer):
             validator = validator()
         if not isinstance(metric_id, list):
             metric_id = [metric_id]
+        if not isinstance(subset_id, list):
+            subset_id = [subset_id]
 
         dataset = self.objects[dataset_id]
         pipeline = self.objects[pipeline_id]
         metrics = [self.objects[i] for i in metric_id]
+        subsets = [dataset.subset(id_) for id_ in subset_id]
 
-        validator.validate(pipeline, metrics, [dataset.train, dataset.test],
+        validator.validate(pipeline, metrics, subsets,
                            self.logger)
         return res
 
@@ -449,7 +460,7 @@ class Workflow(pycnfg.Producer):
 
         """
         self.logger.info("|__ DUMP MODEL")
-        if not dirpath:
+        if dirpath is None:
             dirpath = f"{self.project_path}/results/models"
         elif dirpath.startswith('./'):
             dirpath = f"{self.project_path}/{dirpath[2:]}"
@@ -464,7 +475,8 @@ class Workflow(pycnfg.Producer):
         return res
 
     # @memory_profiler
-    def predict(self, res, pipeline_id, dataset_id, dirpath=None, **kwargs):
+    def predict(self, res, pipeline_id, dataset_id, subset_id='test',
+                dirpath=None, **kwargs):
         """Predict and dump.
 
         Parameters
@@ -472,9 +484,12 @@ class Workflow(pycnfg.Producer):
         res : dict
             For compliance with producer logic.
         pipeline_id : str
-            Pipeline identifier in `objects`.
+            Pipeline identifier in `objects` to make prediction on
+            `dataset_id__subset_id`
         dataset_id : str
-            Dataset identifier in `objects`, to predict on subset.
+            Dataset identifier in `objects`.
+        subset_id : str, optional (default='test')
+            Data subset identifier to predict on. If '', use full dataset.
         dirpath : str, optional(default=None)
             Absolute path dump dir or relative to 'self.project_dir' started
             with './'. If None,"self.project_path/results/models" is used.
@@ -497,7 +512,7 @@ class Workflow(pycnfg.Producer):
 
         """
         self.logger.info("|__ PREDICT")
-        if not dirpath:
+        if dirpath is None:
             dirpath = f"{self.project_path}/results/models"
         elif dirpath.startswith('./'):
             dirpath = f"{self.project_path}/{dirpath[2:]}"
@@ -506,9 +521,8 @@ class Workflow(pycnfg.Producer):
 
         pipeline = self.objects[pipeline_id]
         dataset = self.objects[dataset_id]
-        test = dataset.test
-        x = test.x
-        y_pred = pipeline.predict(x)
+        test = dataset.subset(subset_id)
+        y_pred = pipeline.predict(test.x)
         filepath = self._prefix(res, dirpath, pipeline, pipeline_id,
                                 dataset, dataset_id)
         fullpath = test.dump_pred(filepath, y_pred, **kwargs)
