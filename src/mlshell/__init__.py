@@ -8,15 +8,14 @@ from .producers.pipeline import PipelineProducer, Pipeline
 from .producers.metric import MetricProducer, Metric
 from .producers.workflow import Workflow
 
-from .blocks import pipe
+from .blocks import pipeline
 from .blocks import plot
 from .blocks import model_selection
-from .blocks import resolving
 from .blocks import preprocessing
 
 from .conf import CNFG
 
 __all__ = ['DatasetProducer', 'PipelineProducer', 'Workflow', 'MetricProducer',
            'Dataset', 'Pipeline', 'Metric',
-           'pipe', 'plot', 'model_selection', 'resolving', 'preprocessing',
+           'pipeline', 'plot', 'model_selection', 'preprocessing',
            'CNFG']

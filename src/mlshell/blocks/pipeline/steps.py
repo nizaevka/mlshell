@@ -1,4 +1,4 @@
-"""The :mod:`mlshell.blocks.pipe` contains unified pipeline steps."""
+"""The :mod:`mlshell.blocks.pipeline.steps` contains unified pipeline steps."""
 
 
 import inspect
@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import sklearn
 
-__all__ = ['PipelineSteps']
+__all__ = ['Steps']
 
 
 @numba.njit
@@ -36,7 +36,7 @@ def _isbinary_columns(arr: np.ndarray) -> np.ndarray:
     return is_binary
 
 
-class PipelineSteps(object):
+class Steps(object):
     """Class to create pipeline steps.
 
     Parameters

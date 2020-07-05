@@ -20,7 +20,7 @@ import uuid
 
 import jsbeautifier
 import mlshell
-import mlshell.pycnfg as pycnfg
+import pycnfg
 import numpy as np
 import pandas as pd
 import sklearn

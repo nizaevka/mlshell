@@ -1,4 +1,4 @@
-"""The :mod:`pycnfg.logger` module includes LoggerProducer class."""
+"""The :mod:`mlshell.producers.logger` module includes LoggerProducer class."""
 
 
 import copy
@@ -6,7 +6,9 @@ import logging.config
 import os
 import sys
 
-import mlshell.pycnfg as pycnfg
+import pycnfg
+
+__all__ = ['LoggerProducer']
 
 
 class LevelFilter(object):
@@ -24,7 +26,6 @@ class LevelFilter(object):
 class CustomFormatter(logging.Formatter):
     """Custom formatter for logger configuration."""
     def format(self, record):
-        if levelname
         record.message.replace('|__ ', '\u25CF ')
         record.message.replace('    |__ ', '\u25CF \u25B6 ')
         return record
@@ -128,7 +129,7 @@ CONFIG = {
 class LoggerProducer(pycnfg.Producer):
     """Create logger object.
 
-    Interface: create.
+    Interface: make.
 
     Parameters
     ----------
@@ -155,8 +156,8 @@ class LoggerProducer(pycnfg.Producer):
         super().__init__(objects, oid)
         self.project_path = objects[path_id]
 
-    def create(self, logger_name, fullpath=None, config=None,
-               extra=None, clean=None, **kwargs):
+    def make(self, logger_name, fullpath=None, config=None,
+             extra=None, clean=None, **kwargs):
         """Create logger object and corresponding file descriptors.
 
         Parameters
@@ -180,8 +181,8 @@ class LoggerProducer(pycnfg.Producer):
         **kwargs : dict
             User-defined params for handlers, will update `config`.
             For example:
-            {'http_hadler':{'host':'www.example.com',
-                            'url':'https://wwww.example.com/address'}}
+            {'http_hadler': {'host':'www.example.com',
+                             'url':'https://wwww.example.com/address'}}
 
         Notes
         -----

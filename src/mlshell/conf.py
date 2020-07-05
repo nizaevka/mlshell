@@ -1,7 +1,7 @@
 """The module contains default configuration and pipeline steps."""
 
 
-import mlshell.pycnfg as pycnfg
+import pycnfg
 import sklearn
 import mlshell
 
@@ -28,7 +28,7 @@ LOGGERS = {
         'patch': {},
         'priority': 2,
         'steps': [
-            ('create', {})
+            ('make', {'logger_name': 'log'})
         ],
     }
 }
@@ -42,21 +42,11 @@ PIPELINES = {
         'patch': {},
         'priority': 3,
         'steps': [
-            ('create', {
-                'cache': None,
-                'steps': None,
-                'estimator': sklearn.linear_model.LinearRegression(),
+            ('make', {
                 'estimator_type': 'regressor',
-                # 'th_strategy': None,
-            },),
-            ('resolve', {},),
-                # [deprecated]  should be setted 'auto'/['auto'], by default only for index
-                #  only if not setted
-                # 'hp': {
-                #     'process_parallel__pipeline_categoric__select_columns__kwargs',
-                #     'process_parallel__pipeline_numeric__select_columns__kwargs',
-                #     'estimate__apply_threshold__threshold'}
-                # },
+                'estimator': sklearn.linear_model.LinearRegression(),
+                'th_step': False,
+            }),
         ],
     },
 }
@@ -64,28 +54,28 @@ PIPELINES = {
 
 METRICS = {
     'accuracy': {
-        'init': None,
+        'init': mlshell.Metric,
         'producer': mlshell.MetricProducer,
         'global': {},
         'patch': {},
         'priority': 3,
         'steps': [
-            ('make_scorer', {
-                'func': sklearn.metrics.accuracy_score,
-                'kwargs': {'greater_is_better': True},
+            ('make', {
+                'score_func': sklearn.metrics.accuracy_score,
+                'greater_is_better': True,
             }),
         ],
     },
     'r2': {
-        'init': None,
+        'init': mlshell.Metric,
         'producer': mlshell.MetricProducer,
         'global': {},
         'patch': {},
         'priority': 3,
         'steps': [
-            ('make_scorer', {
-                'func': sklearn.metrics.r2_score,
-                'kwargs': {'greater_is_better': True},
+            ('make', {
+                'score_func': sklearn.metrics.r2_score,
+                'greater_is_better': True,
             }),
         ],
     }
@@ -94,23 +84,19 @@ METRICS = {
 
 DATASETS = {
     'default': {
-        'init': mlshell.Dataset(),
-        'producer': mlshell.DataProducer,
+        'init': mlshell.Dataset,
+        'producer': mlshell.DatasetProducer,
         'global': {},
         'patch': {},
         'priority': 3,
         'steps': [
-            ('load_cache', {'prefix': None},),
-            ('load', {},),
-            ('preprocess', {'categor_names': [], 'target_names': [], 'pos_labels': []},),
-            ('info', {},),
-            ('unify', {},),
-            ('split', {},),
-            ('dump_cache', {'prefix': None},),
+            ('load', {'filepath': './data/train.csv'}),
+            ('preprocess', {'target_names': ['targets']}),
+            ('info', {}),
+            ('split', {}),
         ],
     },
 }
-
 
 WORKFLOWS = {
     'default': {
@@ -121,62 +107,62 @@ WORKFLOWS = {
         'priority': 4,
         'steps': [
             ('fit', {
-                'pipeline_id': None,
-                'dataset_id': 'train',
-                'fit_params': {},
+                'pipeline_id': 'default',
+                'dataset_id': 'default',
+                'subset_id': 'train',
                 'hp': {},
-                'resolver': mlshell.Resolver,
+                'resolver': mlshell.pipeline.Resolver,
                 'resolve_params': {},
-            },),
+                'fit_params': {},
+            }),
             ('optimize', {
-                'optimizer': mlshell.RandomizedSearchOptimizer,  # optimizer
-                'validator': mlshell.Validator,
-                'resolver': mlshell.Resolver,
-                'pipeline_id': None,  # multiple pipeline? no, user can defined separately if really needed
-                'dataset_id': 'train',
+                'pipeline_id': 'default',
+                'dataset_id': 'default',
+                'subset_id': 'train',
                 'hp_grid': {},
-                'scoring': None,
+                'scoring': ['r2'],
+                'fit_params': {},
+                'resolver': mlshell.pipeline.Resolver,
+                'resolve_params': {
+                    'estimate__apply_threshold__threshold': {
+                        'cross_val_predict': {
+                            'method': 'predict_proba',
+                            'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
+                            'fit_params': {},
+                        },
+                        'calc_th_range': {
+                            'metric': None,
+                            'sampler': None,
+                            'samples': 10,
+                            'plot_flag': False,
+                        },
+                    },
+                },
+                'optimizer': mlshell.model_selection.RandomizedSearchOptimizer,
                 'gs_params': {
                    'n_iter': None,
                    'n_jobs': 1,
-                   'refit': None,  # no resolving
+                   'refit': ['r2'],
                    'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
                    'verbose': 1,
                    'pre_dispatch': 'n_jobs',
-                   # TODO: for thresholdoptimizer, also need add pass_custom step.
-                   #   so here params to mock.
-                   # 'th_name':
                 },
-                'fit_params': {},
-                'resolve_params': {
-                    'estimate__apply_threshold__threshold': {
-                        'samples': 10,
-                        'plot_flag': False,
-                        'fit_params': {},
-                        'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
-                    },
-                },
-            },),
-            ('dump', {'pipeline_id': None}),
-            ('validate', {
-                'dataset_id': 'train',
-                'validator': None,
-                'metric': None,
-                'pos_label': None,  # if None, get -1
-                'pipeline_id': None,
-            },),
-            ('plot', {
-                'plotter': None,  # gui
-                'pipeline_id': None,
-                'hp_grid': {},
-                'dataset_id': 'train',
-                'base_sort': False,
-                # TODO: [beta]
-                # 'dynamic_metric': None,
+                'dirpath': None,
+                'dump_params': {},
             }),
+            ('validate', {
+                'pipeline_id': 'default',
+                'dataset_id': 'default',
+                'subset_id': ['train', 'test'],
+                'metric_id': ['r2'],
+                'validator': None,
+            }),
+            ('dump', {'pipeline_id': 'default', 'dirpath': None}),
             ('predict', {
-                'dataset_id': 'test',
                 'pipeline_id': None,
+                'dataset_id': 'default',
+                'subset_id': 'test',
+                'dirpath': None,
             }),
         ],
     },
@@ -193,9 +179,10 @@ CNFG = {
 }
 """Default sections for ML task.
 
-For ML task, common sections would be:
-* create/read pipelines and datasets objects.
-* create workflow class and call methods with pipeline/dataset as argument.
+For ML task, typical configuration:
+* Specify metrics.
+* Make or load pipelines / datasets objects.
+* Produce results (workflow), calling pipeline/dataset/metric methods.
 
 """
 

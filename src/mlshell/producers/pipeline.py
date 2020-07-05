@@ -1,6 +1,6 @@
 """"
-The :mod:`mlshell.pipeline` contains examples of `Pipeline` class to create
-empty pipeline object and `PipelineProducer` class to fulfill it.
+The :mod:`mlshell.producers.pipeline` contains examples of `Pipeline` class to
+create empty pipeline object and `PipelineProducer` class to fulfill it.
 
 `Pipeline` class proposes unified interface to work with underlying pipeline.
 Intended to be used in `mlshell.Workflow`. For new pipeline formats no need to
@@ -10,24 +10,6 @@ edit `Workflow` class, only update `Pipeline` interface logic.
 Current implementation provides sklearn.pipeline.Pipeline(steps) model creation
 via steps and model loading via joblib.
 
-See also
---------
-:class:`mlshell.Workflow` docstring for pipeline prerequisites.
-
-TODO:
-Pipeline should contain:
-fit():
-    .fit()
-    .set_params()
-    .get_params()
-optimize():
-    sklearn estimator
-validate():
-    predict_proba()/predict()
-predict():
-    .dataset_id
-        In `mlshell.workflow` used only in result filenames, can be skipped.
-    .pipeline
 """
 
 
@@ -35,7 +17,7 @@ import os
 
 import joblib
 import mlshell
-import mlshell.pycnfg as pycnfg
+import pycnfg
 import sklearn.utils.estimator_checks
 
 __all__ = ['Pipeline', 'PipelineProducer']
@@ -171,7 +153,7 @@ class PipelineProducer(pycnfg.Producer):
         steps: list, class, optional (default=none)
             Steps of pipeline, passed to sklearn.pipeline.Pipeline.
             If class, should support class(**kwargs).steps.
-            If None, mlshell.PipelineSteps class is used.
+            If None, mlshell.pipeline.PipelineSteps class is used.
         memory : None, str, joblib.Memory interface, optional (default=None)
             `memory` argument passed to sklearn.pipeline.Pipeline.
             If 'auto', "project_path/temp/pipeline" is used.
@@ -229,7 +211,7 @@ class PipelineProducer(pycnfg.Producer):
         Parameters
         ----------
         pipeline : mlshell.Pipeline
-            Pipeline to explore.
+            Pipeline to explore (only if contains 'steps' attribute).
         **kwargs : kwargs
             Additional parameters to pass in low-level functions.
 
@@ -239,17 +221,10 @@ class PipelineProducer(pycnfg.Producer):
             For compliance with producer logic.
 
         """
-        self._print_steps(pipeline.pipeline, **kwargs)
+        self._print_steps(pipeline, **kwargs)
         return pipeline
 
-    def _memory_resolve(self, memory):
-        if memory == 'auto':
-            memory = f"{self.project_path}/temp/pipeline"
-        if not os.path.exists(memory):
-            # Create temp dir for cache if not exist.
-            os.makedirs(memory)
-        return memory
-
+    # ================================ make ===================================
     def _steps_resolve(self, steps, **kwargs):
         """Prepare pipeline steps.
 
@@ -263,15 +238,24 @@ class PipelineProducer(pycnfg.Producer):
             steps = steps
         else:
             if steps is None:
-                clss = mlshell.PipelineSteps
+                clss = mlshell.pipeline.PipelineSteps
             else:
                 clss = steps
             steps = clss(**kwargs).steps
         return steps
 
+    def _memory_resolve(self, memory):
+        if memory == 'auto':
+            memory = f"{self.project_path}/temp/pipeline"
+        if not os.path.exists(memory):
+            # Create temp dir for cache if not exist.
+            os.makedirs(memory)
+        return memory
+
+    # ================================ info ===================================
     def _print_steps(self, pipeline, **kwargs):
         """"Nice print of pipeline steps."""
-        params = pipeline.pipeline.get_params()
+        params = pipeline.get_params()
         self.logger.debug('Pipeline steps:')
         if 'steps' not in params:
             return

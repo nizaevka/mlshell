@@ -1,5 +1,5 @@
 """
-The :mod:`mlshell.metric` contains examples of `Metric` class to create
+The :mod:`mlshell.producers.metric` contains examples of `Metric` class to make
 empty metric object and `MetricProducer` class to fulfill it.
 
 `Metric` class proposes unified interface to work with underlying scorer.
@@ -13,7 +13,7 @@ Current implementation inherits sklearn.metric.make_scorer logic.
 """
 
 
-import mlshell.pycnfg as pycnfg
+import pycnfg
 import numpy as np
 import pandas as pd
 import sklearn
@@ -24,8 +24,9 @@ __all__ = ['Metric', 'MetricProducer']
 
 class Metric(object):
     def __init__(self, scorer=None, oid=None, score_func=None,
-                 greater_is_better=True, needs_proba=False,
-                 needs_threshold=False, needs_custom_kwargs=False):
+                 score_func_vector=None, greater_is_better=True,
+                 needs_proba=False, needs_threshold=False,
+                 needs_custom_kwargs=False):
         """Unified pipeline interface.
 
         Implements interface to access arbitrary scorer.
@@ -38,7 +39,10 @@ class Metric(object):
         oid : str
             Instance identifier.
         score_func: callable
-            Scorer underlying score function.
+            Scorer`s underlying score function, return scalar value.
+        score_func_vector: callable
+            Scorer` underlying score function, return vector of values for all
+            samples.
         greater_is_better : boolean, default=True
             Whether `score_func` is a score function (default), meaning high
             is good, or a loss function, meaning low is good. In the latter
@@ -57,18 +61,13 @@ class Metric(object):
         """
         self.scorer = scorer
         self.score_func = score_func
+        self.score_func_vector = score_func_vector
         self.oid = oid
         # Flags.
         self.greater_is_better = greater_is_better
         self.needs_proba = needs_proba
         self.needs_threshold = needs_threshold
         self.needs_custom_kwargs = needs_custom_kwargs
-
-    @property
-    def kwargs(self):
-        """dict: Additional kwargs passed to `score_func` (unchanged if step
-        `pass_custom` not used)"""
-        return self.scorer._kwargs
 
     def __call__(self, estimator, *args, **kwargs):
         """Redirect call to scorer object."""
@@ -82,13 +81,11 @@ class Metric(object):
             getattr(self.scorer, name)(*args, **kwargs)
         return wrapper
 
-    def _set_custom_kwargs(self, estimator):
-        # Allow to get custom kwargs
-        if hasattr(estimator, 'steps'):
-            for step in estimator.steps:
-                if step[0] == 'pass_custom':
-                    temp = step[1].kwargs.get(self.oid, {})
-                    self.scorer._kwargs.update(temp)
+    @property
+    def kwargs(self):
+        """dict: Additional kwargs passed to `score_func` (unchanged if step
+        `pass_custom` not used)"""
+        return self.scorer._kwargs
 
     def pprint(self, score):
         """Pretty print metric result.
@@ -120,6 +117,14 @@ class Metric(object):
         elif isinstance(score, np.ndarray):
             score = np.array2string(score, prefix='    ')
         return str(score)
+
+    def _set_custom_kwargs(self, estimator):
+        # Allow to get custom kwargs
+        if hasattr(estimator, 'steps'):
+            for step in estimator.steps:
+                if step[0] == 'pass_custom':
+                    temp = step[1].kwargs.get(self.oid, {})
+                    self.scorer._kwargs.update(temp)
 
 
 class MetricProducer(pycnfg.Producer):
@@ -157,24 +162,24 @@ class MetricProducer(pycnfg.Producer):
         self.logger = objects[logger_id]
         self.project_path = objects[path_id]
 
-    def make(self, scorer, score_func=None, needs_custom_kwargs=False,
-             **kwargs):
+    def make(self, scorer, score_func, score_func_vector=None,
+             needs_custom_kwargs=False, **kwargs):
         """Make scorer from metric callable.
 
         Parameters
         ----------
         scorer : mlshell.Scorer interface
-        score_func : callback or str
+        score_func : callback or str,
             Custom function or sklearn built-in metric name.
+        score_func_vector: callback, optional (default=None)
+            Vectorized `score_func` returning vector of values for all samples.
+            Mainly for result visualization purpose.
         needs_custom_kwargs : bool
             If True, allow to pass kwargs while grid search for custom metric.
         **kwargs : dict
             Additional kwargs to pass in make_scorer (if not str `func`).
 
         """
-        if score_func is None:
-            raise ValueError('Specify metric function')
-
         # Convert to scorer
         if isinstance(score_func, str):
             # built_in = sklearn.metrics.SCORERS.keys().
@@ -184,6 +189,7 @@ class MetricProducer(pycnfg.Producer):
             # Non-scalar output metric also possible.
             scorer.scorer = sklearn.metrics.make_scorer(score_func, **kwargs)
         scorer.score_func = score_func
+        scorer.score_func_vector = score_func_vector
         scorer.needs_custom_kwargs = needs_custom_kwargs
         scorer.greater_is_better = scorer.scorer._sign > 0
         scorer.needs_proba =\

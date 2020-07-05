@@ -21,7 +21,8 @@ class Validator(object):
     def __init__(self):
         pass
 
-    def validate(self, pipeline, metrics, datasets, logger, method='metric'):
+    def validate(self, pipeline, metrics, datasets, logger, method='metric',
+                 vector=False):
         """Evaluate metrics on pipeline.
 
         Parameters
@@ -30,31 +31,34 @@ class Validator(object):
             Fitted model.
         metrics : list of mlshell.Metric
             Metrics to evaluate.
-        datasets : list of mlshell.Dataset ('meta'[pos_labels_ind] for c)
+        datasets : list of mlshell.Dataset
             Dataset to evaluate on. For classification 'dataset.meta'
             should contains `pos_labels_ind` key.
-        method : 'metric' or 'scorer'
+        method : 'metric', 'scorer' or 'vector'
             If 'metric', efficient (reuse y_pred) evaluation via
             `score_func(y, y_pred, **kwargs)`. If 'scorer', evaluate via
-            `scorer(pipeline, x, y)`.
+            `scorer(pipeline, x, y)`. If 'vector', evaluate vectorized score
+            via `score_func_vector(y, y_pred, **kwargs)`.
+        vector: bool
+            If True and `method`='metric', `score_func_vector` used instead
+            of `score_func` to evaluate vectorized score (if available).
+            Ignored for `method`='scorer'.
         logger : logger object
             Logs.
 
+        Returns
+        -------
+        scores : dict
+            Resulted scores {'dataset_id':{'metric_id': score}}
+
         """
-        # pipeline
-        # [kwargs, steps, pipeline.predict(x)/predict_proba(x)/
-        #  decision_function(x)]
-        # metric
-        # [oid, scorer(pipeline, x,y), score_func(y, y_pred, **kwargs),
-        #  pprint(score) ]
-        # dataset
-        # [oid, x, y, meta[pos_labels_ind]]
         if not metrics:
             logger.warning("Warning: no metrics to evaluate.")
             return
         if method not in ['metric', 'scorer']:
             raise ValueError("Unknown 'method' value.")
 
+        scores = {}
         # Storage to prevent multiple inference (via metric).
         infer = {}
         for dataset in datasets:
@@ -63,6 +67,7 @@ class Validator(object):
                 'decision_function': None,
                 'predict': None
             }
+            scores[dataset.oid] = {}
         for metric in metrics:
             logger.log(5, f"{metric.oid}:")
             for dataset in datasets:
@@ -72,7 +77,7 @@ class Validator(object):
                     if method == 'metric':
                         score = self._via_metric(pipeline.pipeline, x, y,
                                                  metric, dataset,
-                                                 infer[dataset.oid])
+                                                 infer[dataset.oid], vector)
                     elif method == 'scorer':
                         score = metric.scorer(pipeline.pipeline, x, y)
                     else:
@@ -81,11 +86,12 @@ class Validator(object):
                     # Pipeline has not 'predict_proba'/'decision_function'.
                     logger.warning(f"Ignore metric: {e}")
                     break
-                score = metric.pprint(score)
-                logger.log(5, f"{dataset.oid}:\n    {score}")
-        return
+                scores[dataset.oid][metric.oid] = score
+                score_ = metric.pprint(score[-1] if vector else score)
+                logger.log(5, f"{dataset.oid}:\n    {score_}")
+        return scores
 
-    def _via_metric(self, pipeline, x, y, metric, dataset, infer):
+    def _via_metric(self, pipeline, x, y, metric, dataset, infer, vector):
         """Evaluate score via score functions.
 
         Reutilize inference, more efficient than via scorers.
@@ -101,6 +107,14 @@ class Validator(object):
                         metric.kwargs.update(temp)
         # Score.
         score = metric.score_func(y, y_pred, **metric.kwargs)
+        if vector:
+            score_vec = metric.score_func_vector(y, y_pred, **metric.kwargs) \
+                if metric.score_func_vector is not None else [score]
+            if score_vec[-1] == score:
+                raise ValueError(
+                    f"Found inconsistent betwee score and score_vector[-1]:\n"
+                    f"    {metric.oid} {pipeline.oid} {dataset.oid}")
+            score = score_vec
         return score
 
     def _get_y_pred(self, pipeline, x, metric, infer, dataset):

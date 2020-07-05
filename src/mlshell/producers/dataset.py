@@ -14,45 +14,6 @@ Currently implements reading from csv-file.
 Implements data transformation in compliance to `Dataset` and common
 exploration techniques.
 
-See also
---------
-:class:`mlshell.Workflow` docstring for dataset prerequisites.
-
-TODO:
-    В каждом методе Workflow расспиши требования к интерфейсу
-    В заголовке максимальные требования
-Interface:
-x
-y
-meta
-    не все обязательны или все?
-    pos_labels_ind в валидаторе
-    classes, pos_labels_ind, pos_labels в резолвере
-    categoric_ind_name, numeric_ind_name в резолвере
-dump
-split
-...
-
-TODO: check
-* [deprecated] If None, auto add zero values under 'target' id.
-        try:
-            targets_df = raw[target_names]
-            targets = targets_df.values
-        except KeyError as e:
-            # Handle test data without targets.
-            self.logger.warning("Warning: no target column(s) '{}' in df,"
-                                " use 0 values.".format(target_names))
-            targets = np.zeros((raw.shape[0], len(target_names)),
-                               dtype=int,
-                               order="C")
-            raw[target_names] = pd.DataFrame(targets)
-* [deprecated] atavism.
-targets = targets_df.values.astype(int)  # cast to int
-* keys change
-'index' => 'indices'
-'index_name' => 'index' , also made list ['label']
-'categor_features' => 'categoric_features'
-
 """
 
 
@@ -61,8 +22,8 @@ import copy
 import jsbeautifier
 import numpy as np
 import pandas as pd
+import pycnfg
 import sklearn
-import mlshell.pycnfg as pycnfg
 import tabulate
 
 __all__ = ['Dataset', 'DataIO', 'DataPreprocessor', 'DatasetProducer']
@@ -211,7 +172,7 @@ class Dataset(dict):
 class DataIO(object):
     """Get raw data from database.
 
-    Interface: get.
+    Interface: load.
 
     Parameters
     ----------
@@ -227,8 +188,8 @@ class DataIO(object):
         self.logger = logger
         self.project_path = project_path
 
-    # @time_profiler
-    # @memory_profiler
+    # @pycnfg.time_profiler
+    # @pycnfg.memory_profiler
     def load(self, dataset, filepath,
              random_skip=False, random_state=None, **kwargs):
         """Load data from csv-file.
@@ -303,8 +264,8 @@ class DataPreprocessor(object):
     """
     _required_parameters = ['project_path', 'logger']
 
-    # @time_profiler
-    # @memory_profiler
+    # @pycnfg.time_profiler
+    # @pycnfg.memory_profiler
     def __init__(self, project_path, logger):
         self.logger = logger
         self.project_path = project_path
@@ -319,8 +280,9 @@ class DataPreprocessor(object):
             Raw dataset.
         targets_names: list
             List of targets columns names in raw dataset.
-        features_names: list
-            List of features columns names in raw dataset.
+        features_names: list, None, optional (default=None)
+            List of features columns names in raw dataset. If None, all except
+            targets.
         categor_names: list, None, optional (default=None)
             List of categoric features(also binary) identifiers in raw dataset.
             If None, empty list.
@@ -401,7 +363,7 @@ class DataPreprocessor(object):
         data = self._combine(index, targets, features, meta)
         dataset.update({'data': data,
                         'meta': meta,
-                        'subsets': {},   # TODO:
+                        'subsets': {},
                         **kwargs})
         return dataset
 
@@ -429,7 +391,7 @@ class DataPreprocessor(object):
         self._check_gaps(dataset['data'], **kwargs)
         return dataset
 
-    # @memory_profiler
+    # @pycnfg.memory_profiler
     def split(self, dataset, **kwargs):
         """Split dataset on train, test.
 
@@ -471,10 +433,11 @@ class DataPreprocessor(object):
                     data, data.index.values, **kwargs)
 
         # Add to dataset.
-        dataset.update({'train_index': train_index,
-                        'test_index': test_index})
+        dataset['subsets'].update({'train': train_index,
+                                   'test': test_index})
         return dataset
 
+    # ============================== preprocess ===============================
     def _process_targets(self, raw, target_names, pos_labels):
         """Targets preprocessing."""
         targets_df = raw[target_names]
@@ -618,6 +581,21 @@ class DataPreprocessor(object):
         self._check_numeric_types(features, categor_names)
         return features, categoric_ind_name, numeric_ind_name
 
+    def _check_numeric_types(self, data, categor_names):
+        """Check that all non-categorical features are of numeric type."""
+        dtypes = data.dtypes
+        misstype = []
+        for ind, column_name in enumerate(data):
+            if column_name not in categor_names:
+                if not np.issubdtype(dtypes[column_name], np.number):
+                    misstype.append(column_name)
+        if misstype:
+            raise ValueError(f"Input data non-categoric columns should be "
+                             f"subtype of np.number, check:\n"
+                             f"    {misstype}")
+        return None
+
+    # ================================ info ===================================
     def _check_duplicates(self, data, del_duplicates=False):
         """Check duplicates rows in dataframe.
 
@@ -701,20 +679,6 @@ class DataPreprocessor(object):
                         subset=[subset], inplace=True)
         elif subset:
             raise ValueError(f"Gaps in {subset}.")
-        return None
-
-    def _check_numeric_types(self, data, categor_names):
-        """Check that all non-categorical features are of numeric type."""
-        dtypes = data.dtypes
-        misstype = []
-        for ind, column_name in enumerate(data):
-            if column_name not in categor_names:
-                if not np.issubdtype(dtypes[column_name], np.number):
-                    misstype.append(column_name)
-        if misstype:
-            raise ValueError(f"Input data non-categoric columns should be "
-                             f"subtype of np.number, check:\n"
-                             f"    {misstype}")
         return None
 
 

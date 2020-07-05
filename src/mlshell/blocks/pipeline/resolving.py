@@ -1,6 +1,6 @@
 """
-The :mod:`mlshell.blocks.resolving` contains 'Resolver' class to extract
-dataset based parameters.
+The :mod:`mlshell.blocks.pipeline.resolving` contains 'Resolver' class to
+extract dataset based parameters.
 """
 
 import operator
@@ -116,11 +116,13 @@ class Resolver(object):
             Resulted array of thresholds values, sorted ascending.
 
         """
-        if 'method' not in kwargs or kwargs['method'] != 'predict_proba':
+        kwargs_cvp = kwargs.get('cross_val_predict', {})
+        kwargs_ctr = kwargs.get('calc_th_range', {})
+        if kwargs_cvp.get('method', None) is not 'predict_proba':
             raise ValueError("cross_val_predict 'method'"
                              " should be 'predict_proba'.")
-        if 'y' in kwargs:
-            del kwargs['y']
+        if 'y' in kwargs_cvp:
+            del kwargs_cvp['y']
 
         x = dataset.x
         y = dataset.y
@@ -130,13 +132,13 @@ class Resolver(object):
                                 'pos_labels_ind')(dataset.meta)
         # Extended sklearn.model_selection.cross_val_predict (TimeSplitter).
         y_pred_proba, index = mlshell.model_selection.cross_val_predict(
-            pipeline, x, y=y, **kwargs['cross_val_predict'])
+            pipeline, x, y=y, **kwargs_cvp)
         # y_true!=y for TimeSplitter.
         y_true = y.values[index] if hasattr(y, 'loc') else y[index]
         # Calculate roc_curve, sample th close to tpr/(tpr+fpr) maximum.
         th_range = self.calc_th_range(y_true, y_pred_proba, pos_labels,
                                       pos_labels_ind,
-                                      **kwargs['calc_th_range'])
+                                      **kwargs_ctr)
         return th_range
 
     def calc_th_range(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,

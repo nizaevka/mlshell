@@ -1,1 +1,1 @@
-__all__ = ['pipe', 'plot', 'preprocessing',  'resolving', 'model_selection']
+__all__ = ['pipeline', 'plot', 'preprocessing', 'model_selection']

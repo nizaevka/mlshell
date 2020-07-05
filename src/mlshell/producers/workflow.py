@@ -1,6 +1,6 @@
 ﻿"""
-The :mod:`mlshell.workflow` contains examples of `Workflow` class to produce
-results for typical machine learning task .
+The :mod:`mlshell.producers.workflow` contains examples of `Workflow` class to
+produce results for typical machine learning task .
 
 `Workflow` class uses unified interface to work with underlying
 pipelines/datasets/metrics. Current implementation specifies methods to
@@ -10,90 +10,19 @@ Workflow support multi-stage optimization for some pipeline-dataset
 pair. Each stage results combined with previous stage to find the best
 hp combination and use it in the next stage.
 
-# TODO: Move out to related methods.
-(dict): if user skip declaration for any parameter the default one will be used.
-
-    pipeline__estimator (``sklearn.base.BaseEstimator``, optional (default=sklearn.linear_model.LinearRegression())):
-        Last step in pipeline.
-    pipeline__type ('regressor' or 'classifier', optional (default='regressor')):
-        Last step estimator type.
-    pipeline__fit_params (dict, optional (default={})):
-        | Parametes will be passed to estimator.fit( ** estimator_fit_params) method.
-        | For example: {'estimate__classifier__early_stopping_rounds': 200, 'estimate__classifier__eval_metric': 'auc'}
-    pipeline__steps (custom class to create pipeline steps, optional (default=None))
-        Will replace ``mlshell.default.CreateDefaultPipeline`` if set, should have .get_steps() method.
-    pipeline__debug (bool, optional (default=False):
-        If True fit pipeline on <=1k subdata and log exhaustive information.
-    metrics (dict of ``sklearn.metrics``, optional (default={'score': sklearn.metrics.r2_score})):
-        Dict of metrics to be measured. Should consist 'score' key, which val is used for sort hp tuning results.
-    gs__flag (bool, optional (default=False)):
-        if True tune hp in optimizer and fit best just else fit pipeline with zero-position hp_grid.
-    gs__splitter (``sklearn.model_selection`` splitter, optional (default=sklearn.model_selection.KFold(shuffle=False)):
-        Yield train and test folds.
-    gs__hp_grid (dict of params for sklearn hyper-parameter optimizers, optional (default={})):
-        Full list see in ``mlshell.default.CreateDefaultPipeline`` class.
-    gs__verbose (int (default=1)):
-        `verbose` argument in optimizer.
-    gs__n_job (int (default=1)):,
-        ``n_jobs`` argument in optimizer.
-    gs__pre_dispatch  (None or int or string, optional (default='n_jobs'))
-        `pre_dispatch` argument in optimizer.
-    gs__runs (bool or None, optional (default=None)):
-        Number of runs in optimizer, hould be set if any hp_grid key is probability distribution.
-        If None will be used hp_grid shapes multiplication.
-    gs_metrics (list, optional (default=['score']))
-        Sublist of ``metrics`` to evaluate in grid search.
-        Always should contain 'score'.
-    data__split__train_size (train_size for sklearn.model_selection.train_test_split, default=0.7):
-        Split data on train and validation. It is possible to set 1.0 and CV on whole data (validation=train).
-    data__del_duplicates (bool, optional (default=False)):
-        If True remove duplicates rows from input data before pass to pipeline (workflow class level).
-    data__train__args/data__train__kwargs (list, (default=[])
-        Specify args to pass in user-defined classes.GetData class constructor.
-        Typically there are contain path to files, index_column name, rows read limit.
-        For example see `Examples <./Examples.html>`__.
-    data__test__args/data__test__kwargs (dict, (default={})
-        Specify kwargs to pass in user-defined classes.GetData class constructor.
-        Typically there are contain index_column name, rows read limit.
-        For example see `Examples <./Examples.html>`__.
-    th__pos_label (int or str, optional (default=1)):
-        For classification only. Label for positive class.
-    th__strategy ( 0,1,2,3, optional (default=0)):
-        | For classification only.
-        | ``th_`` tuning strategy.
-        | For details see `Concepts <./Concepts.html#classification-threshold>`__.
-    th__samples (int, optional (default=100)):
-        | For classification only.
-        | Number of ``th_`` values to brutforce for roc_curve based th_strategy (1.2/2.2/3.2).
-    th__plot_flag (bool, optional (default=False):
-        For ``th_strategy`` (1.2/2.2/3.2) plot ROC curve and trp/(tpr+fpr) vs ``th_`` with ``th_`` search range marks.
-    cache__pipeline (bool, optional (default=False):
-        if True, use ``memory`` argument in ``sklearn.pipeline.Pipeline``, cache steps` in ``result/cache/pipeline``.
-        If 'update', update cache files.
-        If false, not use cache.
-    cache__unifier (bool, optional (default=False):
-        If True, cache input after workflow.unify_data ``result/cache/unifier/``, use that cache next time if available.
-        If 'update', update cache file.
-        If false, not use cache.
-    seed (None or int, optional(default=42)):
-        workflow random state for random.seed(42), numpy.random.seed(42).
-
 """
 
 
-import mlshell.pycnfg as pycnfg
-import mlshell
-import hashlib
-import pathlib
 import inspect
-import jsbeautifier
+import os
+import pathlib
+import threading
+
+import mlshell
 import numpy as np
 import pandas as pd
-import os
-import threading
-import time
+import pycnfg
 import sklearn
-import copy
 
 __all__ = ['Workflow']
 
@@ -108,14 +37,16 @@ def checker(func, options=None):
      """
     if options is None:
         options = []
+
     def wrapper(*args, **kwargs):
         self = args[0]
         hash_before = {key: hash(val) for key, val in self.object.items()}
         func(*args, **kwargs)
         hash_after = {key: hash(val) for key, val in self.object.items()}
         hash_diff = {key: {'before': hash_before[key],
-                           'after': hash_after[key]} for key in hash_before
-                            if hash_before[key]!=hash_after[key] }
+                           'after': hash_after[key]}
+                     for key in hash_before
+                     if hash_before[key] != hash_after[key]}
         if hash_diff:
             self.logger.info(f"Object(s) hash changed:\n"
                              f"    {hash_diff}")
@@ -198,7 +129,7 @@ class Workflow(pycnfg.Producer):
             self._np_error_stat[args[0]] = 1
 
     @checker
-    # @memory_profiler
+    # @pycnfg.memory_profiler
     def fit(self, res, pipeline_id, dataset_id, subset_id='train',
             hp=None, resolver=None, resolve_params=None,
             fit_params=None):
@@ -209,8 +140,8 @@ class Workflow(pycnfg.Producer):
         res : dict
             For compliance with producer logic.
         pipeline_id : str
-            Pipeline identifier in `objects`. Will be fitted on
-            `dataset_id__subset_id`.
+            Pipeline identifier in `objects`. Will be fitted on `dataset_id__
+            subset_id`: pipeline.fit(subset.x, subset.y, **fit_params)
         dataset_id : str
             Dataset identifier in `objects`.
         subset_id : str, optional (default='train')
@@ -218,9 +149,9 @@ class Workflow(pycnfg.Producer):
         hp : dict, None, optional (default=None)
             Hyper-parameters to use in pipeline: {`hp_name`: val/container}.
             If container provided, zero position will be used. If None, {}
-        resolver : mlshell.Resolver, None, optional (default=None)
+        resolver : mlshell.pipeline.Resolver, None, optional (default=None)
             If hp value = 'auto', hp will be resolved via `resolver`.resolve().
-            Auto initialized if necessary. If None, mlshell.Resolver used.
+            Auto initialized if necessary. If None, mlshell.pipeline.Resolver.
         resolve_params : dict, None, optional (default=None)
             Additional kwargs to pass in `resolver`.resolve(*args,
             **resolve_params[hp_name]). If None, {}.
@@ -242,7 +173,7 @@ class Workflow(pycnfg.Producer):
         if hp is None:
             hp = {}
         if resolver is None:
-            resolver = mlshell.Resolver
+            resolver = mlshell.pipeline.Resolver
         if inspect.isclass(resolver):
             resolver = resolver()
         if resolve_params is None:
@@ -257,7 +188,7 @@ class Workflow(pycnfg.Producer):
 
         train = dataset.subset(subset_id)
         pipeline.fit(train.x, train.y, **fit_params)
-        pipeline.dataset_id = dataset_id
+        pipeline.dataset_id = train.oid
         self.objects[pipeline_id] = pipeline
         return res
 
@@ -274,7 +205,8 @@ class Workflow(pycnfg.Producer):
             For compliance with producer logic.
         pipeline_id : str
             Pipeline identifier in `objects`. Will be cross-validate on
-            `dataset_id__subset_id`.
+            `dataset_id__subset_id`: optimizer.fit(subset.x, subset.y,
+             **fit_params).
         dataset_id : str
             Dataset identifier in `objects`.
         subset_id : str, optional (default='train')
@@ -286,17 +218,18 @@ class Workflow(pycnfg.Producer):
             If None, 'accuracy' or 'r2' depends on estimator type. If list of
             str, try to resolve via `objects`/sklearn built-in: {'metric_id':
             resolved scorer}. Otherwise passed to optimizer unchanged.
-        resolver : mlshell.Resolver, None, optional (default=None)
+        resolver : mlshell.pipeline.Resolver, None, optional (default=None)
             If hp value = ['auto'] in `hp_grid`, hp will be resolved via
             `resolver`.resolve(). Auto initialized if class provided. If None,
-            mlshell.Resolver used.
+            mlshell.pipeline.Resolver used.
         resolve_params : dict, None, optional (default=None)
             Additional kwargs to pass in `resolver`.resolve(*args,
             **resolve_params[hp_name]). If None, {}.
-        optimizer : mlshell.Optimizer, None, optional (default=None)
-            Class to optimize `hp_grid`. If None, mlshell.Optimizer.
-            optimizer(pipeline, hp_grid, scoring, **gs_params).fit(x, y,
-            **fit_params) will be called.
+        optimizer : mlshell.model_selection.Optimizer, None, optional
+        (default=None)
+            Class to optimize `hp_grid`. optimizer(pipeline, hp_grid, scoring,
+            **gs_params).fit(x, y, **fit_params) will be called. If None,
+            mlshell.model_selection.RandomizedSearchOptimizer.
         fit_params : dict, None, optional (default=None)
             Additional kwargs to pass in `optimizer`.fit(*args,
             **fit_params). If None, {}.
@@ -315,7 +248,10 @@ class Workflow(pycnfg.Producer):
         -------
         res : dict
             Input`s key added/updated:
-            {'runs': {'pipeline_id|dataset_id': optimizer.update_best output}}.
+            {'runs': dict
+                Storage of optimization results for pipeline-data pair.
+                {'pipeline_id|dataset_id|subset_id':
+                    optimizer.update_best output}}.
 
         Notes
         -----
@@ -325,20 +261,20 @@ class Workflow(pycnfg.Producer):
         * Call dump runs: optimizer.dump_runs(self.logger, dirpath,
          **dump_params), where run = probing hp combination.
         * Call optimizer.update_best(prev_runs) to combine previous
-        optimization stage for specific dataset-pipeline pair and find best.
+        optimization stage for specific pipeline-data pair and find best.
         * Pipeline object updated in `self.objects` only if 'runs' contain
         'best_estimator_'.
 
         See Also
         --------
-        :class:`mlshell.Optimizer` optimizer interface.
+        :class:`mlshell.model_selection.Optimizer` optimizer interface.
 
         """
         self.logger.info("|__ OPTIMIZE HYPER-PARAMETERS")
         if hp_grid is None:
             hp_grid = {}
         if resolver is None:
-            resolver = mlshell.Resolver
+            resolver = mlshell.pipeline.Resolver
         if inspect.isclass(resolver):
             resolver = resolver()
         if resolve_params is None:
@@ -346,7 +282,7 @@ class Workflow(pycnfg.Producer):
         if fit_params is None:
             fit_params = {}
         if optimizer is None:
-            optimizer = mlshell.RandomizedSearchOptimizer
+            optimizer = mlshell.model_selection.RandomizedSearchOptimizer
         if dirpath is None:
             dirpath = f"{self.project_path}/results/runs"
         elif dirpath.startswith('./'):
@@ -377,13 +313,14 @@ class Workflow(pycnfg.Producer):
         if 'runs' not in res:
             res['runs'] = {}
         runs = res['runs']
-        key = f"{pipeline_id}|{dataset_id}"
+        key = f"{pipeline_id}|{dataset_id}|{subset_id}"
         runs[key] = optimizer.update_best(runs.get(key, {}))
         if 'best_estimator_' in runs[key]:
             self.objects[pipeline_id] = runs[key].get('best_estimator_')
+            self.objects[pipeline_id].dataset_id = train.oid
         return res
 
-    # @memory_profiler
+    # @pycnfg.memory_profiler
     def validate(self, res, pipeline_id, dataset_id, metric_id,
                  subset_id=('train', 'test'), validator=None):
         """Predict and score on validation set.
@@ -401,8 +338,10 @@ class Workflow(pycnfg.Producer):
             Data subset(s) identifier(s) to validate on. '' for full dataset.
         metric_id : srt, list of str
             Metric(s) identifier in `objects`.
-        validator : mlshell.Validator, None, optional (default=None)
-            Auto initialized if class provided. If None, mlshell.Validator.
+        validator : mlshell.model_selection.Validator, None, optional
+        (default=None)
+            Auto initialized if class provided. If None,
+            mlshell.model_selection.Validator.
 
         Returns
         -------
@@ -412,7 +351,7 @@ class Workflow(pycnfg.Producer):
         """
         self.logger.info("|__ VALIDATE")
         if validator is None:
-            validator = mlshell.Validator
+            validator = mlshell.model_selection.Validator
         if inspect.isclass(validator):
             validator = validator()
         if not isinstance(metric_id, list):
@@ -474,7 +413,7 @@ class Workflow(pycnfg.Producer):
                             f"    {fullpath}")
         return res
 
-    # @memory_profiler
+    # @pycnfg.memory_profiler
     def predict(self, res, pipeline_id, dataset_id, subset_id='test',
                 dirpath=None, **kwargs):
         """Predict and dump.
@@ -485,7 +424,7 @@ class Workflow(pycnfg.Producer):
             For compliance with producer logic.
         pipeline_id : str
             Pipeline identifier in `objects` to make prediction on
-            `dataset_id__subset_id`
+            `dataset_id__subset_id`: pipeline.predict(subset.x)
         dataset_id : str
             Dataset identifier in `objects`.
         subset_id : str, optional (default='test')
@@ -524,36 +463,67 @@ class Workflow(pycnfg.Producer):
         test = dataset.subset(subset_id)
         y_pred = pipeline.predict(test.x)
         filepath = self._prefix(res, dirpath, pipeline, pipeline_id,
-                                dataset, dataset_id)
+                                test, test.oid)
         fullpath = test.dump_pred(filepath, y_pred, **kwargs)
         self.logger.log(25, f"Save predictions for {dataset_id} to file:"
                             f"\n    {fullpath}")
         return res
 
-    def plot(self, pipeline_id, dataset_id, hp_grid, optimizer_id, cls,
-             **kwargs):
-        self.logger.info("|__ GUI")
+    def plot(self, res, pipeline_id, dataset_id, metric_id, validator=None,
+             subset_id=('train', 'test'), plotter=None, **kwargs):
+        """Visualize results.
 
-        pipeline = self.pipelines[pipeline_id]
-        dataset = self.datasets[dataset_id]
+        Parameters
+        ----------
+        res : dict
+            For compliance with producer logic.
+        pipeline_id : str
+            Pipeline identifier in `objects`.
+        dataset_id : str
+            Dataset identifier in `objects`.
+        subset_id : str, tuple of str, optional (default=('train', 'test'))
+            Data subset(s) identifier(s) to plot on. '' for full dataset.
+        metric_id : srt, list of str
+            Metric(s) identifier in `objects`.
+        validator : mlshell.model_selection.Validator, None, optional
+        (default=None)
+            Auto initialized if class provided. If None,
+            mlshell.model_selection.Validator.
+        plotter : mlshell.plot.Plotter, None, optional (default=None)
+            Auto initialized if class provided. If None, mlshell.plot.Plotter.
+        **kwargs: dict
+        `   Additional kwargs to pass in plotter.plot(**kwargs).
 
-        # Create base_plot
-        # [alternative] better df
-        # base_plot = targets
-        # preserve original index
-        # base_plot = pd.Series(index=raw.index.values,
-        #                       data=np.arange(1, targets.shape[0]+1)).rename_axis(raw.index.name)
-        # [deprecated] move to gui
-        # base_plot = pd.DataFrame(index=raw.index.values,
-        #                          data={target_name: np.arange(1, targets.shape[0]+1)}).rename_axis(raw.index.name)
+        Returns
+        -------
+        res : dict
+            Unchanged input, for compliance with producer logic.
 
+        """
+        self.logger.info("|__ PLOT")
+        if validator is None:
+            validator = mlshell.model_selection.Validator
+        if inspect.isclass(validator):
+            validator = validator()
+        if plotter is None:
+            plotter = mlshell.plot.Plotter
+        if inspect.isclass(plotter):
+            plotter = plotter()
+        if not isinstance(metric_id, list):
+            metric_id = [metric_id]
+        if not isinstance(subset_id, list):
+            subset_id = [subset_id]
 
-        # we need only hp_grid flat:
-        # either hp here in args
-        # either combine tested hp for all optimizers if hp = {}
-        runs = self._runs.get(f"{pipeline_id}|{dataset_id}", {})
-        gui = cls(pipeline, dataset, runs, **kwargs)
-        threading.Thread(target=gui.plot(), args=(), daemon=True).start()
+        dataset = self.objects[dataset_id]
+        pipeline = self.objects[pipeline_id]
+        metrics = [self.objects[i] for i in metric_id]
+        subsets = {id_: dataset.subset(id_) for id_ in subset_id]
+        runs = res.get('runs', {})
+        subruns = {id_: runs.get(f"{pipeline_id}|{dataset_id}|{id_}", {})
+                   for id_ in subset_id}
+
+        args = (subruns, pipeline, metrics, subsets, validator, self.logger)
+        threading.Thread(target=plotter.plot, args=args, daemon=True).start()
         return
 
     # ========================== fit/optimize =================================
@@ -562,7 +532,7 @@ class Workflow(pycnfg.Producer):
         _hp_full = pipeline.get_params()
         _hp_full.update(self._get_zero_position(hp))
         hp = self._resolve_hp(_hp_full, pipeline, resolver, dataset,
-                                **resolve_params)
+                              **resolve_params)
         pipeline.set_params(**hp)
         return pipeline
 
@@ -598,7 +568,7 @@ class Workflow(pycnfg.Producer):
             resolved.
         pipeline : mlshell.Pipeline
             Pipeline, passed to `resolver`
-        resolver : mlshell.Resolver
+        resolver : mlshell.pipeline.Resolver
             Interface to resolve hp.
         dataset : mlshell.Dataset
             Dataset, passed to `resolver`.
@@ -645,9 +615,9 @@ class Workflow(pycnfg.Producer):
 
     # ========================== dump/predict =================================
     def _prefix(self, res, dirpath, pipeline, pipeline_id,
-                dataset=0, dataset_id=''):
+                pred_dataset=0, pred_dataset_id=''):
         """Generate informative file prefix."""
-        dataset_id_hash = hash(dataset)
+        pred_dataset_hash = hash(pred_dataset)
         fit_dataset_id = getattr(pipeline, 'dataset_id', None)
         fit_dataset_hash = hash(self.objects.get(fit_dataset_id, 0))
         best_score = str(res.get('runs', {})
@@ -656,7 +626,7 @@ class Workflow(pycnfg.Producer):
                          ).lower()
         filepath = f"{dirpath}/{self.oid}_{pipeline_id}_{fit_dataset_id}_" \
                    f"{best_score}_{hash(pipeline)}_{fit_dataset_hash}_" \
-                   f"{dataset_id}_{dataset_id_hash}"
+                   f"{pred_dataset_id}_{pred_dataset_hash}"
         return filepath
 
 
