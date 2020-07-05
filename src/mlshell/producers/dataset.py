@@ -1,5 +1,5 @@
 """"
-The :mod:`mlshell.dataset` contains examples for `Dataset` class to create
+The :mod:`mlshell.producers.dataset` contains examples for `Dataset` class to create
 empty data object and `DataProducer` class to fulfill it.
 
 `Dataset` class proposes unified interface to interact with underlying data.

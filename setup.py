@@ -6,7 +6,7 @@ import os
 
 
 NAME = "mlshell"
-DESCRIPTION = "Catalyst. PyTorch framework for DL & RL research and development."
+DESCRIPTION = "MLshell. Convenient framework for ML tasks."
 URL = "https://github.com/nizaevka/mlshell"
 REQUIRES_PYTHON = ">=3.6"
 PATH = os.path.abspath(os.path.dirname(__file__))

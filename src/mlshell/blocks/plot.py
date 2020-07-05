@@ -1,9 +1,8 @@
-"""The module with GUI class description.
+"""The :mod:`mlshell.blocks.plot` includes class to visualize data.
 
-Note:
-    radio 1 template is hidden in fig_element_prepare.
-    text_box template is hidden in initdraw.
-
+[deprecated]
+radio 1 template is hidden in fig_element_prepare.
+text_box template is hidden in initdraw.
 """
 
 
@@ -11,7 +10,10 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 import seaborn as sns
 from copy import deepcopy
-from mlshell.libs import np, logging, pd, tabulate
+import numpy as np
+import logging
+import pandas as pd
+import tabulate
 
 
 # класс GUI универсальный, состав функций надо прописывать в дочернем классе

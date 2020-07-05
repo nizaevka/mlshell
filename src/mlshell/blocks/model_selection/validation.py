@@ -1,7 +1,19 @@
 """
-The :mod:`mlshell.blocks.validator` contains examples of `Validator` class to
-process metrics evaluation on fitted pipeline.
+The :mod:`mlshell.blocks.model_selection.validation` module includes classes
+and functions to validate the model.
+
+`Validator` class to process metrics evaluation on fitted pipeline.
+
+'cross_val_predict' extended sklearn.model_selection.cross_val_predict
+that supports partial splitters (TimeSplitter for example).
+
 """
+
+
+import numpy as np
+import sklearn
+
+__all__ = ['Validator', 'cross_val_predict', 'partial_cross_val_predict']
 
 
 class Validator(object):
@@ -120,6 +132,98 @@ class Validator(object):
             else:
                 y_pred = infer['predict']
         return y_pred
+
+
+def cross_val_predict(*args, **kwargs):
+    """Extended sklearn.model_selection.cross_val_predict.
+
+    Add TimeSplitter support (when no first fold prediction).
+
+    Parameters
+    ----------
+    *args : list
+        Passed to sklearn.model_selection.cross_val_predict.
+    **kwargs : dict
+        Passed to sklearn.model_selection.cross_val_predict.
+
+    Returns
+    -------
+    y_pred_oof : 2d numpy.ndarray or list of 2d numpy.ndarray
+        OOF probability predictions of shape [n_test_samples, n_classes]
+        or [n_outputs, n_test_samples, n_classes] for multi-output.
+    index_oof : numpy.ndarray or list of numpy.ndarray
+        Samples reset indices where predictions available of shape
+        [n_test_samples,] or [n_test_samples, n_outputs] for multi-output.
+
+    """
+    # Debug key (compare predictions for no TimeSplitter cv strategy).
+    _debug = kwargs.pop('_debug', False)
+    temp_pp = None
+    temp_ind = None
+    x = args[1]
+    try:
+        y_pred_oof = sklearn.model_selection.cross_val_predict(
+            *args, **kwargs)
+        index_oof = np.arange(0, x.shape[0])
+        # [deprecated] y could be None in common case
+        # y_index_oof = np.arange(0, y_pred_oof.shape[0])
+        if _debug:
+            temp_pp = y_pred_oof
+            temp_ind = index_oof
+            raise ValueError('debug')
+    except ValueError:
+        y_pred_oof, index_oof = partial_cross_val_predict(*args, **kwargs)
+    if _debug:
+        assert np.array_equal(temp_pp, y_pred_oof)
+        assert np.array_equal(temp_ind, index_oof)
+    return y_pred_oof, index_oof
+
+
+def partial_cross_val_predict(estimator, x, y, cv, fit_params=None,
+                              method='predict_proba', **kwargs):
+    """Extension to cross_val_predict for TimeSplitter."""
+    if fit_params is None:
+        fit_params = {}
+    if method is not 'predict_proba':
+        raise ValueError("Currently only 'predict_proba' method supported.")
+    if y.ndim == 1:
+        # Add dimension, for compliance to multi-output.
+        y = y[..., None]
+
+    def single_output(x_, y_):
+        """Single output target."""
+        y_pred_oof_ = []
+        index_oof_ = []
+        ind = 0
+        for fold_train_index, fold_test_index in cv.split(x_):
+            if hasattr(x_, 'loc'):
+                estimator.fit(x_.loc[x_.index[fold_train_index]],
+                              y_.loc[y_.index[fold_train_index]],
+                              **fit_params)
+                # In order of pipeline.classes_.
+                fold_y_pred = estimator.predict_proba(
+                    x_.loc[x_.index[fold_test_index]])
+            else:
+                estimator.fit(x_[fold_train_index], y_[fold_train_index],
+                              **fit_params)
+                # In order of pipeline.classes_.
+                fold_y_pred = estimator.predict_proba(x_[fold_test_index])
+            index_oof_.extend(fold_test_index)
+            y_pred_oof_.extend(fold_y_pred)
+            ind += 1
+        y_pred_oof_ = np.array(y_pred_oof_)
+        index_oof_ = np.array(index_oof_)
+        return y_pred_oof_, index_oof_
+
+    # Process targets separately.
+    y_pred_oof = []
+    index_oof = []
+    for i in range(len(y)):
+        l, r = single_output(x, y[:, i])
+        y_pred_oof.append(l)
+        index_oof.append(r)
+    index_oof = np.array(index_oof).T
+    return y_pred_oof, index_oof
 
 
 if __name__ == '__main__':

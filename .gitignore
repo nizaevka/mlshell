@@ -1,17 +1,15 @@
-# Ignore everything
+# Ignore everything.
 *
-# not ignore subdir
+# Not ignore subdir.
 !*/
 
 Project*/
 .*/
 
-# except dirs
+# Specific.
 !src/mlshell/**
-src/mlshell/temp
-src/mlshell/eda.py
 
-!pictures/**
+src/mlshell/.temp
 
 !docs/source/**
 !docs/make.bat

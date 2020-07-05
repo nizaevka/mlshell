@@ -1,13 +1,12 @@
 """
-The :mod:`mlshell.resolver` contains class 'Resolver' to resolve
-hyper-parameters based on dataset.
+The :mod:`mlshell.blocks.resolving` contains 'Resolver' class to extract
+dataset based parameters.
 """
 
 import operator
 
 import matplotlib.pyplot as plt
 import mlshell
-import mlshell.custom
 import numpy as np
 import sklearn
 
@@ -130,7 +129,7 @@ class Resolver(object):
                                 'pos_labels',
                                 'pos_labels_ind')(dataset.meta)
         # Extended sklearn.model_selection.cross_val_predict (TimeSplitter).
-        y_pred_proba, index = mlshell.custom.cross_val_predict(
+        y_pred_proba, index = mlshell.model_selection.cross_val_predict(
             pipeline, x, y=y, **kwargs['cross_val_predict'])
         # y_true!=y for TimeSplitter.
         y_true = y.values[index] if hasattr(y, 'loc') else y[index]

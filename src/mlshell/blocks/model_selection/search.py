@@ -1,15 +1,16 @@
 """
-The :mod:`mlshell.blocks.optimizer` contains example of 'Optimizer' class
-proposes unified interface to work with underlying pipeline. Intended to be
-used in `mlshell.Workflow`. For new pipeline formats no need to edit `Workflow`
- class, only update `Optimizer` interface logic.
+The :mod:`mlshell.blocks.model_selection.search` includes utilities to tune the
+parameters of an estimator.
 
-As one of realization, `RandomizedSearchOptimizer` class provided to optimize
-pipeline hyper-parameters with sklearn.model_selection.RandomizedSearchCV.
-Some hp grid search no needs to fit whole pipeline steps, 'MockOptimizer'
-provides interface to efficient brute force prediction-related parameters
-as separate optimize step. For example: classification threshold or score
-function kwargs. 'MockOptimizer' avoids pipeline refit for such cases.
+'Optimizer' class proposes unified interface to work with underlying pipeline.
+Intended to be used in `mlshell.Workflow`. For new pipeline formats no need to
+edit `Workflow` class, only update `Optimizer` interface logic.
+
+`RandomizedSearchOptimizer` class provided 'Optimizer' implementation of
+sklearn.model_selection.RandomizedSearchCV. 'MockOptimizer' subclass provides
+interface to efficient brute force prediction-related parameters as separate
+optimize step. For example: classification threshold or score function kwargs
+don`t need whole pipeline refit to probe hp combination.
 
 """
 
@@ -19,12 +20,13 @@ import uuid
 
 import jsbeautifier
 import mlshell
-import mlshell.custom
 import mlshell.pycnfg as pycnfg
 import numpy as np
 import pandas as pd
 import sklearn
 import tabulate
+
+__all__ = ['Optimizer', 'RandomizedSearchOptimizer', 'MockOptimizer']
 
 
 class Optimizer(object):
@@ -376,7 +378,7 @@ class MockOptimizer(RandomizedSearchOptimizer):
         optimizer = self.optimizer
 
         # y_pred depends on method.
-        y_pred, index = mlshell.custom.cross_val_predict(
+        y_pred, index = mlshell.model_selection.cross_val_predict(
             self.pipeline, x, y=y, fit_params=fit_params,
             groups=None, cv=optimizer.cv, method=self.method)
         optimizer.fit(y_pred, y[index], **fit_params)
@@ -415,7 +417,8 @@ class MockOptimizer(RandomizedSearchOptimizer):
         mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
         if not hasattr(mock_pipeline, 'predict'):
             # Add MockEstimator step (not modifier, not change cv_results_).
-            r_step.append(('estimate_del', mlshell.custom.MockEstimator))
+            r_step.append(('estimate_del',
+                           mlshell.model_selection.MockEstimator))
         mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
         return mock_pipeline
 

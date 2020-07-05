@@ -1,6 +1,12 @@
 """Common EDA techniques."""
 
-from mlshell.libs import *
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import statsmodels.stats.api as sms
+import statsmodels.graphics.regressionplots as smg
+import statsmodels.stats.outliers_influence
+import numpy as np
+import scipy.stats
 
 
 class EDA(object):
@@ -18,7 +24,8 @@ class EDA(object):
         self.numeric_ind_name = {}
         self.plot_flag = False
 
-    def analyze_data(self, data_df, pipeline=None, categoric_ind_name=None, numeric_ind_name=None, plot_flag=False):
+    def analyze_data(self, data_df, pipeline=None, categoric_ind_name=None,
+                     numeric_ind_name=None, plot_flag=False):
         """EDA on dataframe.
 
         Note:

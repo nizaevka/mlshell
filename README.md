@@ -1,7 +1,7 @@
 ALPHA UNDERCONSTRUCTED
 <div align="center">
 
-[![Mlshell logo](https://github.com/nizaevka/mlshell/blob/master/pictures/mlshell_logo.PNG?raw=true)](https://github.com/nizaevka/mlshell)
+[![Mlshell logo](https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/mlshell_logo.PNG?raw=true)](https://github.com/nizaevka/mlshell)
 
 **Unified ML framework**
 
@@ -13,7 +13,7 @@ ALPHA UNDERCONSTRUCTED
 
 </div>
 
-**MLshell** is a framework for ML research and development:
+**MLshell** is a convenient framework for ML tasks:
 - Fast and simple pipeline prototyping and parameters tuning.
 - Unified ml pipeline.
 - Stable CV scheme.
