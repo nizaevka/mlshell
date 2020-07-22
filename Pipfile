@@ -4,11 +4,18 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+pytest = "==5.3.5"
+sphinxcontrib-napoleon = "*"
+sphinx-autodoc-typehints = "*"
+sphinx-rtd-theme = "*"
+numpydoc = "*"
+Sphinx = "==3.1.2"
 
 [packages]
 mlshell = {editable = true,extras = ["dev"],path = "."}
 sklearn = "*"
 dill = "*"
+pycnfg = {editable = true,path = "./../pycnfg"}
 
 [requires]
 python_version = "3.7"

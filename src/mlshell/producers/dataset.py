@@ -1,6 +1,6 @@
 """"
 The :mod:`mlshell.producers.dataset` contains examples for `Dataset` class to create
-empty data object and `DataProducer` class to fulfill it.
+empty data object and `DataProducer` class to fill it.
 
 `Dataset` class proposes unified interface to interact with underlying data.
 Intended to be used in `mlshell.Workflow`. For new data formats no need to edit
@@ -299,7 +299,7 @@ class DataPreprocessor(object):
         dataset : Dataset
             Resulted dataset. Key updated: 'data'. Keys added:
             'subsets': dict
-                Storage for data subset(s) index, fulfills for example in split
+                Storage for data subset(s) index, fills for example in split
                 {'subset_id': index }.
             'meta' : dict
                 Extracted auxiliary information from data:

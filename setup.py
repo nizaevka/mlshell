@@ -6,7 +6,7 @@ import os
 
 
 NAME = "mlshell"
-DESCRIPTION = "MLshell. Convenient framework for ML tasks."
+DESCRIPTION = "MLshell. ML framework."
 URL = "https://github.com/nizaevka/mlshell"
 REQUIRES_PYTHON = ">=3.6"
 PATH = os.path.abspath(os.path.dirname(__file__))
@@ -38,9 +38,9 @@ setuptools.setup(
     name=NAME,
     version=version['__version__'],
     author="nizaevka",
-    author_email="nizaevka@gmail.com",
-    description="Shell around Ml libraries.",
-    keywords='ml sklearn',
+    author_email="knizaev@gmail.com",
+    description="Ml framework.",
+    keywords='ml sklearn workflow',
     long_description=parse_text('README.md', splitlines=False),
     long_description_content_type="text/markdown",
     url=URL,

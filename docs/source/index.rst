@@ -8,15 +8,14 @@ Welcome to MLshell's documentation!
 
 **MLshell** is a framework for ML research and development:
 
-- Fast and simple pipeline prototyping and parameters tuning.
-- Unified ml pipeline.
+- Auto ML.
+- Simplicity.
+- Pure python.
+- One conf file.
+- Unified pipeline.
 - Stable CV scheme.
 - Production ready.
-- One conf file rules all.
-- Simple result analyse.
-- Unified plots.
 - Common EDA techniques.
-- Pure python.
 
 For more details, please refer to
 `Concepts <Concepts.html>`_.

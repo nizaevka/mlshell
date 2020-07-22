@@ -64,18 +64,20 @@ class Steps(object):
     Notes
     -----
     Assemble steps in class are made for convenience.
+    Only OneHot encoder and imputer are initially activated.
     By default, 4 parameters await for resolution:
         'process_parallel__pipeline_categoric__select_columns__kwargs'
         'process_parallel__pipeline_numeric__select_columns__kwargs'
         'estimate__apply_threshold__threshold'
         'estimate__apply_threshold__kwargs'
+    Set corresponding parameters with set_params() to overwrite default when
+    pipeline are created.
 
     'pass_custom' step allows brute force arbitrary parameters in uniform style
     with pipeline hp, as if score contains additional nested loops (name is
     hard-coded).
     'apply_threshold' allows grid search classification thresholds as pipeline
     hyper-parameter.
-
     'estimate' step should be the last.
 
     """

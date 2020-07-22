@@ -1,14 +1,15 @@
-""""
+"""
 The :mod:`mlshell.producers.pipeline` contains examples of `Pipeline` class to
-create empty pipeline object and `PipelineProducer` class to fulfill it.
+create empty pipeline object and `PipelineProducer` class to fill it.
 
-`Pipeline` class proposes unified interface to work with underlying pipeline.
-Intended to be used in `mlshell.Workflow`. For new pipeline formats no need to
-edit `Workflow` class, only update `Pipeline` interface logic.
+:class:`mlshell.Pipeline` proposes unified interface to work with
+underlying pipeline. Intended to be used in :mod:`mlshell.Workflow`.
+For new pipeline formats no need to edit `Workflow` class, just adapt in
+compliance to `Pipeline` interface.
 
-`PipelineProducer` class specifies methods to create/load pipeline.
-Current implementation provides sklearn.pipeline.Pipeline(steps) model creation
-via steps and model loading via joblib.
+:class:`mlshell.PipelineProducer` specifies methods to create/load
+pipeline. Model loading currently implemented via :mod:`joblib` and model
+creation via :class:`sklearn.pipeline.Pipeline` .
 
 """
 
@@ -27,12 +28,12 @@ class Pipeline(object):
     """Unified pipeline interface.
 
     Implements interface to access arbitrary pipeline.
-    Interface: is_classifier, is_regressor, dump and all underlying
-        pipeline object methods.
+    Interface: is_classifier, is_regressor, dump, set_params and all underlying
+    pipeline object methods.
 
     Attributes
     ----------
-    pipeline : sklearn estimator
+    pipeline : :py:mod:`sklearn` estimator
         Underlying pipeline.
     dataset_id : str
         If pipeline is fitted, train dataset identifier, otherwise None.
@@ -46,11 +47,11 @@ class Pipeline(object):
         """
         Parameters
         ----------
-        pipeline : sklearn estimator, None, optional (default=None)
+        pipeline : :mod:`sklearn` estimator, optional (default=None)
             Pipeline to wrap.
         oid : str
             Instance identifier.
-        dataset_id : str, None, optional (default=None),
+        dataset_id : str, optional (default=None),
             Train dataset identifier if pipeline is fitted, otherwise None.
 
         """
@@ -86,19 +87,19 @@ class Pipeline(object):
         return sklearn.base.is_regressor(self.pipeline)
 
     def dump(self, filepath, **kwargs):
-        """Dump pipeline on disk.
+        """Dump the pipeline on disk.
 
         Parameters
         ----------
         filepath : str
-            Filepath without extension.
+            File path without extension.
         **kwargs : dict
         `   Additional kwargs to pass in dump(**kwargs).
 
         Returns
         -------
         fullpath : str
-            Full filepath.
+            Full file path.
 
         """
         fullpath = f'{filepath}.model'
@@ -107,14 +108,14 @@ class Pipeline(object):
 
 
 class PipelineProducer(pycnfg.Producer):
-    """Class includes methods to produce pipeline.
+    """Factory to produce pipeline.
 
-    Interface: make, load.
+    Interface: make, load, info.
 
     Parameters
     ----------
     objects : dict
-        Dictionary with resulted objects from previous executed producers:
+        Dictionary with objects from previous executed producers:
         {'section_id__config__id', object,}
     oid : str
         Unique identifier of produced object.
@@ -126,7 +127,7 @@ class PipelineProducer(pycnfg.Producer):
     Attributes
     ----------
     objects : dict
-        Dictionary with resulted objects from previous executed producers:
+        Dictionary with objects from previous executed producers:
         {'section_id__config__id', object,}
     oid : str
         Unique identifier of produced object.
@@ -148,25 +149,22 @@ class PipelineProducer(pycnfg.Producer):
 
         Parameters
         ----------
-        pipeline : mlshell.Pipeline
-            Pipeline template, will be updated.
+        pipeline : :class:`mlshell.Pipeline`
+            Pipeline object, will be updated.
         steps: list, class, optional (default=none)
-            Steps of pipeline, passed to sklearn.pipeline.Pipeline.
+            Steps of pipeline, passed to :class:`sklearn.pipeline.Pipeline` .
             If class, should support class(**kwargs).steps.
-            If None, mlshell.pipeline.PipelineSteps class is used.
-        memory : None, str, joblib.Memory interface, optional (default=None)
-            `memory` argument passed to sklearn.pipeline.Pipeline.
+            If None, :class:`mlshell.pipeline.Steps` is used.
+        memory : str, :class:`joblib.Memory` interface, optional (default=None)
+            `memory` argument passed to :class:`sklearn.pipeline.Pipeline` .
             If 'auto', "project_path/temp/pipeline" is used.
         **kwargs : dict
             Additional kwargs to initialize `steps` (if provided as class).
 
         Returns
         -------
-        pipeline : mlshell.Pipeline
+        pipeline : :class:`mlshell.Pipeline`
             Resulted pipeline.
-
-        Notes
-        -----
 
         """
         self.logger.info("|__  CREATE PIPELINE")
@@ -182,17 +180,17 @@ class PipelineProducer(pycnfg.Producer):
 
         Parameters
         ----------
-        pipeline : mlshell.Pipeline
-            Pipeline template, will be updated.
+        pipeline : :class:`mlshell.Pipeline`
+            Pipeline object, will be updated.
         filepath : str
-            Absolute path load file or relative to 'self.project_dir' started
-            with './'.
+            Absolute path to load file or relative to 'self.project_dir'
+            started with './'.
         kwargs : dict
             Additional parameters to pass in load().
 
         Returns
         -------
-        pipeline : mlshell.Pipeline
+        pipeline : :class:`mlshell.Pipeline`
             Resulted pipeline.
 
         """
@@ -210,14 +208,14 @@ class PipelineProducer(pycnfg.Producer):
 
         Parameters
         ----------
-        pipeline : mlshell.Pipeline
-            Pipeline to explore (only if contains 'steps' attribute).
+        pipeline : :class:`mlshell.Pipeline`
+            Pipeline to explore (if 'steps' attribute available).
         **kwargs : kwargs
             Additional parameters to pass in low-level functions.
 
         Returns
         -------
-        pipeline : mlshell.Pipeline
+        pipeline : :class:`mlshell.Pipeline`
             For compliance with producer logic.
 
         """
@@ -231,7 +229,7 @@ class PipelineProducer(pycnfg.Producer):
         Returns
         -------
         steps: list
-            sklearn.pipeline.Pipeline steps.
+            :class:`sklearn.pipeline.Pipeline` steps.
 
         """
         if isinstance(steps, list):

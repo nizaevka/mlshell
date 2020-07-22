@@ -56,6 +56,8 @@ examples/classification/data
 .git
 .hg
 .svn
+.coverage
+.pytest_cache
 CVS/
 __pycache__/
 _svn/

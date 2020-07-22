@@ -10,71 +10,81 @@ Concepts
     :local:
     :backlinks: none
 
-Pipeline structure
-^^^^^^^^^^^^^^^^^^
+Mlshell structure based on `Pycnfg <https://pycnfg.readthedocs.io/en/latest/>`_ library.
+All parameters controlled from singe Python configuration. Each sub-section
+configuration describes initial state and steps to produce target object.
 
-- Unified pipeline based on sklearn.Pipeline.
-- Data scientist can use it for broad range of tasks with minimal changes in code.
-- It provides stable cross-validation scheme and prevents data leaks.
-- Every parameter at each step can be tuned in GS CV.
+ML task configuration typically contains following main sections:
 
-Embedded universal pipeline for grid search:
+* pipelines - create/load model.
+* datasets - load from db.
+* metrics - specify scorers.
+* workflow - fit/predict pipelines on datasets and optimize/validate metrics.
+
+MLshell implements unified object interface for main sections and corresponding
+``producer`` for object preparation. All classes have high level of abstraction
+and encapsulation to provide extension with minimal code changes. See detailed
+description below.
+
+
+Pipeline section
+^^^^^^^^^^^^^^^^
+
+:class:`mlshell.Pipeline` implements interface to access arbitrary pipeline.
+All sklearn based pipelines supported from the box. For others, adaptation in
+compliance with interface needed.
+
+:class:`mlshell.PiplineProducer` executes steps on pipeline.
+
+- :method:`mlshell.PipelinProducer.load` loads existed model from IO.
+- :method:`mlshell.PipelinProducer.make` creates pipeline via :class:`sklearn.pipeline.Pipeline` .
+By default unified pipeline steps embedded for broad range of ml tasks:
 
 .. code-block:: none
 
     default_steps = [
-        ('pass_custom',      pass custom params to custom scorer while grid search)
-        ('select_rows',      delete rows (outliers/anomalies))
+        ('pass_custom',      Pass custom params to scorer while grid search.)
+        ('select_rows',      Delete rows (outliers/anomalies).)
         ('process_parallel',
             ('pipeline_categoric',
-               ('select_columns',      select categorical(and binary) subcolumns)
-               ('encode_onehot',       OneHot encoder)
+               ('select_columns',      Select categorical & binary sub-columns.)
+               ('encode_onehot',       OneHot encoder.)
             )
             ('pipeline_numeric',
-                ('select_columns',     select numeric subcolumns)
+                ('select_columns',     Select numeric sub-columns.)
                 ('impute',
-                    ('indicators',     impute indicators)
-                    ('gaps',           impute gaps)
+                    ('indicators',     Impute indicators.)
+                    ('gaps',           Impute gaps.)
                 )
-                ('transform_normal',   yeo-johnson features transforamtion)
-                ('scale_row_wise',     row_wise transformation)
-                ('scale_column_wise',  column_wise transformation)
-                ('add_polynomial',     add polynomial features)
+                ('transform_normal',   Yeo-Johnson features transformation.)
+                ('scale_row_wise',     Row-wise transformation.)
+                ('scale_column_wise',  Column-wise transformation.)
+                ('add_polynomial',     Add polynomial features.)
                 ('compose_columns',
-                    ("discretize",     discretize columns)
+                    ("discretize",     Discretize columns.)
                 )
             )
         )
-        ('select_columns',   model-wise feature selection)
-        ('reduce_dimension', Factor analyze feature selection/transformation)
-        ('estimate',         target transform)
+        ('select_columns',   Model-wise feature selection.)
+        ('reduce_dimension', Factor analyze feature selection/transformation.)
+        ('estimate',         Target transformation and estimation.)
     ]
 
+- Every parameter at each step can be tuned in GS CV.
+- Stable cross-validation scheme prevents data leaks.
+- For details see :class:`mlshell.pipeline.Steps` .
 
-See `CreateDefaultPipeline <_modules/mlshell/default.html#CreateDefaultPipeline>`_ source for details.
 
-By default only OneHot encoder and imputer (gaps and indicators) are activated.
-Set corresponding parameters in conf.py hp_grid dictionary to overwrite default.
+.. `mlshell.Pipeline <_pythonapi/mlshell.producers.pipeline.html#mlshell.producers.pipeline.Pipeline>`_
 
-.. note::
+.. `mlshell.PipelineProducer <_pythonapi/mlshell.producers.pipeline.PipelineProducer.html#mlshell.producers.pipeline.PipelineProducer>`_.
 
-    | If necessary, you can redefine pipeline in conf.py by specifying ``pipeline__steps`` parameter.
-    | It can be either list of sklearn.pipeline.Pipeline steps or class like ``CreateDefaultPipeline``:
-    | Method .get_steps() will be called from Workflow class.
-    | Init method  ``.__init__(categoric_ind_name, numeric_ind_name, params)`` should take:
+.. See `CreateDefaultPipeline <_modules/mlshell/default.html#CreateDefaultPipeline>`_ source for details.
+.. .. note::
 
-        * | categoric_ind_name(dict): {column_index: ('feature_categor__name',['B','A','C']),}
-          |   keys: index of categorical columns in input dataframe.
-          |   values: tuple(column's name, raw categories' names).
 
-        * | numeric_ind_name (dict):  {column_index: ('feature__name',),}
-          |   keys: index of numerica column in input dataframe.
-          |   values: (column's name).
-
-        * params (dict): user-defined conf.py parameters, see `DEFAULT_PARAMS <./mlshell.html#mlshell.default.default_params>`__.
-
-Data requirements
-^^^^^^^^^^^^^^^^^
+Dataset section
+^^^^^^^^^^^^^^^
 
 Engineer have to write:
 
@@ -420,6 +430,13 @@ Project structure
 
 Results
 ^^^^^^^
+
+Workflow sectioon
+^^^^^^^
+Previous sections could be executed independent, whereas workflow awaits for
+resulted objects.
+
+
 
 **runs.csv**
 ~~~~~~~~~~~~

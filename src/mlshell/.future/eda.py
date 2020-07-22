@@ -19,7 +19,7 @@ class EDA(object):
             self.logger = logger
         self.logger.info("\u25CF EDA")
         self.p = params
-        # fullfill in .run_analyze()
+        # filled in .run_analyze()
         self.categoric_ind_name = {}
         self.numeric_ind_name = {}
         self.plot_flag = False

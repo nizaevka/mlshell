@@ -239,7 +239,6 @@ class Optimizer(object):
         * grid search output,
         * pipeline info: 'pipeline__id', 'pipeline__hash'. 'pipeline__type',
         * dataset info: 'dataset__id', 'dataset__hash',
-        * conf.py identifier.
 
         """
         # Create df with runs pipeline params.
@@ -257,8 +256,6 @@ class Optimizer(object):
         # Add dataset info.
         df['dataset__id'] = dataset.oid  # section__config__subset
         df['dataset__hash'] = hash(dataset)
-        # Add configuration id.
-        df['config__id'] = pycnfg.ID
 
         # Cast 'object' type to str before dump, otherwise it is too long.
         object_labels = list(df.select_dtypes(include=['object']).columns)

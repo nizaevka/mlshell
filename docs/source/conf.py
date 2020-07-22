@@ -1,51 +1,76 @@
-# -*- coding: utf-8 -*-
-#
-# Configuration file for the Sphinx documentation builder.
-#
-# This file does only contain a selection of the most common options. For a
-# full list see the documentation:
-# http://www.sphinx-doc.org/en/master/config
+"""
+Configuration file for the Sphinx documentation builder.
+http://www.sphinx-doc.org/en/master/config
+
+TODO:
+    Test intersphinx.
+    autosummary_imported_members = True  # What for?
+
+Cookbook:
+
+# [NOT work, error can`t find module, try to hide all command under:
+# if __main__!=autosummary(find out)]
+# Ignoring third-party packages to build documentation ['name'].
+# autosummary_mock_imports = autodoc_mock_imports by default
+# Get text.
+# with open(os.path.abspath('../../requirements.txt'),
+# "r", encoding='utf-8') as f:
+#     temp = f.read().splitlines()
+# exclude = [i.split('==')[0] if '==' in i else i for i in temp]
+# autodoc_mock_imports = exclude
+
+# Add module attribute annotation:
+# def iad_add_directive_header(self, sig):
+#     ClassLevelDocumenter.add_directive_header(self, sig)
+# InstanceAttributeDocumenter.add_directive_header = iad_add_directive_header
+
+# 'sphinx.ext.linkcode':
+# https://github.com/scikit-learn/scikit-learn/blob/master/doc/conf.py#L469
+# https://www.sphinx-doc.org/en/master/usage/extensions/linkcode.html
+
+# numpydoc examples
+https://developer.lsst.io/v/DM-15183/python/numpydoc.html
+
+"""
+
 
 # -- Path setup --------------------------------------------------------------
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#
+
+
 import os
 import sys
 
-# from sphinx.ext.autodoc import (ClassLevelDocumenter, InstanceAttributeDocumenter)
 
-sys.path.insert(0, os.path.abspath('../../src'))  # two levels up from conf.py '../..'
+# Two levels up from conf.py '../..'.
+sys.path.insert(0, os.path.abspath('../../src'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'mlshell'
-copyright = '2020, nizaevka'
+project = 'pycnfg'
+copyright = '∞, nizaevka'
 author = 'nizaevka'
 
-# The short X.Y version
+# The full version, including alpha/beta/rc tags
+# The short X.Y version.
 if 'READTHEDOCS' in os.environ:
-    # https: // docs.readthedocs.io / en / stable / builds.html  # the-build-environment
+    # When build on READTHEDOCS get from environment variable.
+    # https: // docs.readthedocs.io / en / stable / builds.html
     version = os.environ.get('READTHEDOCS_VERSION', 'undef')
 else:
+    # Get version from __version__.py.
     try:
         res = {}
-        with open("../../src/{}/__version__.py".format(project)) as fp:
-            exec(fp.read(), res)
+        with open("../../src/{}/__version__.py".format(project)) as f:
+            exec(f.read(), res)
         version = res['__version__']
     except:
-        print("Can`t open __version__.py, use 'master'")
+        print("No __version__.py, set 'master'.")
         version = 'master'
-# The full version, including alpha/beta/rc tags
 release = ''
-
-# make variable available in .rst
-# rst_epilog = f"""
-# .. |version| replace::{version}
-# .. _version: some.com
-# """
 
 # -- General configuration ---------------------------------------------------
 
@@ -67,58 +92,19 @@ extensions = [
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'sphinx.ext.extlinks',
+
     'sphinxcontrib.napoleon',
     'sphinx_autodoc_typehints',
-    'sphinx.ext.extlinks',
+
+    'numpydoc',
 ]
-
-# Looks for objects in external projects. Api dependent, not work in general, need checks
-intersphinx_mapping = {
-    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/reference/index.html', None),
-    'sklearn': ('https://scikit-learn.org/stable/', None),
-    'numpy': ('https://docs.scipy.org/doc/numpy/reference/', None),
-    'scipy': ('https://docs.scipy.org/doc/scipy/reference/', None),
-}
-
-napoleon_use_param = True
-
-autodoc_default_options = {
-    "members": True,
-    "inherited-members": True,
-    "show-inheritance": True,
-}
-# Combine class and constructor doctrings
-# autoclass_content = 'both'
-
-# Generate autosummary pages. Output should be set with: `:toctree: pythonapi/`
-autosummary_generate = ['Python-API.rst']
-autosummary_imported_members = True  # need document imported in mmodule?
-
-# ignoring third-party packages to build documentation ['name']
-# autosummary_mock_imports = autodoc_mock_imports by default
-# [NOT work, error can`t find module, try to hide all command under if __main__!=autosummary(find out)]
-# get text
-# with open(os.path.abspath('../../requirements.txt'), "r", encoding='utf-8') as f:
-#     temp = f.read().splitlines()
-# exclude = [i.split('==')[0] if '==' in i else i for i in temp]
-# autodoc_mock_imports = exclude
-
-# add module attribute annotation
-# def iad_add_directive_header(self, sig):
-#     ClassLevelDocumenter.add_directive_header(self, sig)
-#
-#
-# InstanceAttributeDocumenter.add_directive_header = iad_add_directive_header
-
-# If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
-#
 # source_suffix = ['.rst', '.md']
 source_suffix = '.rst'
 
@@ -138,11 +124,7 @@ language = None
 exclude_patterns = []
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = None
-
-# variable dependent links
-extlinks = {'github': (f'https://github.com/nizaevka/mlshell/tree/{version}%s', '')}
-# :github:`ref text <123>`=
+pygments_style = 'sphinx'
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -176,7 +158,7 @@ html_static_path = ['_static']
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'mlshelldoc'
+htmlhelp_basename = f'{project}doc'
 
 # -- Options for LaTeX output ------------------------------------------------
 
@@ -202,8 +184,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'mlshell.tex', 'mlshell Documentation',
-     'nizaevka', 'manual'),
+    (master_doc, f'{project}.tex', f'{project} Documentation',
+     {author}, 'manual'),
 ]
 
 # -- Options for manual page output ------------------------------------------
@@ -211,7 +193,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'mlshell', 'mlshell Documentation',
+    (master_doc, f'{project}', f'{project} Documentation',
      [author], 1)
 ]
 
@@ -221,8 +203,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'mlshell', 'mlshell Documentation',
-     author, 'mlshell', 'One line description of project.',
+    (master_doc, f'{project}', f'{project} Documentation',
+     author, f'{project}', 'One line description of project.',
      'Miscellaneous'),
 ]
 
@@ -245,12 +227,75 @@ epub_exclude_files = ['search.html']
 
 # -- Extension configuration -------------------------------------------------
 
+napoleon_use_param = True
+
+# numpydoc screws around with autosummary.
+# https://github.com/numpy/numpydoc/issues/69
+numpydoc_class_members_toctree = False
+
+autodoc_default_options = {
+    "members": True,
+    "inherited-members": True,
+    "show-inheritance": True,
+}
+# Combine docstrings from class and constructor (class/init/both).
+autoclass_content = 'class'
+
+# Generate autosummary pages.
+# Output should be set with: `:toctree: pythonapi/`
+autosummary_generate = ['Python-API.rst']
+# A boolean flag indicating whether to document classes and
+# functions imported in modules.
+autosummary_imported_members = True
+
 # -- Options for intersphinx extension ---------------------------------------
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+# Looks for objects in external projects (Libs` api dependent).
+# For example: :py:class:`dict`  :py:class:`exhale.graph.ExhaleRoot`
+#   https://my-favorite-documentation-test.readthedocs.io/en/latest/using_intersphinx.html
+#   https://stackoverflow.com/questions/30939867/how-to-properly-write-cross-references-to-external-documentation-with-intersphin/30981554
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/{.major}'.format(
+        sys.version_info), None),
+    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy/reference', None),
+    'matplotlib': ('https://matplotlib.org/', None),
+    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
+    'joblib': ('https://joblib.readthedocs.io/en/latest/', None),
+    'seaborn': ('https://seaborn.pydata.org/', None),
+    'sklearn': ('https://scikit-learn.org/stable/', None),
+}
 
 # -- Options for todo extension ----------------------------------------------
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
+todo_include_todos = False
+
+# -- Variables ---------------------------------------------------------------
+# Make variables available in .rst, but not possible to set in links.
+# Access:
+#   |variable|
+# can be used under parsed-literal
+# https://stackoverflow.com/questions/49016433/is-it-possible-to-reuse-hyperlink-defined-in-another-file-in-restructuredtext-o
+rst_epilog = f"""
+.. |version| replace:: {version}
+.. |project| replace:: {project}
+.. |author| replace:: {author}
+"""
+# If also need reference:
+# .. _version: http://google.com
+# .. _project: http://google.com
+
+# Make variable dependent links.
+# Access (replace %s on 123):
+#     :github:`ref text <123>`
+extlinks = {
+    'github': (f'https://github.com/{author}/{project}/tree/{version}%s', ''),
+    'pypi': (f'https://pypi.org/project/{project}%s', ''),
+    'readthedocs': (f'https://{project}.readthedocs.io/%s', ''),
+
+    # 'docker': (f'https://github.com/{author}/{project}/tree/{version}%s', '')
+}
+
+#

@@ -3,6 +3,19 @@ Python API
 
 .. currentmodule:: mlshell
 
+
+Pipeline
+--------
+
+.. autosummary::
+    :toctree: _pythonapi/
+
+
+    producers.pipeline.Pipeline
+    producers.pipeline.PipelineProducer
+    .. producers.pipeline
+
+
 Logger
 ------
 
@@ -27,13 +40,6 @@ Read conf file
 
     GetParams
 
-Callbacks
----------
-
-.. autosummary::
-    :toctree: _pythonapi/
-
-    find_path
 
 Plotting
 --------

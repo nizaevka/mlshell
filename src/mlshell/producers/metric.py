@@ -1,6 +1,6 @@
 """
 The :mod:`mlshell.producers.metric` contains examples of `Metric` class to make
-empty metric object and `MetricProducer` class to fulfill it.
+empty metric object and `MetricProducer` class to fillit.
 
 `Metric` class proposes unified interface to work with underlying scorer.
 Intended to be used in `mlshell.Workflow`. Notably, it allow to pass custom

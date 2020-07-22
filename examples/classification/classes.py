@@ -7,7 +7,7 @@ class GetData(object):
             self.logger = logging.Logger('GetData')
         else:
             self.logger = logger
-        self.raw = None  # data attribute, fullfil in self.get_data()
+        self.raw = None  # data attribute, filledin self.get_data()
 
     # @memory_profiler
     def get_data(self, filename1, filename2, **kwargs):
