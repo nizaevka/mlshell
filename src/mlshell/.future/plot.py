@@ -1,4 +1,4 @@
-"""The :mod:`mlshell.blocks.plot` includes class to visualize results.
+"""The :mod:`mlshells.plot` includes class to visualize results.
 
 [deprecated]
 radio 1 template is hidden in fig_element_prepare.

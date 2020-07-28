@@ -708,9 +708,9 @@ class DatasetProducer(pycnfg.Producer, DataIO, DataPreprocessor):
         {'section_id__config__id', object,}.
     oid : str
         Unique identifier of produced object.
-    path_id : str
+    path_id : str, optional (default='default')
         Project path identifier in `objects`.
-    logger_id : str
+    logger_id : str, optional (default='default')
         Logger identifier in `objects`.
 
     Attributes
@@ -728,7 +728,7 @@ class DatasetProducer(pycnfg.Producer, DataIO, DataPreprocessor):
     """
     _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, objects, oid, path_id, logger_id):
+    def __init__(self, objects, oid, path_id='default', logger_id='default'):
         pycnfg.Producer.__init__(self, objects, oid)
         self.logger = objects[logger_id]
         self.project_path = objects[path_id]

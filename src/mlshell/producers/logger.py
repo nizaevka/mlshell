@@ -164,7 +164,7 @@ class LoggerProducer(pycnfg.Producer):
         {'section_id__config__id', object,}.
     oid : str
         Unique identifier of produced object.
-    path_id : str
+    path_id : str, optional (default='default')
         Project path identifier in `objects`.
 
     Attributes
@@ -180,7 +180,7 @@ class LoggerProducer(pycnfg.Producer):
     """
     _required_parameters = ['objects', 'oid', 'path_id']
 
-    def __init__(self, objects, oid, path_id):
+    def __init__(self, objects, oid, path_id='default'):
         super().__init__(objects, oid)
         self.project_path = objects[path_id]
 

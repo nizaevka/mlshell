@@ -61,11 +61,10 @@ Model selection
     :toctree: _pythonapi/
 
     model_selection
-    model_selection.prediction
+..    model_selection.prediction
     model_selection.search
     model_selection.validation
     model_selection.resolve
-
 
 Pipeline
 --------

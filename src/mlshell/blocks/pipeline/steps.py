@@ -1,4 +1,4 @@
-"""The :mod:`mlshell.blocks.pipeline.steps` contains unified pipeline steps."""
+"""The :mod:`mlshell.pipeline.steps` contains unified pipeline steps."""
 
 
 import inspect

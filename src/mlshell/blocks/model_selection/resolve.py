@@ -1,5 +1,5 @@
 """
-The :mod:`mlshell.blocks.model_selection.resolve` includes utils to resolve
+The :mod:`mlshells.model_selection.resolve` includes utils to resolve
 hp before optimization.
 
 :class:`mlshell.model_selection.Resolver` extracts dataset-based parameters.

@@ -1,5 +1,5 @@
 """
-The :mod:`mlshell.blocks.model_selection.validation` includes model validation
+The :mod:`mlshells.model_selection.validation` includes model validation
 utils.
 
 :class:`mlshell.model_selection.Validator` processes metrics evaluation on

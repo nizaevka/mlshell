@@ -54,7 +54,7 @@ Sections
 Path
 ----
 
-Set string path to project directory.
+Set string path to project directory. :func:`pycnfg.find_path` could be used.
 
 Section example:
 
@@ -206,8 +206,9 @@ Initial section object set to :class:`dict` .
 Each method (except dump) includes ``subset`` argument to specify part of
 dataset to apply on. Typically:
 
-- optimize and fit pipeline on train.
-- validate and predict on test.
+- fit/optimize pipeline with CV on train/train subset.
+- validate on postponed train subset.
+- predict on test.
 
 Section example:
 

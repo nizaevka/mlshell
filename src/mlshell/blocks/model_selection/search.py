@@ -1,5 +1,5 @@
 """
-The :mod:`mlshell.blocks.model_selection.search` includes utilities to
+The :mod:`mlshells.model_selection.search` includes utilities to
 optimize hyper-parameters.
 
 :class:`mlshell.model_selection.Optimizer` class proposes unified interface to

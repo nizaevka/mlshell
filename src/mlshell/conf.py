@@ -28,7 +28,7 @@ LOGGERS = {
         'patch': {},
         'priority': 2,
         'steps': [
-            ('make', {'logger_name': 'log'})
+            ('make', {'logger_name': 'default'}),
         ],
     }
 }

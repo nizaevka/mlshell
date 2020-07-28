@@ -1,5 +1,5 @@
 """
-The :mod:`mlshell.blocks.model_selection.prediction` includes auxiliary
+The :mod:`mlshells.model_selection.prediction` includes auxiliary
 meta-estimators.
 
 :class:`mlshell.model_selection.PredictionTransformer` calls predict_proba on
