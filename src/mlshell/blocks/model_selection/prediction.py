@@ -1,10 +1,12 @@
 """
-The :mod:`mlshell.blocks.model_selection.prediction` includes meta-estimators
-to brute force classification threshold as pipeline hyper-parameter.
+The :mod:`mlshell.blocks.model_selection.prediction` includes auxiliary
+meta-estimators.
 
-Notes
------
-Will be replaced with https://github.com/scikit-learn/scikit-learn/pull/16525.
+:class:`mlshell.model_selection.PredictionTransformer` calls predict_proba on
+transform.
+:class:`mlshell.model_selection.ThresholdClassifier` applies classification
+threshold.
+:class:`mlshell.model_selection.MockEstimator` predicts features.
 
 """
 
@@ -15,7 +17,7 @@ __all__ = ['MockEstimator', 'PredictionTransformer', 'ThresholdClassifier']
 
 
 class MockEstimator(sklearn.base.BaseEstimator):
-    """Estimator always predict input features."""
+    """Estimator always predicts input features."""
     def __init__(self):
         pass
 
@@ -29,10 +31,17 @@ class MockEstimator(sklearn.base.BaseEstimator):
 class PredictionTransformer(sklearn.base.BaseEstimator,
                             sklearn.base.TransformerMixin,
                             sklearn.base.MetaEstimatorMixin):
-    """Transformer calls predict_proba on features."""
+
+    """Transformer applies predict_proba on features.
+
+    Parameters
+    ----------
+    classifier : classifier object
+        Classifier supported predict_proba.
+
+    """
 
     def __init__(self, classifier):
-        """Replaces features with `clf.predict_proba(x)`"""
         self.clf = classifier
 
     def fit(self, x, y, **fit_params):
@@ -45,24 +54,24 @@ class PredictionTransformer(sklearn.base.BaseEstimator,
 
 class ThresholdClassifier(sklearn.base.BaseEstimator,
                           sklearn.base.ClassifierMixin):
-    """Estimator to apply classification threshold.
+    """Estimator applies classification threshold.
 
     Classify samples based on whether they are above of below `threshold`.
-    Awaits for predict_proba for features.
+    Awaits for prediction probabilities in features.
 
     Parameters
     ----------
-    threshold : float [0,1], list of float [0,1], None, optional(default=None)
-        Classification threshold. For multi-output target list of [n_outputs]
-        awaited. If None, np.argmax, that is in binary case equivalent to 0.5.
+    threshold : float [0,1], list of float [0,1], optional(default=None)
+        Classification threshold. For multi-output target list of [n_outputs].
+        If None, :func:`numpy.argmax` (in binary case equivalent to 0.5).
         If positive class probability P(pos_label) = 1 - P(neg_labels) > th_
-        for some sample, classifier predict pos_label for this sample, else
-        next label in neg_labels with max probability.
+        for some sample, classifier predict pos_label, else label in neg_labels
+        with max probability.
 
     **kwargs : dict
-        kwarg-layer need to set multiple params together in resolver/optimizer.
         {
-        'classes': list of np.ndarray
+
+        'classes': list of :class:`numpy.ndarray`
             List of sorted unique labels for each target(s) (n_outputs,
             n_classes).
         'pos_labels': list
@@ -71,6 +80,11 @@ class ThresholdClassifier(sklearn.base.BaseEstimator,
             List of "positive" label(s) index in np.unique(target) for
             target(s) (n_outputs).
         }
+
+    Notes
+    -----
+    Will be replaced with:
+        https://github.com/scikit-learn/scikit-learn/pull/16525.
 
     """
     def __init__(self, threshold=None, **kwargs):

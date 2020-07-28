@@ -33,7 +33,7 @@ class Pipeline(object):
 
     Attributes
     ----------
-    pipeline : :py:mod:`sklearn` estimator
+    pipeline : :mod:`sklearn` estimator
         Underlying pipeline.
     dataset_id : str
         If pipeline is fitted, train dataset identifier, otherwise None.
@@ -131,8 +131,8 @@ class PipelineProducer(pycnfg.Producer):
         {'section_id__config__id', object,}
     oid : str
         Unique identifier of produced object.
-    logger : logger object
-        Default logger logging.getLogger().
+    logger : :class:`logging.Logger`
+        Logger.
     project_path : str
         Absolute path to project dir.
 
@@ -157,7 +157,7 @@ class PipelineProducer(pycnfg.Producer):
             If None, :class:`mlshell.pipeline.Steps` is used.
         memory : str, :class:`joblib.Memory` interface, optional (default=None)
             `memory` argument passed to :class:`sklearn.pipeline.Pipeline` .
-            If 'auto', "project_path/temp/pipeline" is used.
+            If 'auto', "project_path/.temp/pipeline" is used.
         **kwargs : dict
             Additional kwargs to initialize `steps` (if provided as class).
 
@@ -183,7 +183,7 @@ class PipelineProducer(pycnfg.Producer):
         pipeline : :class:`mlshell.Pipeline`
             Pipeline object, will be updated.
         filepath : str
-            Absolute path to load file or relative to 'self.project_dir'
+            Absolute path to load file or relative to 'project__path'
             started with './'.
         kwargs : dict
             Additional parameters to pass in load().
@@ -210,7 +210,7 @@ class PipelineProducer(pycnfg.Producer):
         ----------
         pipeline : :class:`mlshell.Pipeline`
             Pipeline to explore (if 'steps' attribute available).
-        **kwargs : kwargs
+        **kwargs : dict
             Additional parameters to pass in low-level functions.
 
         Returns
@@ -244,7 +244,7 @@ class PipelineProducer(pycnfg.Producer):
 
     def _memory_resolve(self, memory):
         if memory == 'auto':
-            memory = f"{self.project_path}/temp/pipeline"
+            memory = f"{self.project_path}/.temp/pipeline"
         if not os.path.exists(memory):
             # Create temp dir for cache if not exist.
             os.makedirs(memory)

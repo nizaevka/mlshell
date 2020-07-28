@@ -1,16 +1,18 @@
 """
-The :mod:`mlshell.blocks.model_selection.search` includes utilities to tune the
-parameters of an estimator.
+The :mod:`mlshell.blocks.model_selection.search` includes utilities to
+optimize hyper-parameters.
 
-'Optimizer' class proposes unified interface to work with underlying pipeline.
-Intended to be used in `mlshell.Workflow`. For new pipeline formats no need to
-edit `Workflow` class, only update `Optimizer` interface logic.
+:class:`mlshell.model_selection.Optimizer` class proposes unified interface to
+arbitrary optimizer. Intended to be used in :class:`mlshell.Workflow` . For new
+optimizer formats no need to edit `Workflow` class, just adapt in compliance to
+interface.
 
-`RandomizedSearchOptimizer` class provided 'Optimizer' implementation of
-sklearn.model_selection.RandomizedSearchCV. 'MockOptimizer' subclass provides
-interface to efficient brute force prediction-related parameters as separate
-optimize step. For example: classification threshold or score function kwargs
-don`t need whole pipeline refit to probe hp combination.
+:class:`mlshell.model_selection.RandomizedSearchOptimizer` contains
+:class:`sklearn.model_selection.RandomizedSearchCV` implementation.
+:class:`mlshell.model_selection.MockOptimizer` subclass provides efficient
+brute force prediction-related parameters as separate optimize step. For
+example: classification threshold or scorer function kwargs don`t need whole
+pipeline refit to probe.
 
 """
 
@@ -20,7 +22,6 @@ import uuid
 
 import jsbeautifier
 import mlshell
-import pycnfg
 import numpy as np
 import pandas as pd
 import sklearn
@@ -33,12 +34,11 @@ class Optimizer(object):
     """Unified optimizer interface.
 
     Implements interface to access arbitrary optimizer.
-    Interface: dump_runs, update_best and all underlying
-        optimizer object methods.
+    Interface: dump_runs, update_best and all underlying optimizer methods.
 
     Attributes
     ----------
-    optimizer : sklearn optimizer
+    optimizer : :class:`sklearn.model_selection.BaseSearchCV`
         Underlying optimizer.
 
     Notes
@@ -60,7 +60,7 @@ class Optimizer(object):
         return str(self.optimizer)
 
     def update_best(self, prev):
-        """Combine current optimizer results with previous stages.
+        """Combine results from multi-stage optimization.
 
         The logic of choosing the best run is set here. Currently best hp
         combination and corresponding estimator taken from the last stage.
@@ -70,36 +70,37 @@ class Optimizer(object):
         Parameters
         ----------
         prev : dict
-            Previous stage update_best output for some pipeline-data pair.
-            Initially set to {}. See output format for all possible keys.
+            Previous stage ``update_best`` output for some pipeline-data pair.
+            Initially set to {}. See ``update_best`` output format.
 
         Returns
         -------
         nxt : dict
             Result of merging runs on all optimization stages for some
-            pipeline-data pair.
-            {
+            pipeline-data pair: {
+
                 'params': list of dict
-                    List of cv_results_['params'] for all runs in stages.
+                    List of ``cv_results_['params']`` for all runs in stages.
                 'best_params_' : dict
                     Best estimator tuned params from all optimization stages.
-                'best_estimator_' : sklearn etimator  TODO: test
-                    Best estimator `optimizer.best_estimator_` or
-                    `optimizer.estimator.set_params(**best_params_))` if
-                    `best_estimator_` attribute is absent (not 'refit').
+                'best_estimator_' : :class:`sklearn.base.BaseEstimator`
+                    Best estimator ``optimizer.best_estimator_`` if exist, else
+                    ``optimizer.estimator.set_params(**best_params_))`` (
+                    if not 'refit' is True).
                 'best_score_' : tuple
-                    Best score ('scorer_id', `optimizer.best_score_`).
-                    'scorer_id' get from str(`optimizer.refit`). If
-                    best_score_ attribute is absent, ('', float('-inf')) used.
+                    Best score ``('scorer_id', optimizer.best_score_)`` , where
+                    ``scorer_id=str(optimizer.refit)``. If best_score_  is
+                    absent, ``('', float('-inf'))`` used.
+
              }
 
         Notes
         -----
-        `mlshell.Workflow` utilize:
+        :class:`mlshell.Workflow` utilize:
 
-        * 'best_estimator_' key to update pipeline in `objects`.
-        * `params' in built-in plotter.
-        * 'best_score_' in file name for dump/dump_pred.
+        * 'best_estimator_' key to update pipeline in ``objects``.
+        * 'params' in built-in plotter.
+        * 'best_score_' in dump/dump_pred for file names.
 
         """
         curr = self.optimizer
@@ -136,16 +137,27 @@ class Optimizer(object):
 
         Parameters
         ----------
-        logger : logging.Logger
-            Logger to logs runs summary.
+        logger : :class:`logging.Logger`
+            Logger.
         dirpath : str
             Absolute path to dump dir.
-        pipeline : mlshell.Pipeline
+        pipeline : :class:`mlshell.Pipeline`
             Pipeline used for optimizer.fit.
-        dataset : mlshell.Dataset
+        dataset : :class:`mlshell.Dataset`
             Dataset used for optimizer.fit.
         **kwargs : dict
-            Additional kwargs to pass in low-level dumper.
+            Additional kwargs to pass in low-level dump function.
+
+        Notes
+        -----
+        Resulted file name ``<timestamp>_runs.csv``. Each row corresponds to
+        run, columns names:
+
+        * 'id' random UUID for run (hp combination).
+        * All pipeline parameters.
+        * Grid search output ``runs`` keys.
+        * Pipeline info: 'pipeline__id', 'pipeline__hash'. 'pipeline__type'.
+        * Dataset info: 'dataset__id', 'dataset__hash',
 
         """
         runs = copy.deepcopy(self.optimizer.cv_results_)
@@ -161,9 +173,9 @@ class Optimizer(object):
 
         Parameters
         ----------
-        logger : logging.Logger
-            Logger to logs runs summary.
-        optimizer : sklearn optimizer
+        logger : :class:`logging.Logger`
+            Logger.
+        optimizer : :class:`sklearn.model_selection.BaseSearchCV`
             Underlying optimizer.
 
         """
@@ -215,30 +227,20 @@ class Optimizer(object):
 
         Parameters
         ----------
-        logger : logging.Logger
-            Logger to logs runs summary.
+        logger : :class:`logging.Logger`
+            Logger.
         dirpath : str
             Absolute path to dump dir.
-        pipeline : mlshell.Pipeline
+        pipeline : :class:`mlshell.Pipeline`
             Pipeline used for optimizer.fit.
-        dataset : mlshell.Dataset
+        dataset : :class:`mlshell.Dataset`
             Dataset used for optimizer.fit.
-        runs : dict or pandas.Dataframe
-            Grid search results `optimizer.cv_results_`.
+        runs : dict or :class:`pandas.Dataframe`
+            Grid search results ``optimizer.cv_results_`` .
         best_ind : int
             Index of run with best score in `runs`.
         **kwargs : dict
             Additional kwargs to pass in low-level dumper.
-
-        Notes
-        -----
-        In resulted file <timestamp>_runs.csv each row corresponds to run,
-        columns:
-        * 'id' random UUID for run (hp combination),
-        * all pipeline parameters,
-        * grid search output,
-        * pipeline info: 'pipeline__id', 'pipeline__hash'. 'pipeline__type',
-        * dataset info: 'dataset__id', 'dataset__hash',
 
         """
         # Create df with runs pipeline params.
@@ -279,7 +281,7 @@ class Optimizer(object):
         return lis
 
     def _runs_results(self, df, runs):
-        """Add outputs columns."""
+        """Add output columns."""
         # For example: mean_test_score/mean_fit_time/...
         # Hp already in df, runs (cv_results) consists suffix param_ for
         # modifiers. For columns without suffix: merge with replace.
@@ -296,19 +298,27 @@ class Optimizer(object):
 
 
 class RandomizedSearchOptimizer(Optimizer):
+    """Wrapper around :class:`sklearn.model_selection.RandomizedSearchCV`.
+
+    Parameters
+    ----------
+    pipeline:
+        See corresponding argument for
+        :class:`sklearn.model_selection.RandomizedSearchCV`.
+    hp_grid: dict
+        See corresponding argument for
+        :class:`sklearn.model_selection.RandomizedSearchCV`.
+        Only `dict` type for ``hp_grid`` currently supported.
+    scoring:
+        See corresponding argument for
+        :class:`sklearn.model_selection.RandomizedSearchCV`.
+    **kwargs : dict
+        Kwargs for :class:`sklearn.model_selection.RandomizedSearchCV`.
+        If kwargs['n_iter']=None, replaced with number of hp combinations
+        in ``hp_grid``.
+
+    """
     def __init__(self, pipeline, hp_grid, scoring, **kwargs):
-        """Wrapper around sklearn.model_selection.RandomizedSearchCV.
-
-        Parameters
-        ----------
-        *args: list
-            Args passed to `sklearn.model_selection.RandomizedSearchCV`.
-            Only `dict` type for hp_grid currently supported.
-        **kwargs : dict
-            Kwargs passed to `sklearn.model_selection.RandomizedSearchCV`.
-            kwargs['n_iter']=None replaced with number of hp combinations.
-
-        """
         super().__init__()
         n_iter = self._resolve_n_iter(kwargs.pop('n_iter', 10), hp_grid)
         self.optimizer = sklearn.model_selection.RandomizedSearchCV(
@@ -335,37 +345,42 @@ class MockOptimizer(RandomizedSearchOptimizer):
     Provides interface to efficient brute force prediction-related parameters
     in separate optimize step. For example: classification threshold or score
     function kwargs. 'MockOptimizer' avoids pipeline refit for such cases.
-    It calls mlshell.custom.cross_val_predict with specified 'method' and
-    optimize score on output prediction.
+    Internally :class:`mlshell.model_selection.cross_val_predict` called with
+    specified ``method`` and score optimized on output prediction.
 
     Parameters
     ----------
+    pipeline:
+        See corresponding argument for
+        :class:`sklearn.model_selection.RandomizedSearchCV`.
     hp_grid : dict
-        Specify only "hp" supported mock optimization. If {}, no mock applied.
-    method : 'predict_proba', 'predict'
-        See sklearn.model_selection.cross_val_predict `method` argument.
-    *args: list
-        Args passed to `sklearn.model_selection.RandomizedSearchCV`.
-        Only `dict` type for hp_grid currently supported.
+        Specify only ``hp`` supported mock optimization. If {}, used:
+        :class:`mlshell.custom.MockEstimator`.
+    scoring:
+        See corresponding argument for
+        :class:`sklearn.model_selection.RandomizedSearchCV`.
+    method : str {'predict_proba', 'predict'}
+        See corresponding argument for
+        :class:`sklearn.model_selection.RandomizedSearchCV`.
     **kwargs : dict
-        Kwargs passed to `sklearn.model_selection.RandomizedSearchCV`.
-        kwargs['n_iter']=None replaced with number of hp combinations.
+        Kwargs for :class:`sklearn.model_selection.RandomizedSearchCV`.
+        If kwargs['n_iter']=None, replaced with number of hp combinations
+        in ``hp_grid``.
 
     Notes
     -----
-    Applied only if pipeline created with sklearn.pipeline.Pipeline, otherwise
-    or if hp_grid is {}, refit pipeline for each hp combination.
-
     To brute force threshold, set method to 'predict_proba'.
-    To brute force score kwargs alone set method to 'predict', else if in
-    combination with threshold set to 'predict_proba'.
+    To brute force scorer kwargs alone set method to 'predict', if
+    simultaneously with threshold, set to 'predict_proba'.
 
     """
     def __init__(self, pipeline, hp_grid, scoring,
                  method='predict_proba', **kwargs):
         self.method = method
         self.pipeline = pipeline
-        if hasattr(pipeline, 'steps') and hp_grid:
+        if hp_grid == {}:
+            mock_pipeline = mlshell.model_selection.prediction.MockEstimator
+        elif hasattr(pipeline, 'steps'):
             mock_pipeline = self._mock_pipeline(pipeline, hp_grid)
         else:
             mock_pipeline = pipeline
@@ -391,13 +406,14 @@ class MockOptimizer(RandomizedSearchOptimizer):
         -----
         If 'a_b_c' in hp_grid, remains 'a_b' sub-path.
 
-        If resulted mock pipeline has no predict method,
-        ('estimate_del', mlshell.custom.MockEstimator) added.
+        If resulted mock pipeline has no predict method, added:
+        ('estimate_del',
+            :class:`mlshell.model_selection.prediction.MockEstimator` ).
 
         Always remains 'pass_custom' step. If pipeline use `pass_custom` and
         `pass_custom__kwargs` not in hp_grid, corresponding custom score(s)
-        will use last applied kwargs. The problem that it can be from another
-         pipeline optimization.
+        will use last applied kwargs. The problem that it can be from
+        pipeline optimization on another dataset.
 
         """
         r_step = []

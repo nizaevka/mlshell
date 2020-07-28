@@ -1,18 +1,20 @@
-""""
-The :mod:`mlshell.producers.dataset` contains examples for `Dataset` class to create
-empty data object and `DataProducer` class to fill it.
+"""
+The :mod:`mlshell.producers.dataset` contains examples of `Dataset` class for
+empty data object creation and `DataProducer` class for filling it.
 
-`Dataset` class proposes unified interface to interact with underlying data.
-Intended to be used in `mlshell.Workflow`. For new data formats no need to edit
-`Workflow` class, only update `Dataset` interface logic. Current realization
-based on dictionary.
+:class:`mlshell.Dataset` proposes unified interface to interact with underlying
+data. Intended to be used in :class:`mlshell.Workflow`. For new data formats
+no need to edit `Workflow` class, adapt `Dataset` in compliance to interface.
+Current realization based on dictionary.
 
-`DataProducer` methods for convenience divided on:
-* `DataIO` class to define IO related methods.
-Currently implements reading from csv-file.
-* `DataPreprocessor` class to preprocess data to final state.
-Implements data transformation in compliance to `Dataset` and common
-exploration techniques.
+:class:`mlshell.DataProducer` specifies methods divided for convenience on:
+
+* :class:`mlshell.DataIO` defining IO related methods.
+Currently reading from csv-file implemented.
+
+* :class:`mlshell.DataPreprocessor` preprocessing data to final state.
+Implemented data transformation in compliance to `Dataset` class, also common
+exploration techniques available.
 
 """
 
@@ -33,6 +35,7 @@ class Dataset(dict):
     """Unified data interface.
 
     Implements interface to access arbitrary data.
+
     Interface: x, y, data, meta, subset, dump_prediction and whole dict api.
 
     Parameters
@@ -44,11 +47,13 @@ class Dataset(dict):
 
     Attributes
     ----------
-    data : pd.DataFrame
+    data : :class:`pandas.DataFrame`
         Underlying data.
+    subsets : dict
+        {'subset_id' : array-like subset indices, ..}.
     meta : dict
-        Extracted auxiliary information from data:
-        {
+        Extracted auxiliary information from data: {
+
         'index': list
             List of index label(s).
         'features': list
@@ -59,29 +64,27 @@ class Dataset(dict):
             List of target label(s),
         'indices': list
             List of rows indices.
-        'classes': list of np.ndarray
+        'classes': list of :class:`numpy.ndarray`
             List of sorted unique labels for each target(s) (n_outputs,
-             n_classes).
+            n_classes).
         'pos_labels': list
             List of "positive" label(s) for target(s) (n_outputs,).
         'pos_labels_ind': list
-            List of "positive" label(s) index in np.unique(target) for
-            target(s) (n_outputs).
+            List of "positive" label(s) index in :func:`numpy.unique`
+            for target(s) (n_outputs).
         categoric_ind_name : dict
-            {'column_index': ('feature_name', ['cat1', 'cat2'])}
             Dictionary with categorical feature indices as key, and
-            tuple ('feature_name', categories) as value.
-        numeric_ind_name : dict {'columns_index':('feature_name',)}
+            tuple ('feature_name', categories) as value:
+            {'column_index': ('feature_name', ['cat1', 'cat2'])}.
+        numeric_ind_name : dict
             Dictionary with numeric features indices as key, and tuple
-            ('feature_name', ) as value.)}
+            ('feature_name', ) as value: {'columns_index':('feature_name',)}.
+
         }
-    subsets : dict
-        {'subset_id' : array-like subset indices, ..}.
 
     Notes
     -----
     Inherited from dict class, so attributes section describes keys.
-
 
     """
     _required_parameters = []
@@ -94,7 +97,7 @@ class Dataset(dict):
 
     @property
     def oid(self):
-        """str: dataset identifier."""
+        """str: Dataset identifier."""
         return self['_oid']
 
     @oid.setter
@@ -103,30 +106,30 @@ class Dataset(dict):
 
     @property
     def x(self):
-        """pd.DataFrame : extracted features columns."""
+        """:class:`pandas.DataFrame` : Extracted features columns."""
         df = self['data']
         meta = self['meta']
         return df[meta['features']]
 
     @property
     def y(self):
-        """pd.DataFrame : extracted targets columns."""
+        """:class:`pandas.DataFrame` : Extracted targets columns."""
         df = self['data']
         meta = self['meta']
         return df[meta['targets']]
 
     @property
     def meta(self):
-        """dict: access meta."""
+        """dict: Access meta."""
         return self['meta']
 
     @property
     def data(self):
-        """pd.DataFrame : access data."""
+        """:class:`pandas.DataFrame` : Access data."""
         return self['data']
 
     def subset(self, subset_id):
-        """mlshell.Dataset : access subset. """
+        """:class:`mlshell.Dataset` : Access subset. """
         if subset_id is '':
             return self
 
@@ -145,7 +148,7 @@ class Dataset(dict):
         Parameters
         ----------
         filepath: str
-            Filepath without extension.
+            File path without extension.
         y_pred: array-like
             pipeline.predict() result.
         **kwargs: dict
@@ -178,8 +181,8 @@ class DataIO(object):
     ----------
     project_path: str.
         Absolute path to current project dir.
-    logger : logger object.
-        Logs.
+    logger : :class:`logging.Logger`
+        Logger.
 
     """
     _required_parameters = ['project_path', 'logger']
@@ -188,31 +191,29 @@ class DataIO(object):
         self.logger = logger
         self.project_path = project_path
 
-    # @pycnfg.time_profiler
-    # @pycnfg.memory_profiler
     def load(self, dataset, filepath,
              random_skip=False, random_state=None, **kwargs):
         """Load data from csv-file.
 
         Parameters
         ----------
-        dataset : Dataset
+        dataset : :class:`mlshell.Dataset`
             Template for dataset.
         filepath : str
-            Absolute path to csv file or relative to 'self.project_dir' started
+            Absolute path to csv file or relative to 'project__path' started
             with './'.
         random_skip : bool, optional (default=False)
             If True randomly skip rows while read file, remains 'nrow' lines.
             Rewrite `skiprows` kwarg.
-        random_state : int, None.
+        random_state : int, optional (default=None).
             Fix random state for `random_skip`.
-        **kwargs : kwargs
-            Additional parameter passed to the pandas.read_csv().
+        **kwargs : dict
+            Additional parameter passed to the :func:`pandas.read_csv()` .
 
         Returns
         -------
-        dataset : Dataset
-            Key added {'data': pandas.DataFrame,}.
+        dataset : :class:`mlshell.Dataset`
+            Key added: {'data': :class:`pandas.DataFrame` ,}.
 
         Notes:
         ------
@@ -258,14 +259,12 @@ class DataPreprocessor(object):
     ----------
     project_path: str.
         Absolute path to current project dir.
-    logger : logger object.
-        Logs.
+    logger : :class:`logging.Logger`
+        Logger.
 
     """
     _required_parameters = ['project_path', 'logger']
 
-    # @pycnfg.time_profiler
-    # @pycnfg.memory_profiler
     def __init__(self, project_path, logger):
         self.logger = logger
         self.project_path = project_path
@@ -276,34 +275,37 @@ class DataPreprocessor(object):
 
         Parameters
         ----------
-        dataset : Dataset {'data': pandas.DataFrame}
-            Raw dataset.
+        dataset : :class:`mlshell.Dataset`
+            Raw dataset: {'data': :class:`pandas.DataFrame` }.
         targets_names: list
             List of targets columns names in raw dataset.
-        features_names: list, None, optional (default=None)
+        features_names: list, optional (default=None)
             List of features columns names in raw dataset. If None, all except
             targets.
-        categor_names: list, None, optional (default=None)
-            List of categoric features(also binary) identifiers in raw dataset.
-            If None, empty list.
-        pos_labels: list, None, optional (default=None)
+        categor_names: list, optional (default=None)
+            List of categorical features(also binary) identifiers in raw
+            dataset. If None, empty list.
+        pos_labels: list, optional (default=None)
             Classification only, list of "positive" labels for targets.
-            Could be used for threshold analysis (roc_curve) and metrics
-            evaluation if classifiers supported predict_proba. If None, last
-            label in np.unique(target) for each target is used.
-        **kwargs : kwargs
+            Could be used in :func:`sklearn.metrics.roc_curve` for
+            threshold analysis  and metrics evaluation if classifiers supported
+            ``predict_proba``. If None, for each target last label in
+            :func:`numpy.unique` is used .
+        **kwargs : dict
             Additional parameters to add in dataset.
 
         Returns
         -------
-        dataset : Dataset
+        dataset : :class:`mlshell.Dataset`
             Resulted dataset. Key updated: 'data'. Keys added:
+
             'subsets': dict
                 Storage for data subset(s) index, fills for example in split
                 {'subset_id': index }.
             'meta' : dict
                 Extracted auxiliary information from data:
                 {
+
                 'index': list
                     List of index label(s).
                 'features': list
@@ -314,27 +316,39 @@ class DataPreprocessor(object):
                     List of target label(s),
                 'indices': list
                     List of rows indices.
-                'classes': list of np.ndarray
+                'classes': list of :class:`numpy.ndarray`
                     List of sorted unique labels for each target(s) (n_outputs,
-                     n_classes).
+                    n_classes).
                 'pos_labels': list
                     List of "positive" label(s) for target(s) (n_outputs,).
                 'pos_labels_ind': list
-                    List of "positive" label(s) index in np.unique(target) for
-                    target(s) (n_outputs).
+                    List of "positive" label(s) index in :func:`numpy.unique`
+                    for target(s) (n_outputs).
                 categoric_ind_name : dict
-                    {'column_index': ('feature_name', ['cat1', 'cat2'])}
                     Dictionary with categorical feature indices as key, and
-                    tuple ('feature_name', categories) as value.
-                numeric_ind_name : dict {'columns_index':('feature_name',)}
+                    tuple ('feature_name', categories) as value:
+                    {'column_index': ('feature_name', ['cat1', 'cat2'])}.
+                numeric_ind_name : dict
                     Dictionary with numeric features indices as key, and tuple
-                    ('feature_name', ) as value.)}
+                    ('feature_name', ) as value: {'columns_index':
+                    ('feature_name',)}.
+
                 }
 
         Notes
         -----
-        Don`t change dataframe shape or index/columns names after `meta`
+        Don`t change dataframe shape or index/columns names after ``meta``
         generating.
+
+        Features columns unified:
+
+        * Fill gaps.
+
+            * If gap in categorical => set 'unknown'.
+            * If gap in non-categorical => set np.nan.
+
+        * Cast categorical features to str dtype, and apply Ordinal encoder.
+        * Cast values to np.float64.
 
         """
         self.logger.info("    |__ PREPROCESS DATA")
@@ -371,19 +385,20 @@ class DataPreprocessor(object):
         """Log dataset info.
 
         Check:
+
         * duplicates.
         * gaps.
 
         Parameters
         ----------
-        dataset : Dataset
+        dataset : :class:`mlshell.Dataset`
             Dataset to explore.
-        **kwargs : kwargs
+        **kwargs : dict
             Additional parameters to pass in low-level functions.
 
         Returns
         -------
-        dataset : Dataset
+        dataset : :class:`mlshell.Dataset`
             For compliance with producer logic.
 
         """
@@ -391,29 +406,30 @@ class DataPreprocessor(object):
         self._check_gaps(dataset['data'], **kwargs)
         return dataset
 
-    # @pycnfg.memory_profiler
     def split(self, dataset, **kwargs):
         """Split dataset on train, test.
 
         Parameters
         ----------
-        dataset : Dataset
+        dataset : :class:`mlshell.Dataset`
             Dataset to unify.
 
-        **kwargs : kwargs
-            Additional parameters to pass in `sklearn.model_selection.
-            train_test_split`.
+        **kwargs : dict
+            Additional parameters to pass in:
+            :func:`sklearn.model_selection.train_test_split` .
 
         Returns
         -------
-        dataset : Dataset
-            Resulted dataset. 'subset 'value updated:
+        dataset : :class:`mlshell.Dataset`
+            Resulted dataset. 'subset' value updated:
             {'train': array-like train rows indices,
-             'test': array-like test rows indices,}
+            'test': array-like test rows indices,}
 
         Notes
         -----
         If split ``train_size`` set to 1.0, test=train used.
+
+        No copy takes place.
 
         """
         self.logger.info("|__  SPLIT DATA")
@@ -481,25 +497,25 @@ class DataPreprocessor(object):
 
         Parameters
         ----------
-        targets : pd.DataFrame
+        targets : :class:`pandas.DataFrame`
             Data to unify.
-        pos_labels: list, None, optional (default=None)
+        pos_labels: list, optional (default=None)
             Classification only, list of "positive" labels for targets.
             Could be used for threshold analysis (roc_curve) and metrics
             evaluation if classifiers supported predict_proba. If None, last
-            label in np.unique(target) for each target is used.
+            label in :func:`numpy.unique` for each target used.
 
         Returns
         -------
-        targets: pd.DataFrame
+        targets: :class:`pandas.DataFrame`
             Unchanged input.
-        classes: list of np.ndarray
+        classes: list of :class:`numpy.ndarray`
             List of sorted unique labels for target(s) (n_outputs, n_classes).
         pos_labels: list
             List of "positive" label(s) for target(s) (n_outputs,).
         pos_labels_ind: list
-            List of "positive" label(s) index in np.unique(target) for
-            target(s) (n_outputs,).
+            List of "positive" label(s) index in :func:`numpy.unique`
+            for target(s) (n_outputs,).
 
         """
         # Find classes, example: [array([1]), array([2, 7])].
@@ -522,14 +538,14 @@ class DataPreprocessor(object):
 
         Parameters
         ----------
-        features : pd.DataFrame
+        features : :class:`pandas.DataFrame`
             Data to unify.
         categor_names: list
             List of categorical features (and binary) column names in features.
 
         Returns
         -------
-        features: pd.DataFrame
+        features: :class:`pandas.DataFrame`
             Input updates:
             * fill gaps.
                 if gap in categorical => fill 'unknown'
@@ -601,7 +617,7 @@ class DataPreprocessor(object):
 
         Parameters
         ----------
-        data : pandas.DataFrame
+        data : :class:`pandas.DataFrame`
             Dataframe to check.
         del_duplicates : bool
             If True, delete rows with duplicated.
@@ -644,13 +660,13 @@ class DataPreprocessor(object):
 
         Parameters
         ----------
-        data : pandas.DataFrame
+        data : :class:`pandas.DataFrame`
             Dataframe to check.
         del_gaps : bool
             If True, delete rows with gaps from `nongap_columns` list.
             If False, raise Exception when `nongap_columns` contain gaps.
-        nogap_columns : list ['column_1', ..]
-            Columns where gaps are forbidden. if None, empty.
+        nogap_columns : list
+            Columns where gaps are forbidden: ['column_1', ..]. if None, empty.
 
         Notes
         -----
@@ -683,12 +699,13 @@ class DataPreprocessor(object):
 
 
 class DatasetProducer(pycnfg.Producer, DataIO, DataPreprocessor):
-    """Class includes methods to produce dataset.
+    """Factory to produce dataset.
 
     Parameters
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with objects from previous executed producers:
+        {'section_id__config__id', object,}.
     oid : str
         Unique identifier of produced object.
     path_id : str
@@ -698,12 +715,13 @@ class DatasetProducer(pycnfg.Producer, DataIO, DataPreprocessor):
 
     Attributes
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with objects from previous executed producers:
+        {'section_id__config__id', object,}.
     oid : str
         Unique identifier of produced object.
-    logger : logger object
-        Default logger logging.getLogger().
+    logger : :class:`logging.Logger`
+        Logger.
     project_path: str
         Absolute path to project dir.
 

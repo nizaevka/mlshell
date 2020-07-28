@@ -1,10 +1,10 @@
-"""The :mod:`mlshell.blocks.plot` includes class to visualize results."""
+"""The :mod:`mlshell.plot` includes utils to visualize results."""
 
 __all__ = ['Plotter']
 
 
 class Plotter(object):
-    """Visualize results (template)."""
+    """Visualize results."""
     def __init__(self):
         pass
 
@@ -13,26 +13,25 @@ class Plotter(object):
 
         Parameters
         ----------
-        pipeline : mlshell.Pipeline
+        pipeline : :class:`mlshell.Pipeline`
             Pipeline.
-        metrics : list of mlshell.Metric
+        metrics : list of class:`mlshell.Metric`
             Metrics to evaluate.
-        datasets : dict of mlshell.Dataset
-            Dataset to evaluate on. For classification 'dataset.meta' should
-            contains `pos_labels_ind` key.
+        datasets : dict of class:`mlshell.Dataset`
+            Datasets to evaluate on: {'dataset_id': dataset}. For classifier
+            ``dataset.meta`` should contains ``pos_labels_ind`` key.
         runs: dict
-            {'subset_id': optimizer.update_best output fot pipeline-data pair}
-        validator : mlshell.model_selection.Validator
-            Object to evaluate vectorized metrics.
-            validator.validate(pipeline, metrics, datasets, logger, vector=True)
-        logger : logger object
-            Logs.
+            Resilts for pipeline-dataset pair:
+            {'dataset_id': optimizer.update_best output}
+        validator : :class:`mlshell.model_selection.Validator`
+            Object to evaluate vectorized metrics: ``validator.validate(
+            pipeline, metrics, datasets, logger, vector=True)`` .
+        logger : :class:`logging.Logger`
+            Logger.
 
         """
         # TODO: some logic.
         logger.info('Plotter OK.')
-
-
         pass
 
 

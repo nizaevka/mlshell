@@ -2,11 +2,17 @@
 Configuration file for the Sphinx documentation builder.
 http://www.sphinx-doc.org/en/master/config
 
-TODO:
-    Test intersphinx.
-    autosummary_imported_members = True  # What for?
-
 Cookbook:
+
+# with overline, for parts
+* with overline, for chapters
+=, for sections
+-, for subsections
+^, for subsubsections
+", for paragraphs
+
+# cheatsheet
+http://nipy.org/nipy/devel/guidelines/sphinx_helpers.html
 
 # [NOT work, error can`t find module, try to hide all command under:
 # if __main__!=autosummary(find out)]
@@ -28,8 +34,8 @@ Cookbook:
 # https://github.com/scikit-learn/scikit-learn/blob/master/doc/conf.py#L469
 # https://www.sphinx-doc.org/en/master/usage/extensions/linkcode.html
 
-# numpydoc examples
-https://developer.lsst.io/v/DM-15183/python/numpydoc.html
+# sphinx can`t wrap docstring under decorator:
+https://github.com/sphinx-doc/sphinx/issues/3783
 
 """
 
@@ -50,7 +56,7 @@ sys.path.insert(0, os.path.abspath('../../src'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'pycnfg'
+project = 'mlshell'
 copyright = '∞, nizaevka'
 author = 'nizaevka'
 
@@ -233,10 +239,12 @@ napoleon_use_param = True
 # https://github.com/numpy/numpydoc/issues/69
 numpydoc_class_members_toctree = False
 
+# https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
 autodoc_default_options = {
     "members": True,
     "inherited-members": True,
     "show-inheritance": True,
+    'member-order': 'bysource'
 }
 # Combine docstrings from class and constructor (class/init/both).
 autoclass_content = 'class'
@@ -247,14 +255,27 @@ autosummary_generate = ['Python-API.rst']
 # A boolean flag indicating whether to document classes and
 # functions imported in modules.
 autosummary_imported_members = True
+# Make analog to autodoc inherited-members (complicated):
+# https://stackoverflow.com/questions/43983799/how-to-avoid-inherited-members-using-autosummary-and-custom-templates
+# https://stackoverflow.com/questions/28147432/how-to-customize-sphinx-ext-autosummary-rst-template
+# https://www.sphinx-doc.org/en/master/usage/extensions/autosummary.html
+
 
 # -- Options for intersphinx extension ---------------------------------------
 
 # Example configuration for intersphinx: refer to the Python standard library.
 # Looks for objects in external projects (Libs` api dependent).
-# For example: :py:class:`dict`  :py:class:`exhale.graph.ExhaleRoot`
+# For example:
+#   dict
+#   :class:`exhale.graph.ExhaleRoot`
+#   :term:`sklearn:scorer`
+#   full list of supported:
+#   https://www.sphinx-doc.org/en/master/usage/restructuredtext/domains.html#cross-referencing-python-objects
 #   https://my-favorite-documentation-test.readthedocs.io/en/latest/using_intersphinx.html
 #   https://stackoverflow.com/questions/30939867/how-to-properly-write-cross-references-to-external-documentation-with-intersphin/30981554
+#   https://developer.lsst.io/v/DM-15183/python/numpydoc.html
+# Each API have own syntax, check:
+#   python -m sphinx.ext.intersphinx 'uri/objects.inv'
 intersphinx_mapping = {
     'python': ('https://docs.python.org/{.major}'.format(
         sys.version_info), None),
@@ -265,6 +286,7 @@ intersphinx_mapping = {
     'joblib': ('https://joblib.readthedocs.io/en/latest/', None),
     'seaborn': ('https://seaborn.pydata.org/', None),
     'sklearn': ('https://scikit-learn.org/stable/', None),
+    'pycnfg': ('https://pycnfg.readthedocs.io/en/feature/', None),
 }
 
 # -- Options for todo extension ----------------------------------------------
@@ -290,6 +312,8 @@ rst_epilog = f"""
 # Make variable dependent links.
 # Access (replace %s on 123):
 #     :github:`ref text <123>`
+
+
 extlinks = {
     'github': (f'https://github.com/{author}/{project}/tree/{version}%s', ''),
     'pypi': (f'https://pypi.org/project/{project}%s', ''),
@@ -297,5 +321,3 @@ extlinks = {
 
     # 'docker': (f'https://github.com/{author}/{project}/tree/{version}%s', '')
 }
-
-#

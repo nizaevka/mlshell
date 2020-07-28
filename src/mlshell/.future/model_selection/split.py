@@ -1,8 +1,7 @@
 """
-The :mod:`sklearn.blocks.model_selection.split` module includes classes and
-functions to split the data based on a preset strategy.
+The :mod:`sklearn.blocks.model_selection.split` includes utils to split
+datasets.
 """
-
 
 from abc import ABC
 
@@ -43,10 +42,10 @@ class CustomSplitter(sklearn.model_selection.BaseCrossValidator, ABC):
 
         Yield
         -----
-        train : numpy.ndarray
+        train : :class:`numpy.ndarray`
             The training set indices for that split.
 
-        test : numpy.ndarray
+        test : :class:`numpy.ndarray`
             The testing set indices for that split.
 
         """
@@ -58,3 +57,7 @@ class CustomSplitter(sklearn.model_selection.BaseCrossValidator, ABC):
                             dtype=int)
             yield idx, idx
             i += 1
+
+
+if __name__ == '__main__':
+    pass

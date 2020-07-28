@@ -12,10 +12,9 @@ numpydoc = "*"
 Sphinx = "==3.1.2"
 
 [packages]
-mlshell = {editable = true,extras = ["dev"],path = "."}
 sklearn = "*"
-dill = "*"
 pycnfg = {editable = true,path = "./../pycnfg"}
+mlshell = {editable = true,path = "."}
 
 [requires]
 python_version = "3.7"

@@ -1,9 +1,8 @@
-ALPHA UNDERCONSTRUCTED
 <div align="center">
 
-[![Mlshell logo](https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/mlshell_logo.PNG?raw=true)](https://github.com/nizaevka/mlshell)
+[![Pycnfg logo](https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/logo.PNG?raw=true)](https://github.com/nizaevka/mlshell)
 
-**Unified ML framework**
+**Easy ML framework**
 
 [![Build Status](https://travis-ci.org/nizaevka/mlshell.svg?branch=master)](https://travis-ci.org/nizaevka/mlshell)
 [![PyPi version](https://img.shields.io/pypi/v/mlshell.svg)](https://pypi.org/project/mlshell/)
@@ -13,23 +12,20 @@ ALPHA UNDERCONSTRUCTED
 
 </div>
 
-**MLshell** is a convenient framework for ML tasks:
-- Fast and simple pipeline prototyping and parameters tuning.
-- Unified ml pipeline.
+- Auto ML.
+- Unified pipeline.
 - Stable CV scheme.
-- Production ready.
-- One conf file rules all.
-- Simple result analyse.
-- Unified plots.
 - Common EDA techniques.
-- Pure python.
+- One configuration file.
+- Multi-stage optimization.
 
-[![Workflow](https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/images/workflow.JPG?raw=true)]
+Mlshell based on [Pycnfg](https://github.com/nizaevka/pycnfg) library.
+All parameters controlled from single Python configuration.
+
+[![Workflow](https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/images/scheme.png?raw=true)]
 
 For details, please refer to
  [Concepts](https://mlshell.readthedocs.io/en/latest/Concepts.html>).
-
---
 
 ## Installation
 
@@ -40,11 +36,11 @@ pip install -U mlshell
 ```
 
 <details>
-<summary>Specific versions with additional requirements</summary>
+<summary>Development installation (tests and docs): </summary>
 <p>
 
 ```bash
-pip install catalyst[dev]        # installs dependencies for development
+pip install mlshell[dev]
 ```
 </p>
 </details>
@@ -55,36 +51,25 @@ pip install catalyst[dev]        # installs dependencies for development
 docker run -it nizaevka/mlshell
 ```
 
-MLshell is compatible with: Python 3.6+.
+Pycnfg is tested on: Python 3.6+.
 
+## Docs
+[![Docs](https://readthedocs.org/projects/mlshell/badge/?version=latest)](https://readthedocs.org/mlshell/en/latest/?badge=latest)
 
 ## Getting started
 
 ```python
 import mlshell
 ```
-see Docs for details ;)
+see docs for details ;)
 
-## Docs and examples
-An overview and API documentation can be found here
-[![Docs](https://readthedocs.org/projects/mlshell/badge/?version=latest)](https://readthedocs.org/mlshell/en/latest/?badge=latest)
-
-Check **[examples folder](examples)** of the repository:
-- For regression example please follow [Allstate claims severity](examples/regression).
-- For classification example please follow [IEEE-CIS Fraud Detection](examples/classification).
+## Examples
+Check **[examples folder](examples)**.
 
 ## Contribution guide
-
-We appreciate all contributions.
-If you are planning to contribute back bug-fixes,
-please do so without any further discussion.
-If you plan to contribute new features, utility functions or extensions,
-please first open an issue and discuss the feature with us.
-
-- Please see the [contribution guide](CONTRIBUTING.md) for more information.
-- By participating in this project, you agree to abide by its [Code of Conduct](CODE_OF_CONDUCT.md).
+- [contribution guide](CONTRIBUTING.md).
 
 ## License
 
-This project is licensed under the Apache License, Version 2.0 see the [LICENSE](LICENSE) file for details
+Apache License, Version 2.0 [LICENSE](LICENSE).
 [![License](https://img.shields.io/github/license/nizaevka/mlshell.svg)](LICENSE)

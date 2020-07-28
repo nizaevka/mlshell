@@ -2,7 +2,7 @@
 
 
 from .__version__ import __version__
-from .producers.logger import LoggerProducer
+from .producers.logger import LoggerProducer, LOGGER_CONFIG
 from .producers.dataset import DatasetProducer, Dataset
 from .producers.pipeline import PipelineProducer, Pipeline
 from .producers.metric import MetricProducer, Metric
@@ -12,10 +12,12 @@ from .blocks import pipeline
 from .blocks import plot
 from .blocks import model_selection
 from .blocks import preprocessing
+from .blocks import decorator
 
 from .conf import CNFG
 
-__all__ = ['DatasetProducer', 'PipelineProducer', 'Workflow', 'MetricProducer',
+__all__ = ['DatasetProducer', 'PipelineProducer', 'MetricProducer',
+           'LoggerProducer', 'Workflow',
            'Dataset', 'Pipeline', 'Metric',
-           'pipeline', 'plot', 'model_selection', 'preprocessing',
-           'CNFG']
+           'pipeline', 'plot', 'model_selection', 'preprocessing', 'decorator',
+           'CNFG', 'LOGGER_CONFIG']

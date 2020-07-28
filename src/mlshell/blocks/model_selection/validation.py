@@ -1,11 +1,13 @@
 """
-The :mod:`mlshell.blocks.model_selection.validation` module includes classes
-and functions to validate the model.
+The :mod:`mlshell.blocks.model_selection.validation` includes model validation
+utils.
 
-`Validator` class to process metrics evaluation on fitted pipeline.
+:class:`mlshell.model_selection.Validator` processes metrics evaluation on
+fitted pipeline.
 
-'cross_val_predict' extended sklearn.model_selection.cross_val_predict
-that supports partial splitters (TimeSplitter for example).
+:func:`mlshell.model_selection.cross_val_predict` extends
+:func:`sklearn.model_selection.cross_val_predict`
+with partial splitters (TimeSplitter for example).
 
 """
 
@@ -27,29 +29,29 @@ class Validator(object):
 
         Parameters
         ----------
-        pipeline : mlshell.Pipeline
+        pipeline : :class:`mlshell.Pipeline`
             Fitted model.
-        metrics : list of mlshell.Metric
+        metrics : list of :class:`mlshell.Metric`
             Metrics to evaluate.
-        datasets : list of mlshell.Dataset
-            Dataset to evaluate on. For classification 'dataset.meta'
-            should contains `pos_labels_ind` key.
+        datasets : list of :class:`mlshell.Dataset`
+            Dataset to evaluate on. For classification ``dataset.meta``
+            should contains ``pos_labels_ind`` key.
         method : 'metric', 'scorer' or 'vector'
-            If 'metric', efficient (reuse y_pred) evaluation via
-            `score_func(y, y_pred, **kwargs)`. If 'scorer', evaluate via
-            `scorer(pipeline, x, y)`. If 'vector', evaluate vectorized score
-            via `score_func_vector(y, y_pred, **kwargs)`.
+            If 'metric', efficient evaluation (reuse y_pred) via
+            ``score_func(y, y_pred, **kwargs)``. If 'scorer', evaluate via
+            ``scorer(pipeline, x, y)``. If 'vector', evaluate vectorized score
+            via ``score_func_vector(y, y_pred, **kwargs)``.
         vector: bool
-            If True and `method`='metric', `score_func_vector` used instead
-            of `score_func` to evaluate vectorized score (if available).
-            Ignored for `method`='scorer'.
-        logger : logger object
-            Logs.
+            If True and ``method='metric'``, ``score_func_vector`` used instead
+            of ``score_func`` to evaluate vectorized score (if available).
+            Ignored for ``method='scorer'``.
+        logger : :class:`logging.Logger`
+            Logger.
 
         Returns
         -------
         scores : dict
-            Resulted scores {'dataset_id':{'metric_id': score}}
+            Resulted scores {'dataset_id':{'metric_id': score}}.
 
         """
         if not metrics:
@@ -94,7 +96,7 @@ class Validator(object):
     def _via_metric(self, pipeline, x, y, metric, dataset, infer, vector):
         """Evaluate score via score functions.
 
-        Reutilize inference, more efficient than via scorers.
+        Re-utilize inference, more efficient than via scorers.
 
         """
         y_pred = self._get_y_pred(pipeline, x, metric, infer, dataset)
@@ -149,23 +151,23 @@ class Validator(object):
 
 
 def cross_val_predict(*args, **kwargs):
-    """Extended sklearn.model_selection.cross_val_predict.
+    """Extended :func:`sklearn.model_selection.cross_val_predict`.
 
-    Add TimeSplitter support (when no first fold prediction).
+    TimeSplitter support added (first fold prediction absent).
 
     Parameters
     ----------
     *args : list
-        Passed to sklearn.model_selection.cross_val_predict.
+        Passed to :func:`sklearn.model_selection.cross_val_predict` .
     **kwargs : dict
-        Passed to sklearn.model_selection.cross_val_predict.
+        Passed to :func:`sklearn.model_selection.cross_val_predict` .
 
     Returns
     -------
-    y_pred_oof : 2d numpy.ndarray or list of 2d numpy.ndarray
+    y_pred_oof : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
         OOF probability predictions of shape [n_test_samples, n_classes]
         or [n_outputs, n_test_samples, n_classes] for multi-output.
-    index_oof : numpy.ndarray or list of numpy.ndarray
+    index_oof : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
         Samples reset indices where predictions available of shape
         [n_test_samples,] or [n_test_samples, n_outputs] for multi-output.
 

@@ -3,18 +3,8 @@ Python API
 
 .. currentmodule:: mlshell
 
-
-Pipeline
---------
-
-.. autosummary::
-    :toctree: _pythonapi/
-
-
-    producers.pipeline.Pipeline
-    producers.pipeline.PipelineProducer
-    .. producers.pipeline
-
+Sections
+^^^^^^^^
 
 Logger
 ------
@@ -22,7 +12,35 @@ Logger
 .. autosummary::
     :toctree: _pythonapi/
 
-    CreateLogger
+    LoggerProducer
+    LOGGER_CONFIG
+
+Pipeline
+--------
+
+.. autosummary::
+    :toctree: _pythonapi/
+
+    Pipeline
+    PipelineProducer
+
+Dataset
+--------
+
+.. autosummary::
+    :toctree: _pythonapi/
+
+    Dataset
+    DatasetProducer
+
+Metric
+------
+
+.. autosummary::
+    :toctree: _pythonapi/
+
+    Metric
+    MetricProducer
 
 Workflow
 --------
@@ -32,21 +50,44 @@ Workflow
 
     Workflow
 
-Read conf file
---------------
+
+Utils
+^^^^^
+
+Model selection
+---------------
 
 .. autosummary::
     :toctree: _pythonapi/
 
-    GetParams
+    model_selection
+    model_selection.prediction
+    model_selection.search
+    model_selection.validation
+    model_selection.resolve
 
 
-Plotting
+Pipeline
 --------
 
 .. autosummary::
     :toctree: _pythonapi/
 
-    GUI
+    pipeline
 
-.. .. warning::
+Plot
+----
+
+.. autosummary::
+    :toctree: _pythonapi/
+
+    plot
+
+
+Decorators
+----------
+
+.. autosummary::
+    :toctree: _pythonapi/
+
+    decorator

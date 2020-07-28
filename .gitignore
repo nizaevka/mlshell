@@ -58,6 +58,7 @@ examples/classification/data
 .svn
 .coverage
 .pytest_cache
+.notes
 CVS/
 __pycache__/
 _svn/

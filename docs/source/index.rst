@@ -6,16 +6,18 @@
 Welcome to MLshell's documentation!
 ===================================
 
-**MLshell** is a framework for ML research and development:
+.. image:: ./_static/images/logo.png
+    :width: 1000
+    :alt: error
+
+**Easy ML framework**
 
 - Auto ML.
-- Simplicity.
-- Pure python.
-- One conf file.
 - Unified pipeline.
 - Stable CV scheme.
-- Production ready.
 - Common EDA techniques.
+- One configuration file.
+- Multi-stage optimization.
 
 For more details, please refer to
 `Concepts <Concepts.html>`_.

@@ -3,6 +3,26 @@
 [deprecated]
 radio 1 template is hidden in fig_element_prepare.
 text_box template is hidden in initdraw.
+
+Notes
+-----
+Engineer should specify base_plot in classes.DataPreprocessor.
+GUI.plot(base_sort=True) method have flag ``base_sort`` to turn on/off sorting of base_plot vector (default=False).
+
+Should not retrain on threshold.
+
+By default
+* for regression:
+
+    * dynamical plot main (r2) score (figure right axis),
+    * dynamical plots of normalized mae/mse score sum on adding samples (left axis),
+    * residuals scatter on user-defined base_plot (target column for example).
+
+* for classification:
+
+    * dynamical plot main (precision) score (figure right axis),
+    * TP/FP/FN scatters on user-defined base_plot (diagonal line for example).
+
 """
 
 

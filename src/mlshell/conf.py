@@ -111,7 +111,7 @@ WORKFLOWS = {
                 'dataset_id': 'default',
                 'subset_id': 'train',
                 'hp': {},
-                'resolver': mlshell.pipeline.Resolver,
+                'resolver': mlshell.model_selection.Resolver,
                 'resolve_params': {},
                 'fit_params': {},
             }),
@@ -122,7 +122,7 @@ WORKFLOWS = {
                 'hp_grid': {},
                 'scoring': ['r2'],
                 'fit_params': {},
-                'resolver': mlshell.pipeline.Resolver,
+                'resolver': mlshell.model_selection.Resolver,
                 'resolve_params': {
                     'estimate__apply_threshold__threshold': {
                         'cross_val_predict': {

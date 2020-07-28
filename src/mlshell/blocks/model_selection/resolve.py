@@ -1,6 +1,9 @@
 """
-The :mod:`mlshell.blocks.pipeline.resolving` contains 'Resolver' class to
-extract dataset based parameters.
+The :mod:`mlshell.blocks.model_selection.resolve` includes utils to resolve
+hp before optimization.
+
+:class:`mlshell.model_selection.Resolver` extracts dataset-based parameters.
+Adapt :func:`mlshell.Resolver.resolve` to support more hp.
 """
 
 import operator
@@ -14,12 +17,12 @@ __all__ = ['Resolver']
 
 
 class Resolver(object):
-    """Resolve hyper-parameter based on dataset.
+    """Resolve dataset-related pipeline hyper-parameter.
 
-    Interface: resolve, th_resolver
+    Interface: resolve, th_resolver.
 
-    For example, categorical features indices are dataset dependent.
-    Resolve allows to set it before fit/optimize step.
+    For example, numeric/categorical features indices are dataset dependent.
+    Resolver allows to set them before fit/optimize step.
 
     """
     _required_parameters = []
@@ -27,39 +30,43 @@ class Resolver(object):
     def __init__(self):
         pass
 
-    def resolve(self, hp_name, pipeline, dataset, **kwargs):
+    def resolve(self, hp_name, value, pipeline, dataset, **kwargs):
         """Resolve hyper-parameter value.
 
         Parameters
         ----------
         hp_name : str
             Hyper-parameter identifier.
-        pipeline : mlshell.Pipeline
-            Pipeline contain `hp_name` in get_params().
-        dataset : mlshell.Dataset
-            Dataset to to extract from.
+        value: any objects
+            Value to resolve.
+        pipeline : :class:`mlshell.Pipeline`
+            Pipeline contained ``hp_name`` in ``pipeline.get_params()``.
+        dataset : :class:`mlshell.Dataset`
+            Dataset.
         **kwargs : dict
             Additional kwargs to pass in corresponding resolver endpoint.
 
         Returns
         -------
         value : some object
-            Resolved value. If no resolver endpoint, return 'auto'.
+            Resolved value. If no resolver endpoint, return value unchanged.
 
         Notes
         -----
-        Currently supported hp_name for mlshell.PipelineSteps:
-        'process_parallel__pipeline_categoric__select_columns__kwargs'
-            dataset['categoric_ind_name']/extract from dataset if absent.
-        'process_parallel__pipeline_numeric__select_columns__kwargs'
-            dataset['numeric_ind_name']/extract from dataset if empty.
-        'estimate__apply_threshold__threshold'
-            HpResolver.th_resolver()
-        'estimate__apply_threshold__kwargs'
-            {i:dataset.meta[i]
-                for i in ['pos_labels_ind', 'pos_labels', 'classes']}
+        Currently supported hp_name for :class:`mlshell.pipeline.Steps` :
+
+        ``process_parallel__pipeline_categoric__select_columns__kwargs``
+            dataset.meta['categoric_ind_name'].
+        ``process_parallel__pipeline_numeric__select_columns__kwargs``
+            dataset.meta['numeric_ind_name'].
+        ``estimate__apply_threshold__threshold``
+            ``Resolver.th_resolver()``.
+        ``estimate__apply_threshold__kwargs``
+            {i: dataset.meta[i]
+            for i in ['pos_labels_ind', 'pos_labels', 'classes']}
 
         """
+        flag = True
         if hp_name ==\
                 'process_parallel__pipeline_categoric__select_columns__kwargs':
             categoric_ind_name = dataset.meta['categoric_ind_name']
@@ -74,46 +81,51 @@ class Resolver(object):
             value = {i: dataset.meta[i]
                      for i in ['pos_labels_ind', 'pos_labels', 'classes']}
         else:
-            value = 'auto'
-        if value != 'auto':
+            flag = False
+
+        if flag:
             print(f"Resolve hp: {hp_name}")
         return value
 
     def th_resolver(self, pipeline, dataset, **kwargs):
-        """Get threshold range from ROC curve on OOF probabilities predictions.
+        """Calculate threshold range.
 
-        If necessary to grid search threshold simultaneously with other hps,
+        If necessary to optimize threshold simultaneously with other hps,
         extract optimal thresholds values from data in advance could provides
         more directed tuning, than use random values.
 
-        * Get predict_proba from `cross_val_predict`.
-        * Get tpr, fpr, th_range from `roc_curve` relative to positive label.
-        * Sample thresholds close to `metric` optimum.
+        * Get predict_proba:
+            :class:`mlshell.model_selection.cross_val_predict` .
+        * Get tpr, fpr, th_range relative to positive label:
+            :func:`sklearn.metrics.roc_curve` .
+        * Sampling thresholds close to optimum of predefined metric:
+            :func:`mlshell.model_selection.Resolver.calc_th_range` .
 
-        As alternative, use mlshell.ThresholdOptimizer to grid search threshold
-        separately after others hyper-parameters tuning.
 
         Parameters
         ----------
-        pipeline : mlshell.Pipeline
-            Pipeline to resolve thresholds for.
-        dataset : mlshell.Dataset
-            Dataset to to extract from.
+        pipeline : :class:`mlshell.Pipeline`
+            Pipeline.
+        dataset : :class:`mlshell.Dataset`
+            Dataset.
         **kwargs : dict
-            Kwargs['cross_val_predict'] to pass in `sklearn.model_selection`.
-            cross_val_predict. Sub-key 'method' value always should be set to
-            'predict_proba', sub-key 'y' will be ignored.
-            Kwargs['calc_th_range'] to pass in `mlshell.calc_th_range`.
+            kwargs['cross_val_predict'] to pass in:
+             :func:`sklearn.model_selection.cross_val_predict` , where
+             ``method`` always should be set to 'predict_proba', ``y`` ignored.
+            kwargs['calc_th_range'] to pass in:
+             :func:`mlshell.model_selection.Resolver.calc_th_range` .
 
         Raises
         ------
         ValueError
-            If kwargs key 'method' absent or kwargs['method']='predict_proba'.
+            If kwargs key 'method' is absent or kwargs['method'] !=
+            'predict_proba'.
 
         Returns
         -------
-        th_range : array-like
-            Resulted array of thresholds values, sorted ascending.
+        th_range : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
+            Thresholds array sorted ascending of shape [samples] or
+            [n_outputs, samples] for multi-output.
 
         """
         kwargs_cvp = kwargs.get('cross_val_predict', {})
@@ -143,40 +155,39 @@ class Resolver(object):
 
     def calc_th_range(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,
                       metric=None, samples=10, sampler=None, plot_flag=False):
-        """Calculate th range from OOF roc_curve.
+        """Calculate threshold range from OOF ROC curve.
 
         Parameters
         ----------
-        y_true : numpy.ndarray or 2d numpy.ndarray
+        y_true : :class:`numpy.ndarray`
             Target(s) of shape [n_samples,] or [n_samples, n_outputs] for
             multi-output.
-        y_pred_proba :  2d numpy.ndarray  or list of 2d numpy.ndarray
+        y_pred_proba : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
             Probability prediction of shape [n_samples, n_classes]
             or [n_outputs, n_samples, n_classes] for multi-output.
         pos_labels: list
            List of positive labels for each target.
         pos_labels_ind: list
-           List of positive labels index in np.unique(target) for each
+           List of positive labels index in :func:`numpy.unique` for each
            target.
-        metric : callable, None, optional (default=None)
-            Will be called with roc_curve output metric(fpr, tpr, th_). Should
-            return optimal threshold value, corresponding `th_` index and
-            vector for metric visualization (shape as tpr). If None,
-            tpr/(fpr+tpr) used.
+        metric : callable, optional (default=None)
+            ``metric(fpr, tpr, th_)`` should returns optimal threshold value,
+            corresponding ``th_`` index and vector for metric visualization
+            ofshape [n_samples,]. If None, ``tpr/(fpr+tpr)`` is used.
         samples : int, optional (default=10)
-            Desired number of threshold values.
+            Number of threshold values to sample.
         sampler : callable, optional (default=None)
-            Will be called sampler(optimum, th_, samples), Should return:
-            (sub-range of th_, original index of sub-range).If None, linear
-            sample from [optimum/100; 2*optimum] with limits [np.min(th_), 1].
+            ``sampler(optimum, th_, samples)`` should returns: (sub-range of
+            th_, original index of sub-range).If None, linear sample from
+            ``[optimum/100; 2*optimum]`` with limits ``[np.min(th_), 1]``.
         plot_flag : bool, optional (default=False)
             If True, plot ROC curve and resulted th range.
 
         Returns
         -------
-        th_range : numpy.ndarray or list of numpy.ndarray
-            Resulted array of thresholds sorted ascending values of shape
-            [samples] or [n_outputs, samples]  for multi-output.
+        th_range : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
+            Thresholds array sorted ascending of shape [samples] or
+            [n_outputs, samples]  for multi-output.
 
         """
         if metric is None:
@@ -215,13 +226,13 @@ class Resolver(object):
 
         Parameters
         ----------
-        fpr : numpy.ndarray, shape = [>2]
+        fpr : :class:`numpy.ndarray`, shape = [>2]
             Increasing false positive rates such that element i is the false
             positive rate of predictions with score >= thresholds[i].
-        tpr : numpy.ndarray, shape = [>2]
+        tpr : :class:`numpy.ndarray`, shape = [>2]
             Increasing true positive rates such that element i is the true
             positive rate of predictions with score >= thresholds[i].
-        th_ : numpy.ndarray, shape = [n_thresholds]
+        th_ : :class:`numpy.ndarray`, shape = [n_thresholds]
             Decreasing thresholds on the decision function used to compute
             fpr and tpr.`thresholds[0]` represents no instances being predicted
             and is arbitrarily set to `max(y_score) + 1`.
@@ -232,27 +243,24 @@ class Resolver(object):
             Optimal threshold value.
         best_ind : int
             Optimal threshold index in `th_`.
-        q : numpy.ndarray
-            Metric score for all roc_curve points.
+        q : :class:`numpy.ndarray`
+            Vectorized metric score (for all ROC curve points).
 
         """
         def np_divide(a, b):
             """Numpy array division.
 
-            ignore / 0, div0( [-1, 0, 1], 0 ) -> [0, 0, 0]
+            ignore / 0, div( [-1, 0, 1], 0 ) -> [0, 0, 0]
             """
             with np.errstate(divide='ignore', invalid='ignore'):
                 c = np.true_divide(a, b)
                 c[~np.isfinite(c)] = 0  # -inf inf NaN
             return c
 
-        # q go through max.
-        q = np_divide(tpr, fpr + tpr)  # tpr/(fpr+tpr)
+        # q = tpr/(fpr+tpr) go through max.
+        q = np_divide(tpr, fpr + tpr)
         best_ind = np.argmax(q)
         best_th_ = th_[best_ind]
-        # [alternative] faster go from left
-        # use reverse view, need last occurrence
-        # best_th_ = th_[::-1][np.argmax(q[::-1])]
         return best_th_, best_ind, q
 
     def _sampler(self, best_th_, th_, samples):
@@ -262,25 +270,25 @@ class Resolver(object):
         ----------
         best_th_ : float
             Optimal threshold value.
-        th_ : numpy.ndarray, shape = [n_thresholds]
+        th_ : :class:`numpy.ndarray`, shape = [n_thresholds]
             Threshold range to sample fro, sorted descending.
         samples : int, optional (default=10)
             Number of samples.
 
         Returns
         -------
-        th_range : numpy.ndarray
-            Resulted th_ sub-range, sorted ascending.
-        index : numpy.ndarray
-            Samples indices in th_.
+        th_range : :class:`numpy.ndarray`
+            Resulted ``th_`` sub-range, sorted ascending.
+        index : :class:`numpy.ndarray`
+            Samples indices in ``th_``.
 
         Notes
         -----
         Linear sampling from [best/100; 2*best] with limits [np.min(th), 1].
 
         """
-        # th_ descending
-        # th_range ascending
+        # th_ descending.
+        # th_range ascending.
         desired = np.linspace(max(best_th_ / 100, np.min(th_)),
                               min(best_th_ * 2, 1), samples)
         # Find index of nearest from th_reverse (a[i-1] < v <= a[i]).
@@ -291,7 +299,7 @@ class Resolver(object):
 
     def _th_plot(self, y_true, y_pred_proba, pos_label, pos_label_ind,
                  best_th_, q, tpr, fpr, th_, th_range, index):
-        """Plot roc curve and metric."""
+        """Plot ROC curve and metric."""
         fig, axs = plt.subplots(nrows=2, ncols=1)
         fig.set_size_inches(10, 10)
         # Roc curve.

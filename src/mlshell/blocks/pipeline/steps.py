@@ -37,7 +37,7 @@ def _isbinary_columns(arr: np.ndarray) -> np.ndarray:
 
 
 class Steps(object):
-    """Class to create pipeline steps.
+    """Unified pipeline steps.
 
     Parameters
     ----------

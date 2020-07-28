@@ -1,6 +1,5 @@
 """
-The :mod:`mlshell.blocks.preprocessing` module includes skippable version
-of corresponding sklearn methods.
+The :mod:`mlshell.preprocessing` includes skip-able sklearn transformers.
 """
 
 

@@ -1,44 +1,102 @@
 Concepts
 ========
 
-.. image:: ./_static/images/workflow.png
+.. image:: ./_static/images/scheme.png
     :width: 1000
     :alt: error
 
 .. contents:: **Contents**
-    :depth: 1
+    :depth: 2
     :local:
     :backlinks: none
 
 Mlshell structure based on `Pycnfg <https://pycnfg.readthedocs.io/en/latest/>`_ library.
-All parameters controlled from singe Python configuration. Each sub-section
-configuration describes initial state and steps to produce target object.
+All parameters controlled from single Python configuration. Sub-configuration
+in each sub-section describes initial state and steps to produce target object.
 
-ML task configuration typically contains following main sections:
+ML task configuration usually contains following main sections:
 
-* pipelines - create/load model.
-* datasets - load from db.
-* metrics - specify scorers.
+* path - set project path.
+* logger - make logger.
+* pipeline - create/load model.
+* dataset - load from db.
+* metric - specify scorers.
 * workflow - fit/predict pipelines on datasets and optimize/validate metrics.
+
+Configurations executied in priority:
+
+project path >> logger >> pipeline, dataset, metric >> workflow
 
 MLshell implements unified object interface for main sections and corresponding
 ``producer`` for object preparation. All classes have high level of abstraction
 and encapsulation to provide extension with minimal code changes. See detailed
 description below.
 
+See `Examples. <Examples.html>`_
 
-Pipeline section
-^^^^^^^^^^^^^^^^
+.. note::
+    Each produce inherits from :class:`pycnfg.Producer` , that including
+    load_cache/dump_cache methods to load/dump intermediate object state.
+    The producers methods can be extended/rewrited either explicit in source
+    or through `patch` key in configuration. In most cases default
+    implementation will be sufficient.
+
+    Pycnfg configuration allows to set decorators for any step. It could be
+    usefull for time/memory profiling and checking parameter consistence.
+    For example built-in :func:`mlshell.decorator.checker` print:
+
+        * objects hash alteration.
+        * numpy errors.
+
+Sections
+^^^^^^^^
+
+Path
+----
+
+Set string path to project directory.
+
+Section example:
+
+.. code-block:: python
+
+    import pycnfg
+
+Logger
+------
+
+Set string name for logger.
+
+:class:`mlshell.LoggerProducer` executes steps on logger.
+
+:func:`mlshell.LoggerProducer.make` makes logger via :func:`logging.config.dictConfig` .
+See default logger configuration :data:`mlshell.LOGGER_CONFIG` for details.
+
+.. see `logger configuration <_modules/mlshell/logger.html>`_ for details.
+
+Section example:
+
+.. code-block:: python
+
+    import pycnfg
+
+Pipeline
+--------
 
 :class:`mlshell.Pipeline` implements interface to access arbitrary pipeline.
 All sklearn based pipelines supported from the box. For others, adaptation in
 compliance with interface needed.
 
-:class:`mlshell.PiplineProducer` executes steps on pipeline.
+:class:`mlshell.PipelineProducer` executes steps on pipeline.
 
-- :method:`mlshell.PipelinProducer.load` loads existed model from IO.
-- :method:`mlshell.PipelinProducer.make` creates pipeline via :class:`sklearn.pipeline.Pipeline` .
-By default unified pipeline steps embedded for broad range of ml tasks:
+- :meth:`mlshell.PipelineProducer.load` loads existed model from IO.
+- :meth:`mlshell.PipelineProducer.info` logs model info.
+- :meth:`mlshell.PipelineProducer.make` creates pipeline from steps via :class:`sklearn.pipeline.Pipeline` .
+
+    - Any pypeline parameter(hp) can be tuned in GS.
+    - Stable cross-validation scheme prevents data leaks.
+
+By default unified steps embedded for broad range of ml tasks :class:`mlshell.pipeline.Steps` :
 
 .. code-block:: none
 
@@ -67,144 +125,109 @@ By default unified pipeline steps embedded for broad range of ml tasks:
         )
         ('select_columns',   Model-wise feature selection.)
         ('reduce_dimension', Factor analyze feature selection/transformation.)
-        ('estimate',         Target transformation and estimation.)
+        ('estimate',         Target estimation.)
     ]
 
-- Every parameter at each step can be tuned in GS CV.
-- Stable cross-validation scheme prevents data leaks.
-- For details see :class:`mlshell.pipeline.Steps` .
+- For regressor ``estimate`` step supports target transformation:
+ :class:`sklearn.compose.TransformedTargetRegressor` .
+- | For classifier ``estimate`` step supports two-stage meta-estimator to predict
+  | probabilities and apply classification threshold.
 
+    - ('predict_proba', :class:`mlshell.model_selection.PredictionTransformer` ),
+    - ('apply_threshold', :class:`mlshell.model_selection.ThresholdClassifier` ),
 
-.. `mlshell.Pipeline <_pythonapi/mlshell.producers.pipeline.html#mlshell.producers.pipeline.Pipeline>`_
-
-.. `mlshell.PipelineProducer <_pythonapi/mlshell.producers.pipeline.PipelineProducer.html#mlshell.producers.pipeline.PipelineProducer>`_.
-
-.. See `CreateDefaultPipeline <_modules/mlshell/default.html#CreateDefaultPipeline>`_ source for details.
-.. .. note::
-
-
-Dataset section
-^^^^^^^^^^^^^^^
-
-Engineer have to write:
-
-* data wrapper from database.
-* data preprocessor to prepare dataframe for Workflow class.
-
-.. note::
-
-    dataframe should have columns={``targets``, ``feature_<name>``, ``feature_categor_<name>``}
-
-    * ``feature_categor_<name>``: any dtype.
-
-        order is not important (include binary).
-
-    * ``feature_<name>``: any numeric dtype (should support float(val): np.issubdtype(type(val), np.number))
-
-        order is important.
-
-    * ``targets``: any dtype.
-
-        | for classification ``targets`` should be binary, ordinalencoded.
-        | positive label should be > others when np.unique(``targets``) sort.
-
-    Most often wrapper/preprocessor classes from `Examples <Examples.html>`_ with minimal changes will be sufficient.
-
-Data unification
-^^^^^^^^^^^^^^^^
-
-Before pass to pipeline input data need to unified with ``Workflow.unify_data()`` method.
-
-Internally:
-
-- categorical features are OrdinalEncoded.
-- categorical gaps are imputed with .fillna(value='unknown').
-- numeric gaps are imputed with .fillna(value=np.nan).
-- dataframe is casted to .astype(np.float64).
-
-Configuration file example
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-| Data scientist can set all workflow parameters through one configuration file ``conf.py``.
-| Typically ``conf.py`` should specify:
-
-- last step estimator and its type.
-- train-validation split ratio.
-- metrics to evaluate on validation data.
-- grid search parameters ``hp_grid`` and cross-validation splitter.
-- arguments passed to data wrapper.
+Section example:
 
 .. code-block:: python
 
-    params = {
-        'pipeline': {
-            'estimator': estimator,
-            'type': 'regressor',
-        },
-        'metrics': {
-            'score': (sklearn.metrics.roc_auc_score, {'greater_is_better': True, 'needs_proba': True}),
-            'custom': (custom_score_metric, {'greater_is_better': True, 'needs_custom_kw_args': True}),
-            'confusion matrix': (sklearn.metrics.confusion_matrix, {'labels': [1, 0]}),
-        },
-        'gs': {
-            'flag': True,
-            'splitter': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
-            'hp_grid': hp_grid,
-            'metrics' ['score', 'custom']
-        },
-        'data': {
-            'split_train_size': 0.75,
-            'train': {
-                'args': ['data/train.csv'],
-                'kw_args': {},
-            },
-            'test': {
-                'args': ['data/test.csv'],
-                'kw_args': {},
-            },
-        },
-        # classification only
-        'th': {
-            'pos_label': 1,
-            'strategy': 1,
-            'samples': 10,
-            'plot_flag': True,
-        },
-        'seed': 42,
-    }
+    import pycnfg
 
-see `default params <Default-configuration.html#mlshell.default.DEFAULT_PARAMS>`_ for full list.
+.. .. `Examples <Concepts.html#Advanced#resolver>`_
+.. .. `mlshell.Pipeline <_pythonapi/mlshell.producers.pipeline.html#mlshell.producers.pipeline.Pipeline>`_
+.. .. `mlshell.PipelineProducer <_pythonapi/mlshell.producers.pipeline.PipelineProducer.html#mlshell.producers.pipeline.PipelineProducer>`_.
+.. See `CreateDefaultPipeline <_modules/mlshell/default.html#CreateDefaultPipeline>`_ source for details.
+.. .. note::
 
-.. note::
+Dataset
+-------
 
-    Internally, params are converted to flat {'key__subkey':val}.
+:class:`mlshell.Dataset` implements interface to access arbitrary dataset.
+Implemented as dictionary with some additional attributes and methods.
 
-    Ramdom state is controlled by 'seed' parameter (both random.seed() and np.random.seed()).
+:class:`mlshell.DatasetProducer` executes steps on dataset.
 
+- :func:`mlshell.DatasetProducer.load` loads raw data from IO (csv imlemented).
+- :func:`mlshell.DatasetProducer.info` logs dataset info.
+- :func:`mlshell.DatasetProducer.split` splits dataset on test and train.
+- :func:`mlshell.DatasetProducer.preprocess` preprocesses raw data to final state.
 
-Split
-^^^^^
+    - Categorical features are Ordinal encoded.
+    - Categorical gaps are imputed with fillna(value='unknown').
+    - Mumeric gaps are imputed with fillna(value= ``numpy.nan`` ).
+    - Features casted to ``numpy.float64`` .
 
-- ``train`` data will be split on ``subtrain`` and ``validation`` datasets by sklearn.model_selection.train_test_split with ``split_train_size`` proportion.
-- ``subtrain`` will be used in gs cross-validation with ``splitter``.
-- ``validation`` will be used to evaluate metrics on best model from gs.
-- If ``split_train_size`` = 1, gs use whole dataset and ``validation`` = ``train`` for compatibility.
+Section example:
 
-Metrics
-^^^^^^^
+.. code-block:: python
 
-| Specify metrics in ``metrics`` dictionary, which will be used for validation.
-| Metric dict value should contain tuple/list with at most two entity:
+    import pycnfg
 
-    * 0 index: metric callback or str (sklearn built-in names)
-    * 1 index: make_scorer and metric function kwargs.
+Metric
+------
 
-Hyperparameters grid
-^^^^^^^^^^^^^^^^^^^^
+:class:`mlshell.Metric` implements interface to access arbitrary scorer.
+Extended :term:`sklearn:scorer` .
 
-- Each parameter(hp) at every pipeline step can be tuned in GS.
-- Set one value for parameter to overwrite default.
-- Set multiple values to proceed GS on that parameter.
+:class:`mlshell.MetricProducer` executes steps on scorer.
+
+:func:`mlshell.MetricProducer.make` make scorer from callable.
+Extended :func:`sklearn.metrics.make_scorer` .
+
+Section example:
+
+.. code-block:: python
+
+    import pycnfg
+
+Workflow
+--------
+
+Initial section object set to :class:`dict` .
+
+:class:`mlshell.Workflow` executes steps and writes results to dictionary.
+
+- :func:`mlshell.Workflow.fit` fit pipeline.
+- :func:`mlshell.Workflow.optimize` optimize pipeline.
+- :func:`mlshell.Workflow.validate` make and score prediction.
+- :func:`mlshell.Workflow.predict` make and dump prediction.
+- :func:`mlshell.Workflow.plot` plot results.
+- :func:`mlshell.Workflow.dump` dump pipeline.
+
+Each method (except dump) includes ``subset`` argument to specify part of
+dataset to apply on. Typically:
+
+- optimize and fit pipeline on train.
+- validate and predict on test.
+
+Section example:
+
+.. code-block:: python
+
+    import pycnfg
+
+Hyperparameters
+~~~~~~~~~~~~~~~
+
+Any pipeline parameter ``hp`` can be optimized in grid search.
+
+- | :func:`mlshell.Workflow.fit` awaits for ``hp`` argument to update pipeline
+  | parameters before fitting. If parameters range provided, zero position will
+  | be used.
+
+- | :func:`mlshell.Workflow.optimize` awaits for ``hp_grid`` argument to set
+  | pipeline parameters range before optimizing.
+
+``hp_grid`` example for pipeline created from :class:`mlshell.pipeline.Steps` :
 
 .. code-block:: python
 
@@ -225,179 +248,196 @@ Hyperparameters grid
         # estimator params
         'estimate__regressor__n_estimators': np.linspace(50, 500, 10, dtype=int),
         'estimate__regressor__num_leaves' :[2 ** i for i in range(1, 6 + 1)],
-        'estimate__classifier__min_child_samples': np.linspace(1, 100, 10, dtype=int),
         'estimate__regressor__max_depth': np.linspace(1, 10, 10, dtype=int),
         # classifier only
         'estimate__apply_threshold__threshold': [0.1],
+        'estimate__predict_proba__classifier__min_child_samples': np.linspace(1, 100, 10, dtype=int),
     }
 
-.. note::
-
-    Probaility distribution for ``hp_grid`` params are also possible, should have .rvs() sampling method.
-
-    ``estimate__transformer`` is applied only to regressors for target transformation, ignored if classifier.
-    Should be the last in pipeline.
-
-    ``estimate__apply_threshold__threshold`` id applied only to classifier for threshold tuning (default = 0.5).
-    Inserted in the end of pipeline automatically.
-
-    ``pass_custom__kw_args`` is applied when need to pass custom parameters to custom scorer function while grid search.
-    So we can tune arbitrary hyperparameters.
-    If used, should be the first step in pipeline.
-    Specify specify {'needs_custom_kw_args': True} in ``metrics`` for custom metric`s , so custom params will be passed
-    in metric` kw_args while grid search.
-
-    .. code-block:: python
-
-        # classifier custom metric example
-        def custom_score_metric(y_true, y_pred, **kwargs):
-            """Custom precision metric."""
-            if kwargs:
-                # some logic.
-                # pass_custom_kw_args are passed here.
-                pass
-            tp = np.count_nonzero((y_true == 1) & (y_pred == 1))
-            fp = np.count_nonzero((y_true == 0) & (y_pred == 1))
-            score = tp/(fp+tp) if tp+fp != 0 else 0
-            return score
-
-.. .. warning::
-    Set ``seed`` None, if use sampling from distribution for any parameter.
-
-Grid Search
-^^^^^^^^^^^
-* if ``gs__flag`` is True:
-
-    | Will run gridsearch(GS) and fit estimator with the best parameters.
-    | sklearn.model_selection.RandomizedSearchCV is used by default.
-
-
-    | Metric name in ``refit`` will be used for best model selection in grid search.
-    | This name should be one from global ``metrics`` key.
-    | ``gs`` has its own `metrics`` subkey, where you can specify metrics name appropriate for grid search.
-    | It can subset of global ``metrics`` or sklearn built-in metrics names.
-
-
-* else:
-
-    | If any param specified in hp_grid with sequence:
-    | pipeline will be fitted with the value on the zero position of parameter range, otherwise  default value.
-
-| Internally hps are optimized sklearn.model_selection.RandomizedSearchCV(
-|   pipeline, ``hp_grid`` scoring=scorers, **params['gs']).fit(x_subtrain, y_subtrain, ** ``pipeline__fit_params``)
 
 .. note::
 
-    Scorers are generally made from ``gs__metrics`` (see `below <Concepts.html#classification-threshold>`_ for special cases).
+    Probaility distribution for ``hp_grid`` params are also possible, it should
+    supports .rvs() sampling method.
 
-    | If ``gs__n_iter`` is None, there will be as much runs as hps combinations defined in hp_grid.
-    | If any of the params specified in ``hp_grid`` with distribution: ``gs__n_iter`` should be specified as int.
+Resolver
+~~~~~~~~
+Some parameters like categoric/numeric indices depends on specific dataset,
+and needs resolving before pipeline fitting. For that case 'auto' can be set
+to parameter, triggering hp value resolution according to
+:class:`mlshell.model_selection.Resolver` .
 
-    | The ``n_jobs`` control number of parallel CV, and dataset is copied in RAM pre_dispatch times.
-    | pre_dispatch = max(1, ``n_jobs``) if ``n_jobs`` else 1 (spawn jobs in advance for faster queueing)
-    | If ``n_jobs`` = -1, dataset is copied in RAM hp-combinations times (ignores pre_dispatch limit).
+.. note::
 
+    Default resolver supports classification threshold range resolution from
+    ROC curve on OOF prediction :func:`mlshell.model_selection.Resolver.th_resolver` .
+    See also `Classification threshold <Concepts.html#classifier-threshold>`_  below.
 
-Classification threshold
-^^^^^^^^^^^^^^^^^^^^^^^^^
+Optimizer
+~~~~~~~~~
 
-For classification task it is possible to tune classification threshold ``th_`` on CV.
-If positive class probability P(positive label) = 1 - P(negative label) > ``th_`` for some sample,
-classifier set pos_label for this sample, otherwise negative_label.
+:class:`mlshell.model_selection.Optimizer` proposes unified interface to use
+arbitrary optimizers. Intended to be used in . For new optimizer formats no
+need to edit :class:`mlshell.Workflow` class, just adapt ``Optimizer`` in
+compliance to interface.
 
-Built-in last step configuration for classifiers:
+:class:`mlshell.model_selection.RandomizedSearchOptimizer` contains
+implementation for :class:`sklearn.model_selection.RandomizedSearchCV` .
+
+:class:`mlshell.model_selection.MockOptimizer` contains implementation
+to efficient brute force prediction-related parameters as separate optimize
+step. For example: classification threshold or score function kwargs don`t need
+whole pipeline refit to probe.
+
+:class:`mlshell.Workflow` supports multi-stage optimization, for any pipeline-dataset pair
+hyper-parameters could be tuned step-wise with different optimizers.
+Pipeline in ``objects`` auto updated to the best estimator find
+before for the current dataset. See :meth:`mlshell.model_selection.Optimizer.update_best`
+for stage merging logic.
+
+*scorer kwargs*
+"""""""""""""""
+
+Pipeline step ``pass_custom__kw_args`` allows to pass arbitrary parameters to
+scorer function while grid search (as if there was additional nested loop).
+Scorer should be made with ``needs_custom_kw_args=True`` flag and supports
+corresponding kwargs. Efficient :class:`mlshell.model_selection.MockOptimizer` could be used.
 
 .. code-block:: python
 
-    import mlshell
+    def custom_score_metric(y_true, y_pred, **kwargs):
+        """Custom precision metric."""
+        if kwargs:
+            # some logic depends on kwargs.
+            pass
+        tp = np.count_nonzero((y_true == 1) & (y_pred == 1))
+        fp = np.count_nonzero((y_true == 0) & (y_pred == 1))
+        score = tp/(fp+tp) if tp+fp != 0 else 0
+    return score
 
-    pipe = sklearn.pipeline.Pipeline([
+*classifier threshold*
+""""""""""""""""""""""
+
+For classification task it is possible to tune classification threshold
+``th_`` on CV. If positive class probability ``P(positive label) = 1 - sum(P(negative label)) > th_``
+for some sample, classifier set positive label for this sample,
+otherwise negative label with max probability.
+
+Set last pipeline step to:
+
+.. code-block:: python
+
+    step = sklearn.pipeline.Pipeline([
         ('estimate', sklearn.pipeline.Pipeline([
-            ('classifier', mlshell.custom.PredictionTransformer(estimator)),
-            ('apply_threshold', mlshell.custom.ThresholdClassifier(n_classes, pos_label_ind, pos_label, neg_label, threshold=0.5)),
+            ('predict_proba', :class:`mlshell.model_selection.PredictionTransformer` (estimator)),
+            ('apply_threshold', :class:`mlshell.model_selection.ThresholdClassifier` (threshold)),
         ]))
     ])
 
-In general,
-
+.. In general,
     * we can consider ``th_`` as hp,
     * each fold in CV has it own best ``th_``, we try to find value good for all folds,
     * ``th_`` search range can be got from ROC curve on classifier`s predict_proba.
-
-Mlshell support multiple strategy for ``th_`` tuning:
-
-.. image:: ./_static/images/th_strategy.png
-    :width: 1000
-    :alt: error
-
 .. note::
 
-    (0) Don't use ``th_`` (common case).
+    Mlshell supports multiple strategy for ``th_`` tuning:
 
-        * Not all classificator provide predict_proba (SVM).
-        * We can use f1, logloss metrics.
-        * If necessary you can dynamically pass params in custom scorer function to tune them in CV (through 'pass_custom__kw_args' step in hp_grid).
+    (0) Not use ``th_``.
 
-    (1) First GS best hps with CV, then GS best ``th_`` (common).
+        * Not all classifiers provide predict_proba (SVM).
+        * Use f1, logloss metrics.
 
-        * For GS hps by default used auc-roc as score.
-        * For GS ``th_`` used main score.
-        * ``th_`` range should be unknown in advance:
-
-            (1.1) set in arbitrary in hp_grid.
-
-            (2.2) take typical values from ROC curve on OOF predicted with best hps.
-
-
-    (2) Use additional step in pipeline (meta-estimator) to GS ``th_`` in predefined range (experimental).
+    (1) One-stage optimization.
 
         * Tune ``th_`` on a par with other hps.
-        * ``th_`` range should be unknown in advance:
 
-            (2.1) set in arbitrary in hp_grid.
+    (2) Multi-stage optimization.
 
-            (2.2) take typical values from ROC curve on OOF predicted with default hps.
+        First optimizer hps, then ``th_`` separately.
 
-    (3) While GS best hps with CV, select best ``th_`` for each fold separately (experimental).
+        * For hps stage use for example auc-roc score.
+        * For ``th_`` stage use original score function.
+        Efficient :class:`mlshell.model_selection.MockOptimizer` could be used.
 
-        * For current hps combination maximize tpr/(tpr+fpr) on each fold by ``th_``.
-        * | Although there will different best ``th_`` on folds,
-          | the generalizing ability of classifier might be better.
-        * Then select single overall best ``th_`` on GS with main score.
-        * ``th_`` range should be unknown in advance:
 
-            (3.1) set in arbitrary in hp_grid.
+    For (1)/(2) ``th_`` search range should be known in advance:
 
-            (3.2) take typical values from ROC curve on OOF predicted with best hps.
+        * Either set arbitrary range in ``hp_grid``.
+        {'estimate__apply_threshold__threshold': [val,] }
 
-    For 1/2/3 ``th_staretegy`` `(*.1)` is used if ``hp_grid`` contains ``estimate__apply_threshold__threshold`` , otherwise `(*.2)`
+        * Or set 'auto' in ``hp_grid`` to resolve typical values from ROC curve on OOF probabilities predictions.
+        Either default hps in (1), or best hps in (2) will be used.
+        {'estimate__apply_threshold__threshold': 'auto'}
 
-    | In `(*.2)` strategies ``th_`` range came from ROC curve on OOF prediction_proba.
-    | By default tpr/(tpr+fpr) is maximized, then points are linear sampled from [max/100, max*2] with [0,1] limits.
-    | Engineer can specify number of samples ``th__samples`` and plot roc_curve ``th__plot_flag``.
 
-``th_`` range extract example:
+``th_`` range extracting from ROC curve example:
 
 .. image:: ./_static/images/th_.png
   :width: 1000
   :alt: error
 
-.. warning::
-    | Currently, only binary classification is supported.
-    | Be carefull with experimental features.
-    | TimeSeriesSplit OOF don`t provide the first fold in th_strategy (1)-(3).
+Validator
+~~~~~~~~~
 
+:class:`mlshell.model_selection.Validator` proposes unified interface to
+validate pipeline on scorers. Intended to be used in :class:`mlshell.Workflow`.
+For new pipeline/metric interface, just adapt 'Validator' in compliance to
+interface, so no need to edit `Workflow` class
 
-Workflow
-^^^^^^^^
+Plotter
+~~~~~~~
 
-- Mlshell is production ready.
-- Data scientist can control the workflow through a script or a notebook.
+:class:`mlshell.plot.Plotter` proposes unified interface to plot results.
 
-see `Get started <Get-started.html>`_ for full workflow file example.
+*gui*
+"""""
+
+Mlshell provides gui based on :mod:`matplotlib.widgets` .
+
+For small dataset it is reasonable to visualize vectorized score per samples.
+Sliders for hyper-parameters are available. Model retrained and make predict on
+slider change.
+
+.. note::
+    Scorer ``score_func_vector`` should be available to plot vectorized score.
+
+Results
+^^^^^^^
+
+:func:`pycnfg.run` returns ``objects`` dictionary, containing resulted objects
+for all executed configurations. Each pipeline is fitted corresponding to last fit/optimize method.
+
+Each optimization stage produces ``<timestamp>_runs.csv`` file. See
+:meth:`mlshell.model_selection.Optimizer.dump_runs` for details.
+
+``*_runs.csv`` files could be merged in dataframe for further analyse:
+
+.. code-block:: python
+
+    from os import listdir
+    files = [f for f in listdir('results/runs/') if 'runs.csv' in f]
+    df_lis = list(range(len(files)))
+    for i,f in enumerate(files):
+        if '.csv' not in f:
+            continue
+        try:
+            df_lis[i]=pd.read_csv("results/runs/" + f, sep=",", header=0)
+            print(f, df_lis[i].shape, df_lis[i]['dataset__id'][0], df_lis[i]['pipeline__id'][0])
+        except Exception as e:
+            print(e)
+            continue
+
+    df=pd.concat(df_lis,axis=0,sort=False).reset_index()
+    # groupby data hash
+    df.groupby('dataset__hash').size()
+    # groupby estimator
+    df.groupby('pipeline__hash').size()
+
 
 Project structure
 ^^^^^^^^^^^^^^^^^
+
+It is convenient to follow the structure:
 
 .. code-block:: none
 
@@ -414,108 +454,22 @@ Project structure
         |__ results/
             |__ models/
                 ~~ dump fitted models and predictions ~~
-                |__ <params_hash>_<train_data_hash>_dump.model
-                |__ <params_hash>_<new_data_hash>_predictions.csv
+                |__ <id>.model
+                |__ <id>_pred.csv
             |__ runs/
                 ~~ dump all GS runs result ~~
                 |__ <timestamp>_runs.csv
-            |__ run_logs/
+            |__ <logger_name>_logs/
                 ~~ script logs ~~
                 |__ <logger_name>_<logger_level>.log
             |__ ipython_logs/
                 ~~ notebook logs ~~
                 |__ <logger_name>_<logger_level>.log
-            |__ temp/
-                ~~ cache for sklearn.pipeline.Pipeline(memory=<./temp>) ~~
-
-Results
-^^^^^^^
-
-Workflow sectioon
-^^^^^^^
-Previous sections could be executed independent, whereas workflow awaits for
-resulted objects.
+            |__ .temp/
+                ~~ cache ~~
+                |__ objects/
+                    ~~ cache for producer objects ~~
+                |__ pipeline/
+                    ~~ cache for sklearn.pipeline.Pipeline(memory=<./.temp/pipeline>) ~~
 
 
-
-**runs.csv**
-~~~~~~~~~~~~
-
-Runs of each GS workflow will be dumped in <timestamp>_runs.csv.
-
-see `dump_runs method <_pythonapi/mlshell.Workflow.html#mlshell.Workflow.dump_runs>`_ for details.
-
-``*_runs.csv`` files could be merge in dataframe for further analyse:
-
-.. code-block:: python
-
-    from os import listdir
-    files = [f for f in listdir('results/runs/') if 'runs.csv' in f]
-    df_lis = list(range(len(files)))
-    for i,f in enumerate(files):
-        if '.csv' not in f:
-            continue
-        try:
-            df_lis[i]=pd.read_csv("results/runs/" + f, sep=",", header=0)
-            print(f, df_lis[i].shape, df_lis[i]['data__hash'][0], df_lis[i]['params__hash'][0])
-        except Exception as e:
-            print(e)
-            continue
-
-    df=pd.concat(df_lis,axis=0,sort=False).reset_index()
-    # groupby data hash
-    df.groupby('data__hash').size()
-    # groupby estimator
-    df.groupby('pipeline__estimator__name').size()
-
-**logs**
-~~~~~~~~
-
-- If possible, logger files will be called the same as workflow start file.
-- There are 7 levels of logging files:
-
-    * critical
-        reset on logger creation.
-    * error
-        reset on logger creation.
-    * warning
-        reset on logger creation.
-    * minimal
-        cumulative.
-        only score for best run in gs.
-    * info
-        cumulative.
-        workflow information.
-    * debug
-        reset on logger creation.
-        detailed workflow information.
-    * test
-        only for test purposes.
-
-see `logger configuration <_modules/mlshell/logger.html>`_ for details.
-
-**gui**
-~~~~~~~
-
-For small dataset it is reasonable to visualize unravel score per samples.
-
-Mlshell provides experimental gui:
-
-* for regression:
-
-    * dynamical plot main (r2) score (figure right axis),
-    * dynamical plots of normalized mae/mse score sum on adding samples (left axis),
-    * residuals scatter on user-defined base_plot (target column for example).
-
-* for classification:
-
-    * dynamical plot main (precision) score (figure right axis),
-    * TP/FP/FN scatters on user-defined base_plot (diagonal line for example).
-
-Sliders for grid search params ranges available. Model retrained and make predict at each slider change (except threshold)
-
-Engineer should specify base_plot in classes.DataPreprocessor.
-
-GUI.plot(base_sort=True) method have flag ``base_sort`` to turn on/off sorting of base_plot vector (default=False).
-
-see `Examples <Examples.html>`_.

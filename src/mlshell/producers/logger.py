@@ -1,4 +1,8 @@
-"""The :mod:`mlshell.producers.logger` module includes LoggerProducer class."""
+"""The :mod:`mlshell.producers.logger` includes utils to ctreate logger
+
+:class:`mlshell.LoggerProducer`
+:data:`mlshell.LoggerConfig`
+"""
 
 
 import copy
@@ -8,11 +12,11 @@ import sys
 
 import pycnfg
 
-__all__ = ['LoggerProducer']
+__all__ = ['LoggerProducer', 'LOGGER_CONFIG']
 
 
 class LevelFilter(object):
-    """Custom filter for logger configuration."""
+    """Custom filter."""
     def __init__(self, level=50):
         self._level = level
 
@@ -24,14 +28,14 @@ class LevelFilter(object):
 
 
 class CustomFormatter(logging.Formatter):
-    """Custom formatter for logger configuration."""
+    """Custom formatter."""
     def format(self, record):
         record.message.replace('|__ ', '\u25CF ')
         record.message.replace('    |__ ', '\u25CF \u25B6 ')
         return record
 
 
-CONFIG = {
+LOGGER_CONFIG = {
     "version": 1,
     'filters': {
         'test_level_filter': {
@@ -115,7 +119,7 @@ CONFIG = {
     },
     "formatters": {
         "default": {
-            "format": "%(levelname)s: %(message)s%(delimeter)s"
+            "format": "%(levelname)s: %(message)s%(delimiter)s"
         },
         "custom": {
             "()": CustomFormatter,
@@ -123,18 +127,41 @@ CONFIG = {
         },
     }
 }
-"""(dict): Logger configuration for logging.config.dictConfig method."""
+"""(dict) : Logger configuration for logging.config.dictConfig method.
+
+Levels of logging:
+
+* critical
+    reset on logger creation.
+* error
+    reset on logger creation.
+* warning
+    reset on logger creation.
+* minimal
+    cumulative.
+    only score for best run in gs.
+* info
+    cumulative.
+    workflow information.
+* debug
+    reset on logger creation.
+    detailed workflow information.
+* test
+    only for test purposes.
+        
+"""
 
 
 class LoggerProducer(pycnfg.Producer):
-    """Create logger object.
+    """Factory to produce logger.
 
     Interface: make.
 
     Parameters
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with objects from previous executed producers:
+        {'section_id__config__id', object,}.
     oid : str
         Unique identifier of produced object.
     path_id : str
@@ -142,8 +169,9 @@ class LoggerProducer(pycnfg.Producer):
 
     Attributes
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with objects from previous executed producers:
+        {'section_id__config__id', object,}.
     oid : str
         Unique identifier of produced object.
     project_path: str
@@ -162,33 +190,37 @@ class LoggerProducer(pycnfg.Producer):
 
         Parameters
         ----------
-        logger_name: str
-            Logger identifier in `config`.
+        logger_name : str
+            Logger identifier in ``config`` .
         fullpath : str, optional (default=None)
-            Absolute path  to dir for logs files or relative to
-            'self.project_dir' started with './'. Created, if not exists.
-            If None, used "project_path/results".
+            Absolute path to dir for logs files or relative to
+            'project_dir' started with './'. Created, if not exists.
+            If None, used ``project_path/results`` .
         config : dict, optional (default=None)
-            Logger configuration to pass in logging.config.dictConfig. If None,
-            module level `CONFIG` is used.
+            Logger configuration to pass in :func:`logging.config.dictConfig` .
+            If None, :data:`mlshell.LOGGER_CONFIG` is used.
         extra : dict, optional (default=None)
-            Add extra to logging.LoggerAdapter. If None, {'delimeter': '\n' +
-            '=' * 100}.
+            Add extra to :class:`logging.LoggerAdapter` . If None:
+            ``{'delimiter': '='*79}``.
         clean : list of str, optional (default=None)
             List of handlers identifiers, for which clean corresponding files.
             If None, ["debug_handler", "warning_handler", "error_handler",
             "critical_handler"].
         **kwargs : dict
-            User-defined params for handlers, will update `config`.
-            For example:
-            {'http_hadler': {'host':'www.example.com',
-                             'url':'https://wwww.example.com/address'}}
+            User-defined params for handlers, updating `config`.
+            For example: {'http_hadler':
+            {
+            'host':'www.example.com',
+            'url':'https://wwww.example.com/address'
+            }}
 
         Notes
         -----
-        Logs files created as "(logger_name)_(level).log".
-        `test_handler` used only if program run with pytest.
-        `http_hanfler` used only if configuration provided in kwargs.
+        Logs files named "(logger_name)_(level).log".
+
+        ``test_handler`` used only if program run with pytest.
+
+        ``http_handler`` used only if configuration provided in kwargs.
 
         """
         if fullpath is None:
@@ -196,7 +228,7 @@ class LoggerProducer(pycnfg.Producer):
         elif fullpath.startswith('./'):
             fullpath = f"{self.project_path}/{fullpath[2:]}"
         if config is None:
-            config = copy.deepcopy(CONFIG)
+            config = copy.deepcopy(LOGGER_CONFIG)
         if extra is None:
             # Add extra in every entry.
             extra = {'delimeter': '\n' + '=' * 100}
@@ -214,7 +246,7 @@ class LoggerProducer(pycnfg.Producer):
         #     config["loggers"][logger_name] = config["loggers"].pop("default")
         # Update path for config/params in handlers.
         handlers = set()
-        for handler_name in CONFIG["handlers"]:
+        for handler_name in LOGGER_CONFIG["handlers"]:
             prefix = handler_name.split('_')[0]
             if prefix in ['test', 'debug', 'info', 'minimal',
                           'warning', 'error', 'critical']:

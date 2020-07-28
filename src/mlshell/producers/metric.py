@@ -1,14 +1,14 @@
 """
 The :mod:`mlshell.producers.metric` contains examples of `Metric` class to make
-empty metric object and `MetricProducer` class to fillit.
+empty metric object and `MetricProducer` class to fill it.
 
-`Metric` class proposes unified interface to work with underlying scorer.
-Intended to be used in `mlshell.Workflow`. Notably, it allow to pass custom
-kwargs while grid search. For new metric formats no need to edit `Workflow`
-class, only update `Metric` interface logic.
+:class:`mlshell.Metric` proposes unified interface to work with underlying
+scorer. Intended to be used in :class:`mlshell.Workflow`. For new metric
+formats no need to edit `Workflow` class, just adapt `Metric` interface logic.
 
-`MetricProducer` class specifies methods to make metric from custom function.
-Current implementation inherits sklearn.metric.make_scorer logic.
+:class:`mlshell.MetricProducer` specifies methods to make metric from custom
+function. Current implementation inherits :func:`sklearn.metrics.make_scorer`
+logic.
 
 """
 
@@ -23,42 +23,52 @@ __all__ = ['Metric', 'MetricProducer']
 
 
 class Metric(object):
+    """Unified pipeline interface.
+
+    Implements interface to access arbitrary scorer.
+    Interface: pprint and all underlying scorer methods.
+
+    Attributes
+    ----------
+    scorer: callable
+        Underlying scorer.
+    oid : str
+        Instance identifier.
+    score_func: callable
+        Scorer score function, return scalar value.
+    score_func_vector: callable
+        Scorer vectorized score function, return vector of values for all
+        samples.
+    greater_is_better : bool, optional (default=True)
+        Whether `score_func` is a score function (default), meaning high
+        is good, or a loss function, meaning low is good. In the latter
+        case, the scorer object should sign-flip the outcome of the
+        `score_func`.
+    needs_proba : bool, optional (default=False)
+        Whether `score_func` requires predict_proba to get probability
+        estimates out of a classifier.
+    needs_threshold : bool, default=False
+        Whether `score_func` takes a continuous decision certainty.
+        This only works for classification using estimators that
+        have either a decision_function or predict_proba method.
+    needs_custom_kwargs : bool, optional (default=False)
+        If True, before score evaluation extract scorer kwargs from pipeline
+        'pass_custom' step (if existed).
+
+    Notes
+    -----
+    Extended :term:`sklearn:scorer` object:
+
+    * Additional ``needs_custom_kwargs`` kwarg.
+     Allows to optimize custom scorer kwargs as hyper-parameters.
+    * Additional ``score_func_vector`` kwarg.
+     Allows to evaluate vectorized score for more detailed analyze.
+
+    """
     def __init__(self, scorer=None, oid=None, score_func=None,
                  score_func_vector=None, greater_is_better=True,
                  needs_proba=False, needs_threshold=False,
                  needs_custom_kwargs=False):
-        """Unified pipeline interface.
-
-        Implements interface to access arbitrary scorer.
-        Interface: pprint and all underlying scorer methods.
-
-        Attributes
-        ----------
-        scorer: callable
-            Scorer to pass in grid search optimizer.
-        oid : str
-            Instance identifier.
-        score_func: callable
-            Scorer`s underlying score function, return scalar value.
-        score_func_vector: callable
-            Scorer` underlying score function, return vector of values for all
-            samples.
-        greater_is_better : boolean, default=True
-            Whether `score_func` is a score function (default), meaning high
-            is good, or a loss function, meaning low is good. In the latter
-            case, the scorer object should sign-flip the outcome of the
-            `score_func`.
-        needs_proba : boolean, default=False
-            Whether `score_func` requires predict_proba to get probability
-            estimates out of a classifier.
-        needs_threshold : boolean, default=False
-            Whether `score_func` takes a continuous decision certainty.
-            This only works for binary classification using estimators that
-            have either a decision_function or predict_proba method.
-        needs_custom_kwargs : bool
-            If True, allow to pass kwargs while grid search for custom metric.
-
-        """
         self.scorer = scorer
         self.score_func = score_func
         self.score_func_vector = score_func_vector
@@ -83,8 +93,8 @@ class Metric(object):
 
     @property
     def kwargs(self):
-        """dict: Additional kwargs passed to `score_func` (unchanged if step
-        `pass_custom` not used)"""
+        """dict: Additional kwargs passed to `score_func`."""
+        # Unchanged if no `pass_custom` step in pipeline.
         return self.scorer._kwargs
 
     def pprint(self, score):
@@ -92,13 +102,13 @@ class Metric(object):
 
         Parameters
         ----------
-        score : arbitrary object
+        score : any object
             `score_func` output.
 
         Returns
         -------
         score : str
-            Ready to print result.
+            Input converted to string.
 
         """
         if self.score_func.__name__ == 'confusion_matrix':
@@ -128,14 +138,15 @@ class Metric(object):
 
 
 class MetricProducer(pycnfg.Producer):
-    """Class includes methods to produce scorer.
+    """Factory to produce metric.
 
     Interface: make.
 
     Parameters
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with resulted objects from previous executed producers:
+        {'section_id__config__id', object,}.
     oid : str
         Unique identifier of produced object.
     path_id : str
@@ -145,12 +156,13 @@ class MetricProducer(pycnfg.Producer):
 
     Attributes
     ----------
-    objects : dict {'section_id__config__id', object,}
-        Dictionary with resulted objects from previous executed producers.
+    objects : dict
+        Dictionary with resulted objects from previous executed producers:
+        {'section_id__config__id', object,}.
     oid : str
         Unique identifier of produced object.
-    logger : logger object
-        Default logger logging.getLogger().
+    logger : :class:`logging.Logger`
+        Logger.
     project_path: str
         Absolute path to project dir.
 
@@ -168,19 +180,27 @@ class MetricProducer(pycnfg.Producer):
 
         Parameters
         ----------
-        scorer : mlshell.Scorer interface
-        score_func : callback or str,
-            Custom function or sklearn built-in metric name.
+        scorer : :class:`mlshell.Metric`
+            Scorer object, will be updated.
+        score_func : callback or str
+            Custom function or key from :data:`sklearn.metrics.SCORERS` .
         score_func_vector: callback, optional (default=None)
             Vectorized `score_func` returning vector of values for all samples.
             Mainly for result visualization purpose.
-        needs_custom_kwargs : bool
-            If True, allow to pass kwargs while grid search for custom metric.
+        needs_custom_kwargs : bool, optional (default=False)
+            If True, before score evaluation extract scorer kwargs from
+            pipeline 'pass_custom' step (if existed).
         **kwargs : dict
-            Additional kwargs to pass in make_scorer (if not str `func`).
+            Additional kwargs to pass in :func:`sklearn.metrics.make_scorer`
+            (if ``score_func`` is not str).
+
+        Notes
+        -----
+        Extended :func:`sklearn.metrics.make_scorer` in compliance with
+        :class:`mlshell.Metric` .
 
         """
-        # Convert to scorer
+        # Convert to scorer.
         if isinstance(score_func, str):
             # built_in = sklearn.metrics.SCORERS.keys().
             # Ignore kwargs, built-in `str` metrics has hard-coded kwargs.
