@@ -35,7 +35,11 @@ http://nipy.org/nipy/devel/guidelines/sphinx_helpers.html
 # https://www.sphinx-doc.org/en/master/usage/extensions/linkcode.html
 
 # sphinx can`t wrap docstring under decorator:
-https://github.com/sphinx-doc/sphinx/issues/3783
+https://github.com/sphinx-doc/sphinx/issues/3783\
+
+# dict.
+https://stackoverflow.com/questions/7250659/how-to-use-python-to-programmatically-generate-part-of-sphinx-documentation
+https://stackoverflow.com/questions/62226358/how-to-reference-a-dict-with-sphinx-autodoc
 
 """
 
@@ -259,7 +263,8 @@ autosummary_imported_members = True
 # https://stackoverflow.com/questions/43983799/how-to-avoid-inherited-members-using-autosummary-and-custom-templates
 # https://stackoverflow.com/questions/28147432/how-to-customize-sphinx-ext-autosummary-rst-template
 # https://www.sphinx-doc.org/en/master/usage/extensions/autosummary.html
-
+# Autosummary methods currently only alphabetical possible.
+# https://github.com/sphinx-doc/sphinx/issues/5379
 
 # -- Options for intersphinx extension ---------------------------------------
 
@@ -293,6 +298,102 @@ intersphinx_mapping = {
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
+
+
+# -- Directives --------------------------------------------------------------
+# exec
+from os.path import basename
+
+from docutils import nodes, statemachine
+from docutils.parsers.rst import Directive
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
+
+
+class ExecDirective(Directive):
+    """Execute python code and insert the output into the document.
+
+    For example to pretty print dict:
+    .. exec::
+        import pprint
+        from some_module import dic
+        pprint(dic)
+    """
+    has_content = True
+
+    def run(self):
+        old_stdout, sys.stdout = sys.stdout, StringIO()
+
+        tab_width = self.options.get(
+            'tab-width', self.state.document.settings.tab_width)
+        source = self.state_machine.input_lines.source(
+            self.lineno - self.state_machine.input_offset - 1)
+        try:
+            exec('\n'.join(self.content))
+            text = sys.stdout.getvalue()
+            lines = statemachine.string2lines(text, tab_width,
+                                              convert_whitespace=True)
+            self.state_machine.insert_input(lines, source)
+            return []
+        except Exception:
+            return [nodes.error(
+                None,
+                nodes.paragraph(text=f"Unable to execute python code at "
+                                     f"{basename(source)}:{self.lineno}"),
+                nodes.paragraph(text=str(sys.exc_info()[1])))]
+        finally:
+            sys.stdout = old_stdout
+
+
+# pprint
+from importlib import import_module
+from docutils import nodes
+from sphinx import addnodes
+from inspect import getsource
+from docutils.parsers.rst import Directive
+
+
+class PrettyPrintIterable(Directive):
+    required_arguments = 1
+
+    def run(self):
+        def _get_iter_source(src, varname):
+            # 1. identifies target iterable by variable name,(cannot be spaced)
+            # 2. determines iter source code start & end by tracking brackets
+            # 3. returns source code between found start & end
+            start = end = None
+            open_brackets = closed_brackets = 0
+            for i, line in enumerate(src):
+                if line.startswith(varname):
+                    if start is None:
+                        start = i
+                if start is not None:
+                    open_brackets   += sum(line.count(b) for b in "([{")
+                    closed_brackets += sum(line.count(b) for b in ")]}")
+
+                if open_brackets > 0 \
+                        and (open_brackets - closed_brackets == 0):
+                    end = i + 1
+                    break
+            return '\n'.join(src[start:end])
+
+        module_path, member_name = self.arguments[0].rsplit('.', 1)
+        src = getsource(import_module(module_path)).split('\n')
+        code = _get_iter_source(src, member_name)
+
+        literal = nodes.literal_block(code, code)
+        literal['language'] = 'python'
+
+        return [addnodes.desc_name(text=member_name),
+                addnodes.desc_content('', literal)]
+
+
+def setup(app):
+    app.add_directive('exec', ExecDirective)
+    app.add_directive('pprint', PrettyPrintIterable)
+
 
 # -- Variables ---------------------------------------------------------------
 # Make variables available in .rst, but not possible to set in links.

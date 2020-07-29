@@ -440,10 +440,6 @@ class DataPreprocessor(object):
             # train = test = data
             train_index = test_index = data.index
         else:
-            shell_kw = ['func']
-            kwargs = copy.deepcopy(kwargs)
-            for kw in shell_kw:
-                kwargs.pop(kw)
             train, test, train_index, test_index = \
                 sklearn.model_selection.train_test_split(
                     data, data.index.values, **kwargs)

@@ -13,7 +13,7 @@ Logger
     :toctree: _pythonapi/
 
     LoggerProducer
-    LOGGER_CONFIG
+    .. LOGGER_CONFIG
 
 Pipeline
 --------
@@ -57,10 +57,13 @@ Utils
 Model selection
 ---------------
 
+.. rubric:: Classes
+
 .. autosummary::
     :toctree: _pythonapi/
 
     model_selection
+
 ..    model_selection.prediction
     model_selection.search
     model_selection.validation

@@ -1,4 +1,4 @@
-"""The module contains default configuration and pipeline steps."""
+"""The :mod:`mlshell.conf` contains default configuration."""
 
 
 import pycnfg
@@ -28,7 +28,7 @@ LOGGERS = {
         'patch': {},
         'priority': 2,
         'steps': [
-            ('make', {'logger_name': 'default'}),
+            ('make',),
         ],
     }
 }
@@ -146,6 +146,7 @@ WORKFLOWS = {
                    'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
                    'verbose': 1,
                    'pre_dispatch': 'n_jobs',
+                   'return_train_score': True,
                 },
                 'dirpath': None,
                 'dump_params': {},
@@ -159,7 +160,7 @@ WORKFLOWS = {
             }),
             ('dump', {'pipeline_id': 'default', 'dirpath': None}),
             ('predict', {
-                'pipeline_id': None,
+                'pipeline_id': 'default',
                 'dataset_id': 'default',
                 'subset_id': 'test',
                 'dirpath': None,
@@ -177,14 +178,7 @@ CNFG = {
     'metric': METRICS,
     'workflow': WORKFLOWS,
 }
-"""Default sections for ML task.
-
-For ML task, typical configuration:
-* Specify metrics.
-* Make or load pipelines / datasets objects.
-* Produce results (workflow), calling pipeline/dataset/metric methods.
-
-"""
+"""Default sections for ML task."""
 
 
 if __name__ == '__main__':

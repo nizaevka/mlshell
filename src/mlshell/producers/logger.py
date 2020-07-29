@@ -127,7 +127,7 @@ LOGGER_CONFIG = {
         },
     }
 }
-"""(dict) : Logger configuration for logging.config.dictConfig method.
+"""dict : Logger configuration for logging.config.dictConfig method.
 
 Levels of logging:
 
