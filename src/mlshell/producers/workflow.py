@@ -65,7 +65,7 @@ class Workflow(pycnfg.Producer):
     """
     _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, objects, oid, path_id='default', logger_id='default'):
+    def __init__(self, objects, oid, path_id='path__default', logger_id='logger__default'):
         pycnfg.Producer.__init__(self, objects, oid)
         self.logger = objects[logger_id]
         self.project_path = objects[path_id]
@@ -396,7 +396,7 @@ class Workflow(pycnfg.Producer):
                             f"    {fullpath}")
         return res
 
-    def predict(self, res, pipeline_id, dataset_id, subset_id='test',
+    def predict(self, res, pipeline_id, dataset_id, subset_id='',
                 dirpath=None, **kwargs):
         """Make and dump prediction.
 

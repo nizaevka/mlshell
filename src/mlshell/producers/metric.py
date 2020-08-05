@@ -30,13 +30,13 @@ class Metric(object):
 
     Attributes
     ----------
-    scorer: callable
+    scorer: callable, optional (default=None)
         Underlying scorer.
-    oid : str
+    oid : str, optional (default=None)
         Instance identifier.
-    score_func: callable
+    score_func: callable, optional (default=None)
         Scorer score function, return scalar value.
-    score_func_vector: callable
+    score_func_vector: callable, optional (default=None)
         Scorer vectorized score function, return vector of values for all
         samples.
     greater_is_better : bool, optional (default=True)
@@ -47,7 +47,7 @@ class Metric(object):
     needs_proba : bool, optional (default=False)
         Whether `score_func` requires predict_proba to get probability
         estimates out of a classifier.
-    needs_threshold : bool, default=False
+    needs_threshold : bool, optional (default=False)
         Whether `score_func` takes a continuous decision certainty.
         This only works for classification using estimators that
         have either a decision_function or predict_proba method.
@@ -169,7 +169,7 @@ class MetricProducer(pycnfg.Producer):
     """
     _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, objects, oid, path_id='default', logger_id='default'):
+    def __init__(self, objects, oid, path_id='path__default', logger_id='logger__default'):
         pycnfg.Producer.__init__(self, objects, oid)
         self.logger = objects[logger_id]
         self.project_path = objects[path_id]

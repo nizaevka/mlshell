@@ -55,13 +55,13 @@ class Dataset(dict):
         Extracted auxiliary information from data: {
 
         'index': list
-            List of index label(s).
+            List of index column label(s).
         'features': list
-            List of feature label(s).
+            List of feature column label(s).
         'categoric_features': list
-            List of categorical feature label(s).
+            List of categorical feature column label(s).
         'targets': list
-            List of target label(s),
+            List of target column label(s),
         'indices': list
             List of rows indices.
         'classes': list of :class:`numpy.ndarray`
@@ -278,7 +278,8 @@ class DataPreprocessor(object):
         dataset : :class:`mlshell.Dataset`
             Raw dataset: {'data': :class:`pandas.DataFrame` }.
         targets_names: list
-            List of targets columns names in raw dataset.
+            List of targets columns names in raw dataset. Even if no exist,
+            will be used to name predictions in ``dataset.dump_pred``  .
         features_names: list, optional (default=None)
             List of features columns names in raw dataset. If None, all except
             targets.
@@ -307,13 +308,13 @@ class DataPreprocessor(object):
                 {
 
                 'index': list
-                    List of index label(s).
+                    List of index column label(s).
                 'features': list
-                    List of feature label(s).
+                    List of feature column label(s).
                 'categoric_features': list
-                    List of categorical feature label(s).
+                    List of categorical feature column label(s).
                 'targets': list
-                    List of target label(s),
+                    List of target column label(s),
                 'indices': list
                     List of rows indices.
                 'classes': list of :class:`numpy.ndarray`
@@ -361,10 +362,11 @@ class DataPreprocessor(object):
             pos_labels = []
 
         index = raw.index
-        targets, raw_info_targets =\
+        targets_df, raw_info_targets =\
             self._process_targets(raw, targets_names, pos_labels)
-        features, raw_info_features =\
+        features_df, raw_info_features =\
             self._process_features(raw, features_names, categor_names)
+        data = self._combine(index, targets_df, features_df)
         meta = {
             'index': index.name,
             'indices': list(index),
@@ -374,7 +376,6 @@ class DataPreprocessor(object):
             **raw_info_features,
             **raw_info_targets,
         }
-        data = self._combine(index, targets, features, meta)
         dataset.update({'data': data,
                         'meta': meta,
                         'subsets': {},
@@ -452,39 +453,38 @@ class DataPreprocessor(object):
     # ============================== preprocess ===============================
     def _process_targets(self, raw, target_names, pos_labels):
         """Targets preprocessing."""
-        targets_df = raw[target_names]
+        try:
+            targets_df = raw[target_names]
+        except KeyError:
+            targets_df = pd.DataFrame()
         targets_df, classes, pos_labels, pos_labels_ind =\
             self._unify_targets(targets_df, pos_labels)
-        targets = targets_df.values
+        # targets = targets_df.values
         raw_info_targets = {
             'classes': classes,
             'pos_labels': pos_labels,
             'pos_labels_ind': pos_labels_ind,
         }
-        return targets, raw_info_targets
+        return targets_df, raw_info_targets
 
     def _process_features(self, raw, features_names, categor_names):
         """Features preprocessing."""
         features_df = raw[features_names]
         features_df, categoric_ind_name, numeric_ind_name \
             = self._unify_features(features_df, categor_names)
-        features = features_df.values
+        # features = features_df.values
         raw_info_features = {
             'categoric_ind_name': categoric_ind_name,
-            'numeric_ind_name': numeric_ind_name,}
-        return features, raw_info_features
+            'numeric_ind_name': numeric_ind_name, }
+        return features_df, raw_info_features
 
-    def _combine(self, index, targets, features, meta):
+    def _combine(self, index, targets_df, features_df):
         """Combine preprocessed sub-data."""
-        columns = meta['features']
-        df = pd.DataFrame(
-            data=features,
-            index=index,
-            columns=columns,
-            copy=False,
-        ).rename_axis(meta['index'])
-        df.insert(loc=0, column='targets', value=targets)
-        return df
+        # targets_df empty dataframe or None is possible
+        return pd.concat(
+            [targets_df, features_df],
+            axis=1,
+        )
 
     def _unify_targets(self, targets, pos_labels=None):
         """Unify input targets.
@@ -658,17 +658,20 @@ class DataPreprocessor(object):
         ----------
         data : :class:`pandas.DataFrame`
             Dataframe to check.
-        del_gaps : bool
+        del_gaps : bool, optional (default=False)
             If True, delete rows with gaps from `nongap_columns` list.
             If False, raise Exception when `nongap_columns` contain gaps.
-        nogap_columns : list
-            Columns where gaps are forbidden: ['column_1', ..]. if None, empty.
+        nogap_columns : list, optional (default=None)
+            Columns where gaps are forbidden: ['column_1', ..]. if None, [].
 
         Notes
         -----
-        Use del_geps=True only before generating dataset `meta`.
+        Use del_geps=True only before generating dataset `meta` (preprocess).
 
         """
+        if nogap_columns is None:
+            nogap_columns = []
+
         gaps_number = data.size - data.count().sum()
         columns_with_gaps_dic = {}
         if gaps_number > 0:
@@ -724,7 +727,7 @@ class DatasetProducer(pycnfg.Producer, DataIO, DataPreprocessor):
     """
     _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, objects, oid, path_id='default', logger_id='default'):
+    def __init__(self, objects, oid, path_id='path__default', logger_id='logger__default'):
         pycnfg.Producer.__init__(self, objects, oid)
         self.logger = objects[logger_id]
         self.project_path = objects[path_id]

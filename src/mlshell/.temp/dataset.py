@@ -1,3 +1,26 @@
+def _combine(self, index, targets, features, meta):
+    """Combine preprocessed sub-data."""
+    # [deprecated] not need to recreate.
+    return pd.concat(
+        [
+            pd.DataFrame(
+                data=targets,
+                index=index,
+                columns=meta['targets'],
+                copy=False,
+            ),
+            pd.DataFrame(
+                data=features,
+                index=index,
+                columns=meta['features'],
+                copy=False,
+            ).rename_axis(meta['index']),
+        ],
+        axis=1,
+    )
+    # [deprecated] only for one column.
+    # df.insert(loc=0, column=meta['targets'], value=targets)
+
 def split(self):
     """Split dataset on train and test.
 

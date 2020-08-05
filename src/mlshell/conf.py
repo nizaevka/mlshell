@@ -42,43 +42,23 @@ PIPELINES = {
         'patch': {},
         'priority': 3,
         'steps': [
-            ('make', {
-                'estimator_type': 'regressor',
-                'estimator': sklearn.linear_model.LinearRegression(),
-                'th_step': False,
-            }),
+            ('make', ),
         ],
     },
 }
 
 
 METRICS = {
-    'accuracy': {
+    'default': {
         'init': mlshell.Metric,
         'producer': mlshell.MetricProducer,
         'global': {},
         'patch': {},
         'priority': 3,
         'steps': [
-            ('make', {
-                'score_func': sklearn.metrics.accuracy_score,
-                'greater_is_better': True,
-            }),
+            ('make', ),
         ],
     },
-    'r2': {
-        'init': mlshell.Metric,
-        'producer': mlshell.MetricProducer,
-        'global': {},
-        'patch': {},
-        'priority': 3,
-        'steps': [
-            ('make', {
-                'score_func': sklearn.metrics.r2_score,
-                'greater_is_better': True,
-            }),
-        ],
-    }
 }
 
 
@@ -90,10 +70,10 @@ DATASETS = {
         'patch': {},
         'priority': 3,
         'steps': [
-            ('load', {'filepath': './data/train.csv'}),
-            ('preprocess', {'target_names': ['targets']}),
-            ('info', {}),
-            ('split', {}),
+            ('load', ),
+            ('info', ),
+            ('preprocess', ),
+            ('split',),
         ],
     },
 }
@@ -106,65 +86,11 @@ WORKFLOWS = {
         'patch': {},
         'priority': 4,
         'steps': [
-            ('fit', {
-                'pipeline_id': 'default',
-                'dataset_id': 'default',
-                'subset_id': 'train',
-                'hp': {},
-                'resolver': mlshell.model_selection.Resolver,
-                'resolve_params': {},
-                'fit_params': {},
-            }),
-            ('optimize', {
-                'pipeline_id': 'default',
-                'dataset_id': 'default',
-                'subset_id': 'train',
-                'hp_grid': {},
-                'scoring': ['r2'],
-                'fit_params': {},
-                'resolver': mlshell.model_selection.Resolver,
-                'resolve_params': {
-                    'estimate__apply_threshold__threshold': {
-                        'cross_val_predict': {
-                            'method': 'predict_proba',
-                            'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
-                            'fit_params': {},
-                        },
-                        'calc_th_range': {
-                            'metric': None,
-                            'sampler': None,
-                            'samples': 10,
-                            'plot_flag': False,
-                        },
-                    },
-                },
-                'optimizer': mlshell.model_selection.RandomizedSearchOptimizer,
-                'gs_params': {
-                   'n_iter': None,
-                   'n_jobs': 1,
-                   'refit': ['r2'],
-                   'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True),
-                   'verbose': 1,
-                   'pre_dispatch': 'n_jobs',
-                   'return_train_score': True,
-                },
-                'dirpath': None,
-                'dump_params': {},
-            }),
-            ('validate', {
-                'pipeline_id': 'default',
-                'dataset_id': 'default',
-                'subset_id': ['train', 'test'],
-                'metric_id': ['r2'],
-                'validator': None,
-            }),
-            ('dump', {'pipeline_id': 'default', 'dirpath': None}),
-            ('predict', {
-                'pipeline_id': 'default',
-                'dataset_id': 'default',
-                'subset_id': 'test',
-                'dirpath': None,
-            }),
+            ('fit', ),
+            ('optimize', ),
+            ('validate', ),
+            ('predict', ),
+            ('dump', ),
         ],
     },
 }

@@ -180,7 +180,7 @@ class LoggerProducer(pycnfg.Producer):
     """
     _required_parameters = ['objects', 'oid', 'path_id']
 
-    def __init__(self, objects, oid, path_id='default'):
+    def __init__(self, objects, oid, path_id='path__default'):
         super().__init__(objects, oid)
         self.project_path = objects[path_id]
 
