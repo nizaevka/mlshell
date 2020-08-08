@@ -35,6 +35,9 @@ description below.
 See `Examples. <Examples.html>`_
 
 .. note::
+    Arbitrary objects could be pre-accommodated in :func:`pycnfg.run`, so no
+    need to always specify objects via configurations.
+
     Each produce inherits from :class:`pycnfg.Producer` , that including
     load_cache/dump_cache methods to load/dump intermediate object state.
     The producers methods can be extended/rewrited either explicit in source
@@ -47,6 +50,7 @@ See `Examples. <Examples.html>`_
 
         * objects hash alteration.
         * numpy errors.
+
 
 Sections
 ^^^^^^^^

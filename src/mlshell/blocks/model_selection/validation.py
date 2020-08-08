@@ -105,7 +105,7 @@ class Validator(object):
             if hasattr(pipeline, 'steps'):
                 for step in pipeline.steps:
                     if step[0] == 'pass_custom':
-                        temp = step[1].kwargs.get(metric.oid, {})
+                        temp = step[1].kw_args.get(metric.oid, {})
                         metric.kwargs.update(temp)
         # Score.
         score = metric.score_func(y, y_pred, **metric.kwargs)

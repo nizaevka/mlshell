@@ -93,7 +93,7 @@ class Dataset(dict):
         super().__init__(*args, **kwargs)
 
     def __hash__(self):
-        return pd.util.hash_pandas_object(self['data']).sum()
+        return hash(pd.util.hash_pandas_object(self['data']).sum())
 
     @property
     def oid(self):
@@ -160,11 +160,11 @@ class Dataset(dict):
             Full filepath.
 
         """
-        y_true = self.y
+        meta = self.meta
         # Recover original index and names.
-        obj = pd.DataFrame(index=y_true.index.values,
-                           data={zip(y_true.columns, y_pred)})\
-            .rename_axis(y_true.index.name)
+        obj = pd.DataFrame(index=meta['indices'],
+                           data={zip(meta['targets'], y_pred)})\
+            .rename_axis(meta['index'])
         fullpath = f"{filepath}_pred.csv"
         with open(fullpath, 'w', newline='') as f:
             obj.to_csv(f, mode='w', header=True,
@@ -220,7 +220,6 @@ class DataIO(object):
         If `nrow` > lines in file, auto set to None.
 
         """
-        self.logger.info("    |__ LOAD DATA")
         if filepath.startswith('./'):
             filepath = "{}/{}".format(self.project_path, filepath[2:])
 
@@ -287,11 +286,12 @@ class DataPreprocessor(object):
             List of categorical features(also binary) identifiers in raw
             dataset. If None, empty list.
         pos_labels: list, optional (default=None)
-            Classification only, list of "positive" labels for targets.
+            Classification only, list of "positive" labels in target(s).
             Could be used in :func:`sklearn.metrics.roc_curve` for
-            threshold analysis  and metrics evaluation if classifiers supported
+            threshold analysis  and metrics evaluation when classifier supports
             ``predict_proba``. If None, for each target last label in
-            :func:`numpy.unique` is used .
+            :func:`numpy.unique` is used . For regression set [] to prevent
+            evaluation.
         **kwargs : dict
             Additional parameters to add in dataset.
 
@@ -352,14 +352,14 @@ class DataPreprocessor(object):
         * Cast values to np.float64.
 
         """
-        self.logger.info("    |__ PREPROCESS DATA")
         raw = dataset['data']
         if categor_names is None:
             categor_names = []
         if features_names is None:
             features_names = [c for c in raw.columns if c not in targets_names]
-        if pos_labels is None:
-            pos_labels = []
+        for i in (targets_names, features_names, categor_names):
+            if not isinstance(i, list):
+                raise TypeError(f"{i} should be a list.")
 
         index = raw.index
         targets_df, raw_info_targets =\
@@ -433,7 +433,6 @@ class DataPreprocessor(object):
         No copy takes place.
 
         """
-        self.logger.info("|__  SPLIT DATA")
         data = dataset['data']
 
         if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
@@ -456,6 +455,8 @@ class DataPreprocessor(object):
         try:
             targets_df = raw[target_names]
         except KeyError:
+            self.logger.warning(f"No target column(s) found in df:\n"
+                                f"    {target_names}")
             targets_df = pd.DataFrame()
         targets_df, classes, pos_labels, pos_labels_ind =\
             self._unify_targets(targets_df, pos_labels)
@@ -499,7 +500,8 @@ class DataPreprocessor(object):
             Classification only, list of "positive" labels for targets.
             Could be used for threshold analysis (roc_curve) and metrics
             evaluation if classifiers supported predict_proba. If None, last
-            label in :func:`numpy.unique` for each target used.
+            label in :func:`numpy.unique` for each target used. For regression
+            set [] to prevent evaluation.
 
         Returns
         -------
@@ -514,6 +516,13 @@ class DataPreprocessor(object):
             for target(s) (n_outputs,).
 
         """
+        # Resgression.
+        if isinstance(pos_labels, list) and not pos_labels:
+            classes = []
+            pos_labels_ind = []
+            return targets, classes, pos_labels, pos_labels_ind
+
+        # Classification.
         # Find classes, example: [array([1]), array([2, 7])].
         classes = [np.unique(j) for i, j in targets.iteritems()]
         if pos_labels is None:
@@ -523,10 +532,12 @@ class DataPreprocessor(object):
             # Find where pos_labels in sorted labels, example: [1, 0].
             pos_labels_ind = [np.where(classes[i] == pos_labels[i])[0][0]
                               for i in range(len(classes))]
-        self.logger.info(
-            f"Labels {pos_labels} identified as positive:\n"
-            f"    for classifiers supported predict_proba:"
-            f" if P(pos_labels)>threshold, prediction=pos_labels on sample.")
+        # Could be no target columns in new data.
+        self.logger.debug(
+            f"Labels {pos_labels} identified as positive for target(s):\n"
+            f"    when classifier supports predict_proba: prediction="
+            f"pos_label on sample, if P(pos_label) > classification "
+            f"threshold.")
         return targets, classes, pos_labels, pos_labels_ind
 
     def _unify_features(self, features, categor_names):
@@ -562,15 +573,15 @@ class DataPreprocessor(object):
         for ind, column_name in enumerate(features):
             if column_name in categor_names:
                 # Fill gaps with 'unknown', inplace unreliable (copy!)
-                features[column_name] = features[column_name]\
+                features.loc[:, column_name] = features[column_name]\
                     .fillna(value='unknown', method=None, axis=None,
                             inplace=False, limit=None, downcast=None)
                 # Cast dtype to str (copy!).
-                features[column_name] = features[column_name].astype(str)
+                features.loc[:, column_name] = features[column_name].astype(str)
                 # Encode
                 encoder = sklearn.preprocessing.\
                     OrdinalEncoder(categories='auto')
-                features[column_name] = encoder\
+                features.loc[:, column_name] = encoder\
                     .fit_transform(features[column_name]
                                    .values.reshape(-1, 1))
                 # Generate {index: ('feature_id', ['B','A','C'])}.
@@ -579,9 +590,9 @@ class DataPreprocessor(object):
                                            encoder.categories_[0].tolist())
             else:
                 # Fill gaps with np.nan.
-                features[column_name].fillna(value=np.nan, method=None,
-                                             axis=None, inplace=True,
-                                             downcast=None)
+                features.loc[:, column_name].fillna(value=np.nan, method=None,
+                                                    axis=None, inplace=True,
+                                                    downcast=None)
                 # Generate {'index': ('feature_id',)}.
                 numeric_ind_name[ind] = (column_name,)
         # Cast to np.float64 without copy.
@@ -727,10 +738,10 @@ class DatasetProducer(pycnfg.Producer, DataIO, DataPreprocessor):
     """
     _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, objects, oid, path_id='path__default', logger_id='logger__default'):
-        pycnfg.Producer.__init__(self, objects, oid)
-        self.logger = objects[logger_id]
-        self.project_path = objects[path_id]
+    def __init__(self, objects, oid, path_id='path__default',
+                 logger_id='logger__default'):
+        pycnfg.Producer.__init__(self, objects, oid, path_id=path_id,
+                                 logger_id=logger_id)
         DataIO.__init__(self, self.project_path, self.logger)
         DataPreprocessor.__init__(self, self.project_path, self.logger)
 

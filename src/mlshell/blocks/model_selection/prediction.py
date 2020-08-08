@@ -68,8 +68,8 @@ class ThresholdClassifier(sklearn.base.BaseEstimator,
         for some sample, classifier predict pos_label, else label in neg_labels
         with max probability.
 
-    **kwargs : dict
-        {
+    kw_args : dict
+        Parameters combined in dictionary to set together. {
 
         'classes': list of :class:`numpy.ndarray`
             List of sorted unique labels for each target(s) (n_outputs,
@@ -87,10 +87,10 @@ class ThresholdClassifier(sklearn.base.BaseEstimator,
         https://github.com/scikit-learn/scikit-learn/pull/16525.
 
     """
-    def __init__(self, threshold=None, **kwargs):
-        self.classes = kwargs['classes']
-        self.pos_labels = kwargs['pos_labels']
-        self.pos_labels_ind = kwargs['pos_labels_ind']
+    def __init__(self, threshold=None, kw_args={}):
+        self.classes = kw_args['classes']
+        self.pos_labels = kw_args['pos_labels']
+        self.pos_labels_ind = kw_args['pos_labels_ind']
         self.threshold = threshold
         if any(not isinstance(i, np.ndarray) for i in self.classes):
             raise ValueError("Each target 'classes' should be numpy.ndarray.")

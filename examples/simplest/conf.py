@@ -51,7 +51,7 @@ CNFG = {
                 # Train 'lgbm' pipeline on 'train' subset of 'train' dataset
                 # with zero position hp from 'hp_grid'.
                 ('fit', {
-                    'pipeline_id': 'pipeline__lgbm',
+                    'pipeline_id': 'pipeline__sgd',
                     'dataset_id': 'dataset__train',
                     'subset_id': 'train',
                     'hp': hp_grid,
@@ -60,15 +60,15 @@ CNFG = {
                 # on hp combinations from 'hp_grid'. Score and refit on 'r2'
                 # scorer.
                 ('optimize', {
-                    'pipeline_id': 'pipeline__lgbm',
+                    'pipeline_id': 'pipeline__sgd',
                     'dataset_id': 'dataset__train',
                     'subset_id': 'train',
+                    'metric_id': ['metric__r2', 'metric__mse'],
                     'hp_grid': hp_grid,
-                    'scoring': ['r2'],
                     'gs_params': {
                         'n_iter': None,
                         'n_jobs': 1,
-                        'refit': ['r2'],
+                        'refit': 'metric__r2',
                         'cv': sklearn.model_selection.KFold(n_splits=3,
                                                             shuffle=True),
                         'verbose': 1,
@@ -79,19 +79,19 @@ CNFG = {
                 # Validate 'lgbm' pipeline on 'train' and 'test' subsets of
                 # 'train' dataset with 'r2' scorer.
                 ('validate', {
-                    'pipeline_id': 'pipeline__lgbm',
+                    'pipeline_id': 'pipeline__sgd',
                     'dataset_id': 'dataset__train',
                     'subset_id': ['train', 'test'],
-                    'metric_id': ['r2'],
+                    'metric_id': ['metric__r2'],
                 }),
                 # Predict with 'lgbm' pipeline on whole 'test' dataset.
                 ('predict', {
-                    'pipeline_id': 'pipeline__lgbm',
+                    'pipeline_id': 'pipeline__sgd',
                     'dataset_id': 'dataset__test',
                     'subset_id': '',
                 }),
                 # Dump 'lgbm' pipeline on disk.
-                ('dump', {'pipeline_id': 'pipeline__lgbm',
+                ('dump', {'pipeline_id': 'pipeline__sgd',
                           'dirpath': None}),
             ],
         },
@@ -103,8 +103,7 @@ CNFG = {
                     'estimator_type': 'regressor',
                     'estimator': sklearn.linear_model.SGDRegressor(
                         penalty='elasticnet', l1_ratio=1, shuffle=False,
-                        max_iter=1000,
-                        alpha=0.02),
+                        max_iter=1000, alpha=0.02),
                 }),
             ],
         },
@@ -143,7 +142,7 @@ CNFG = {
             'steps': [
                 ('load', {'filepath': './data/train.csv'}),
                 ('info',),
-                ('preprocess', {'targets_names': ['targets'],
+                ('preprocess', {'targets_names': ['wage',],
                                 'categor_names': ['union', 'goodhlth',
                                                   'black', 'female',
                                                   'married', 'service']}),
@@ -157,7 +156,7 @@ CNFG = {
                 ('preprocess', {'categor_names': ['union', 'goodhlth',
                                                   'black', 'female',
                                                   'married', 'service'],
-                                'targets_names': ['targets']}),
+                                'targets_names': ['wage',]}),
             ],
         },
     },
@@ -165,4 +164,5 @@ CNFG = {
 
 
 if __name__ == '__main__':
-    pycnfg.run(CNFG, dcnfg=mlshell.CNFG)
+    pycnfg.run(CNFG, dcnfg=mlshell.CNFG,
+               objects={'path__default': pycnfg.find_path()})

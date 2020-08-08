@@ -55,29 +55,29 @@ class Resolver(object):
         -----
         Currently supported hp_name for :class:`mlshell.pipeline.Steps` :
 
-        ``process_parallel__pipeline_categoric__select_columns__kwargs``
+        ``process_parallel__pipeline_categoric__select_columns__kw_args``
             dataset.meta['categoric_ind_name'].
-        ``process_parallel__pipeline_numeric__select_columns__kwargs``
+        ``process_parallel__pipeline_numeric__select_columns__kw_args``
             dataset.meta['numeric_ind_name'].
         ``estimate__apply_threshold__threshold``
             ``Resolver.th_resolver()``.
-        ``estimate__apply_threshold__kwargs``
+        ``estimate__apply_threshold__kw_args``
             {i: dataset.meta[i]
             for i in ['pos_labels_ind', 'pos_labels', 'classes']}
 
         """
         flag = True
         if hp_name ==\
-                'process_parallel__pipeline_categoric__select_columns__kwargs':
+                'process_parallel__pipeline_categoric__select_columns__kw_args':
             categoric_ind_name = dataset.meta['categoric_ind_name']
             value = {'indices': list(categoric_ind_name.keys())}
         elif hp_name ==\
-                'process_parallel__pipeline_numeric__select_columns__kwargs':
+                'process_parallel__pipeline_numeric__select_columns__kw_args':
             numeric_ind_name = dataset.meta['numeric_ind_name']
             value = {'indices': list(numeric_ind_name.keys())}
         elif hp_name == 'estimate__apply_threshold__threshold':
             value = self.th_resolver(pipeline, dataset, **kwargs)
-        elif hp_name == 'estimate__apply_threshold__kwargs':
+        elif hp_name == 'estimate__apply_threshold__kw_args':
             value = {i: dataset.meta[i]
                      for i in ['pos_labels_ind', 'pos_labels', 'classes']}
         else:

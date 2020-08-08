@@ -62,11 +62,12 @@ class Pipeline(object):
     def __getattr__(self, name):
         """Redirect unknown methods to pipeline object."""
         def wrapper(*args, **kwargs):
-            getattr(self.pipeline, name)(*args, **kwargs)
+            return getattr(self.pipeline, name)(*args, **kwargs)
         return wrapper
 
     def __hash__(self):
-        return str(self.pipeline.get_params())
+        s = str(self.pipeline.get_params())
+        return hash(s)
 
     def fit(self, *args, **kwargs):
         """Fit pipeline."""
@@ -139,10 +140,10 @@ class PipelineProducer(pycnfg.Producer):
     """
     _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, objects, oid, path_id='path__default', logger_id='logger__default'):
-        pycnfg.Producer.__init__(self, objects, oid)
-        self.logger = objects[logger_id]
-        self.project_path = objects[path_id]
+    def __init__(self, objects, oid, path_id='path__default',
+                 logger_id='logger__default'):
+        pycnfg.Producer.__init__(self, objects, oid, path_id=path_id,
+                                 logger_id=logger_id)
 
     def make(self, pipeline, steps=None, memory=None, **kwargs):
         """Create pipeline from steps.
@@ -167,12 +168,9 @@ class PipelineProducer(pycnfg.Producer):
             Resulted pipeline.
 
         """
-        self.logger.info("|__  CREATE PIPELINE")
         steps = self._steps_resolve(steps, **kwargs)
         memory = self._memory_resolve(memory)
         pipeline.pipeline = sklearn.pipeline.Pipeline(steps, memory=memory)
-        sklearn.utils.estimator_checks.check_estimator(pipeline.pipeline,
-                                                       generate_only=False)
         return pipeline
 
     def load(self, pipeline, filepath, **kwargs):
@@ -194,7 +192,6 @@ class PipelineProducer(pycnfg.Producer):
             Resulted pipeline.
 
         """
-        self.logger.info("|__  LOAD PIPELINE")
         if filepath.startswith('./'):
             filepath = f"{self.project_path}/{filepath[2:]}"
 
@@ -236,7 +233,7 @@ class PipelineProducer(pycnfg.Producer):
             steps = steps
         else:
             if steps is None:
-                clss = mlshell.pipeline.PipelineSteps
+                clss = mlshell.pipeline.Steps
             else:
                 clss = steps
             steps = clss(**kwargs).steps
@@ -245,7 +242,7 @@ class PipelineProducer(pycnfg.Producer):
     def _memory_resolve(self, memory):
         if memory == 'auto':
             memory = f"{self.project_path}/.temp/pipeline"
-        if not os.path.exists(memory):
+        if memory is not None and not os.path.exists(memory):
             # Create temp dir for cache if not exist.
             os.makedirs(memory)
         return memory

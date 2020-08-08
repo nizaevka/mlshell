@@ -53,7 +53,7 @@ class Optimizer(object):
     def __getattr__(self, name):
         """Redirect unknown methods to optimizer object."""
         def wrapper(*args, **kwargs):
-            getattr(self.pipeline, name)(*args, **kwargs)
+            getattr(self.optimizer, name)(*args, **kwargs)
         return wrapper
 
     def __hash__(self):
@@ -83,7 +83,7 @@ class Optimizer(object):
                     List of ``cv_results_['params']`` for all runs in stages.
                 'best_params_' : dict
                     Best estimator tuned params from all optimization stages.
-                'best_estimator_' : :class:`sklearn.base.BaseEstimator`
+                'best_estimator_' : :mod:`sklearn` estimator
                     Best estimator ``optimizer.best_estimator_`` if exist, else
                     ``optimizer.estimator.set_params(**best_params_))`` (
                     if not 'refit' is True).
@@ -274,7 +274,7 @@ class Optimizer(object):
         # Make list of get_params() for each run.
         lis = list(range(len(runs['params'])))
         # Clone params (not attached data).
-        est_clone = sklearn.clone(pipeline)
+        est_clone = sklearn.clone(pipeline.pipeline)
         for i, param in enumerate(runs['params']):
             est_clone.set_params(**param)
             lis[i] = est_clone.get_params()
@@ -302,14 +302,14 @@ class RandomizedSearchOptimizer(Optimizer):
 
     Parameters
     ----------
-    pipeline:
+    pipeline: :mod:`sklearn` estimator
         See corresponding argument for
         :class:`sklearn.model_selection.RandomizedSearchCV`.
     hp_grid: dict
         See corresponding argument for
         :class:`sklearn.model_selection.RandomizedSearchCV`.
         Only `dict` type for ``hp_grid`` currently supported.
-    scoring:
+    scoring:  string, callable, list/tuple, dict, optional (default=None)
         See corresponding argument for
         :class:`sklearn.model_selection.RandomizedSearchCV`.
     **kwargs : dict
@@ -350,13 +350,13 @@ class MockOptimizer(RandomizedSearchOptimizer):
 
     Parameters
     ----------
-    pipeline:
+    pipeline: :mod:`sklearn` estimator
         See corresponding argument for
         :class:`sklearn.model_selection.RandomizedSearchCV`.
     hp_grid : dict
         Specify only ``hp`` supported mock optimization. If {}, used:
         :class:`mlshell.custom.MockEstimator`.
-    scoring:
+    scoring: string, callable, list/tuple, dict, optional (default=None)
         See corresponding argument for
         :class:`sklearn.model_selection.RandomizedSearchCV`.
     method : str {'predict_proba', 'predict'}

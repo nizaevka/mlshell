@@ -88,7 +88,7 @@ class Metric(object):
     def __getattr__(self, name):
         """Redirect unknown methods to scorer object."""
         def wrapper(*args, **kwargs):
-            getattr(self.scorer, name)(*args, **kwargs)
+            return getattr(self.scorer, name)(*args, **kwargs)
         return wrapper
 
     @property
@@ -133,8 +133,8 @@ class Metric(object):
         if hasattr(estimator, 'steps'):
             for step in estimator.steps:
                 if step[0] == 'pass_custom':
-                    temp = step[1].kwargs.get(self.oid, {})
-                    self.scorer._kwargs.update(temp)
+                    temp = step[1].kw_args.get(self.oid, {})
+                    self.kwargs.update(temp)
 
 
 class MetricProducer(pycnfg.Producer):
@@ -169,10 +169,10 @@ class MetricProducer(pycnfg.Producer):
     """
     _required_parameters = ['objects', 'oid', 'path_id', 'logger_id']
 
-    def __init__(self, objects, oid, path_id='path__default', logger_id='logger__default'):
-        pycnfg.Producer.__init__(self, objects, oid)
-        self.logger = objects[logger_id]
-        self.project_path = objects[path_id]
+    def __init__(self, objects, oid, path_id='path__default',
+                 logger_id='logger__default'):
+        pycnfg.Producer.__init__(self, objects, oid, path_id=path_id,
+                                 logger_id=logger_id)
 
     def make(self, scorer, score_func, score_func_vector=None,
              needs_custom_kwargs=False, **kwargs):

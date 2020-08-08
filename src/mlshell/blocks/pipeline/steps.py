@@ -4,36 +4,13 @@
 import inspect
 
 import mlshell
-import numba
 import numpy as np
 import pandas as pd
 import sklearn
+import sklearn.impute
+import sklearn.compose
 
 __all__ = ['Steps']
-
-
-@numba.njit
-def _isbinary_columns(arr: np.ndarray) -> np.ndarray:
-    """Check if columns in 2d array is binary.
-
-    Parameters
-    ----------
-    arr: 2d array of shape [rows X columns]
-        Array to check.
-
-    Returns
-    -------
-    result: bool np.ndarray of shape [columns]
-        "i" element is True if "i" column is binary else False.
-
-    """
-    is_binary = np.ones(arr.shape[1], dtype=np.bool, order='contigious')
-    for ind in np.arange(is_binary.shape[0]):
-        for v in np.nditer(arr):
-            if v.item() != 0 and v.item() != 1:
-                is_binary[ind] = False
-                break
-    return is_binary
 
 
 class Steps(object):
@@ -41,43 +18,48 @@ class Steps(object):
 
     Parameters
     ----------
-    estimator : sklearn estimator
+    estimator : :mod:`sklearn` estimator
         Estimator to use in the last step.
-        If `estimator_type`='regressor':
-        sklearn.compose.TransformedTargetRegressor(regressor=`estimator`)
-        If `estimator_type`='classifier' and `th_step`=True:
-        sklearn.pipeline.Pipeline(steps=[
+        If ``estimator_type=regressor``:
+        ``sklearn.compose.TransformedTargetRegressor(regressor=`estimator`)``
+        If ``estimator_type=classifier`` and ``th_step=True``:
+        ``sklearn.pipeline.Pipeline(steps=[
             ('predict_proba',
                 mlshell.model_selection.PredictionTransformer(`estimator`)),
             ('apply_threshold',
                 mlshell.model_selection.ThresholdClassifier(threshold=0.5,
                                                    kwargs='auto')),
-                    ])
-        If `estimator_type`='classifier' and `th_step`=False:
-        sklearn.pipeline.Pipeline(steps=[('classifier', `estimator`)])
-    estimator_type : str
-        'estimator` or 'regressor'.
+                    ])``
+        If ``estimator_type=classifier`` and ``th_step=False``:
+        ``sklearn.pipeline.Pipeline(steps=[('classifier', `estimator`)])``
+    estimator_type : str {'classifier`, 'regressor'}
+         Either regression or classification task.
     th_step : bool
-        If True and 'classifier', `mlshell.model_selection.ThresholdClassifier`
-        sub-step added.
+        If True and ``estimator_type=classifier``: ``mlshell.model_selection.
+        ThresholdClassifier`` sub-step added, otherwise ignored.
 
     Notes
     -----
-    Assemble steps in class are made for convenience.
-    Only OneHot encoder and imputer are initially activated.
-    By default, 4 parameters await for resolution:
-        'process_parallel__pipeline_categoric__select_columns__kwargs'
-        'process_parallel__pipeline_numeric__select_columns__kwargs'
+    Assembling steps in class are made for convenience. Use steps property to
+    access after initialization.  Only OneHot encoder and imputer steps are
+    initially activated.
+    By default, 4 parameters await for resolution ('auto'):
+
+        'process_parallel__pipeline_categoric__select_columns__kw_args'
+        'process_parallel__pipeline_numeric__select_columns__kw_args'
         'estimate__apply_threshold__threshold'
-        'estimate__apply_threshold__kwargs'
-    Set corresponding parameters with set_params() to overwrite default when
-    pipeline are created.
+        'estimate__apply_threshold__kw_args'
+
+    Set corresponding parameters with ``set_params()`` to overwrite default in
+    created pipeline or use :class:`mlshell.model_selection.Resolver` .
 
     'pass_custom' step allows brute force arbitrary parameters in uniform style
-    with pipeline hp, as if score contains additional nested loops (name is
-    hard-coded).
+    with pipeline hp (as if score contains additional nested loops). Step name
+    is hard-coded and could not be changed.
+
     'apply_threshold' allows grid search classification thresholds as pipeline
     hyper-parameter.
+
     'estimate' step should be the last.
 
     """
@@ -85,7 +67,7 @@ class Steps(object):
 
     def __init__(self, estimator, estimator_type, th_step=False):
         self._steps = [
-            ('pass_custom',      mlshell.preprocessing.FunctionTransformer(func=self.set_scorer_kwargs, validate=False, skip=True)),
+            ('pass_custom',      mlshell.preprocessing.FunctionTransformer(func=self.scorer_kwargs, validate=False, skip=True)),
             ('select_rows',      mlshell.preprocessing.FunctionTransformer(func=self.subrows, validate=False, skip=True)),
             ('process_parallel', sklearn.pipeline.FeatureUnion(transformer_list=[
                 ('pipeline_categoric', sklearn.pipeline.Pipeline(steps=[
@@ -123,7 +105,7 @@ class Steps(object):
                         estimator)),
                 ('apply_threshold',
                     mlshell.model_selection.ThresholdClassifier(
-                        threshold=None, kwargs='auto')),
+                        threshold=None, kw_args='auto')),
                     ])
         elif estimator_type == 'classifier' and not th_step:
             last_step = sklearn.pipeline.Pipeline(steps=[('classifier',
@@ -131,8 +113,8 @@ class Steps(object):
         else:
             raise ValueError(f"Unknown estimator type `{estimator_type}`.")
 
-        if (sklearn.base.is_classifier(estimator=last_step)
-                ^ estimator_type == "classifier"):
+        if sklearn.base.is_classifier(estimator=last_step)\
+                ^ (estimator_type == "classifier"):
             raise TypeError(f"{self.__class__.__name__}:"
                             f"{inspect.stack()[0][3]}:"
                             f" wrong estimator type")
@@ -140,50 +122,47 @@ class Steps(object):
 
     @property
     def steps(self):
-        """list : access steps to pass in `sklearn.pipeline.Pipeline`."""
+        """list : access steps to pass in `sklearn.pipeline.Pipeline` ."""
         return self._steps
 
-    def set_scorer_kwargs(self, x, **kwargs):
-        """Mock function to allow custom kwargs setting.
+    def scorer_kwargs(self, x, **kw_args):
+        """Mock function to custom kwargs setting.
 
         Parameters
         ----------
-        x : numpy.ndarray or pandas.DataFrame of shape = rows x columns
-            Features.
-        **kwargs : dict
-            Parameters to substitute in pipeline by hp identifier.
+        x : :class:`numpy.ndarray` or :class:`pandas.DataFrame`
+            Features of shape [n_samples, n_features].
+        **kw_args : dict
+            Step parameters. Could be extracted from pipeline in scorer if
+            needed.
 
         Returns
         -------
-        result: numpy.ndarray or pandas.DataFrame
-            Unchanged `x`.
+        result: :class:`numpy.ndarray` or :class:`pandas.DataFrame`
+            Unchanged ``x``.
 
         """
         return x
 
-    def subcolumns(self, x, **kwargs):
+    def subcolumns(self, x, **kw_args):
         """Get sub-columns from x.
 
         Parameters
         ----------
-        x : numpy.ndarray or pandas.DataFrame of shape = rows x columns
-            Features.
-        **kwargs : dict {'indices': array-like}
-            Parameters to substitute in pipeline by hp identifier.
+        x : :class:`numpy.ndarray` or :class:`pandas.DataFrame`
+            Features of shape [n_samples, n_features].
+        **kw_args : dict
+            Columns indices to extract: {'indices': array-like}.
 
         Returns
         -------
-        result: numpy.ndarray or pandas.DataFrame
-            Sub-columns of `x`.
+        result: :class:`numpy.ndarray` or :class:`pandas.DataFrame`
+            Extracted sub-columns of ``x``.
 
         """
-        indices = kwargs['indices']
-        # [deprecated]
-        # feat_ind_name = kwargs['indices']
-        # indices = list(feat_ind_name.keys())
-        # names = [i[0] for i in feat_ind_name.values()]
+        indices = kw_args['indices']
         if isinstance(x, pd.DataFrame):
-            return x.iloc[:, indices]  # x.loc[:, names]
+            return x.iloc[:, indices]
         else:
             return x[:, indices]
 
@@ -193,25 +172,9 @@ class Steps(object):
         return x
 
     def bining_mask(self, x):
-        """Find features which need bining."""
-        # Use slice(0, None) if need all.
+        """Get features indices which need bining."""
+        # Use slice(0, None) to get all.
         return []
-
-    def numeric_mask(self, x):
-        """Find numeric features` indices.
-
-        Inefficient (called every fit) local resolution for:
-            'process_parallel__pipeline_numeric__select_columns__kwargs'
-        """
-        return np.invert(_isbinary_columns(x))
-
-    def categor_mask(self, x):
-        """Find binary features` indices.
-
-        Inefficient (called every fit) local resolution for:
-            'process_parallel__pipeline_categoric__select_columns__kwargs'
-        """
-        return _isbinary_columns(x)
 
 
 class CustomSelector(sklearn.base.BaseEstimator):
