@@ -11,8 +11,10 @@ Concepts
     :backlinks: none
 
 Mlshell structure based on `Pycnfg <https://pycnfg.readthedocs.io/en/latest/>`_ library.
-All parameters controlled from single Python configuration. Sub-configuration
-in each sub-section describes initial state and steps to produce target object.
+All parameters set from single configuration - Python dictionary. Execution
+could be controlled in a script/notebook either with :func:`pycnfg.run` ,
+or low-level :class:`pycnfg.Handler` . Sub-configurations in each sub-section
+describes initial state and steps to produce target object.
 
 ML task configuration usually contains following main sections:
 
@@ -28,9 +30,9 @@ Configurations executied in priority:
 project path >> logger >> pipeline, dataset, metric >> workflow
 
 MLshell implements unified object interface for main sections and corresponding
-``producer`` for object preparation. All classes have high level of abstraction
-and encapsulation to provide extension with minimal code changes. See detailed
-description below.
+``producer`` classes for object createion. All classes have high level of
+abstraction and encapsulation to provide extension with minimal code changes.
+See detailed description below.
 
 See `Examples. <Examples.html>`_
 
@@ -145,6 +147,21 @@ Section example:
 .. code-block:: python
 
     import pycnfg
+
+
+Alternative to multiple pipelines - specify one and rotate last step estimator:
+
+.. code-block::
+
+    hp_grid = {
+        'estimate__regressor': [
+            sklearn.linear_model.SGDRegressor(penalty='elasticnet', l1_ratio=1,
+                                              shuffle=False, max_iter=1000,
+                                              alpha=0.02),
+            lightgbm.LGBMRegressor(num_leaves=2, min_data_in_leaf=60,
+                                   n_estimators=200, max_depth=-1),
+        ]
+    }
 
 .. .. `Examples <Concepts.html#Advanced#resolver>`_
 .. .. `mlshell.Pipeline <_pythonapi/mlshell.producers.pipeline.html#mlshell.producers.pipeline.Pipeline>`_
@@ -267,9 +284,9 @@ Any pipeline parameter ``hp`` can be optimized in grid search.
 
 Resolver
 ~~~~~~~~
-Some parameters like categoric/numeric indices depends on specific dataset,
-and needs resolving before pipeline fitting. For that case 'auto' can be set
-to parameter, triggering hp value resolution according to
+Some parameters like categoric/numeric indices depend on specific dataset,
+they need resolving before pipeline fitting. For that case, 'auto' can be set
+to parameter, that will trigger hp value resolution according to
 :class:`mlshell.model_selection.Resolver` .
 
 .. note::

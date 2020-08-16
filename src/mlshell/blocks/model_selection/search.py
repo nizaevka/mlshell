@@ -209,6 +209,7 @@ class Optimizer(object):
 
     def _find_modifiers(self, cv_results_):
         """Find varied hp."""
+        # Remove 'param_' prefix.
         modifiers = []
         for key, val in cv_results_.items():
             if not key.startswith('param_'):
@@ -218,7 +219,7 @@ class Optimizer(object):
             else:
                 size = val.shape[0]
             if size > 1:
-                modifiers.append(key)
+                modifiers.append(key.replace('param_', '', 1))
         return modifiers
 
     def _dump_runs(self, logger, dirpath, pipeline, dataset, runs, best_ind,

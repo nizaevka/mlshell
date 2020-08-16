@@ -182,7 +182,7 @@ class Workflow(pycnfg.Producer):
             Dataset identifier in `objects`.
         subset_id : str, optional (default='train')
             Data subset identifier to CV on. If '', use full dataset.
-        metric_id : List of str, optional (default=None)
+        metric_id : str, List/tuple of str, optional (default=None)
             List of 'metric_id' to use in optimizer scoring. Known 'metric_id'
             will be resolved via `objects` or sklearn built-in, otherwise raise
             ``KeyError``. If None, 'accuracy' or 'r2' depends on pipeline
@@ -224,7 +224,7 @@ class Workflow(pycnfg.Producer):
 
             'runs': dict
                 Storage of optimization results for pipeline-data pair.
-                {'pipeline_id|dataset_id|subset_id':
+                {'pipeline_id|dataset_id__subset_id':
                     optimizer.update_best output}
 
             }
@@ -261,6 +261,8 @@ class Workflow(pycnfg.Producer):
             resolve_params = {}
         if fit_params is None:
             fit_params = {}
+        if fit_params is None:
+            gs_params = {}
         if optimizer is None:
             optimizer = mlshell.model_selection.RandomizedSearchOptimizer
         if dirpath is None:
@@ -294,7 +296,7 @@ class Workflow(pycnfg.Producer):
         if 'runs' not in res:
             res['runs'] = {}
         runs = res['runs']
-        key = f"{pipeline_id}|{dataset_id}|{subset_id}"
+        key = f"{pipeline_id}|{train.oid}"
         runs[key] = optimizer.update_best(runs.get(key, {}))
         if 'best_estimator_' in runs[key]:
             self.objects[pipeline_id].pipeline = runs[key].get(
@@ -315,9 +317,9 @@ class Workflow(pycnfg.Producer):
             `dataset_id__subset_id`.
         dataset_id : str
             Dataset identifier in `objects`.
-        subset_id : str, tuple of str, optional (default=('train', 'test'))
+        subset_id : str,list/tuple of str, optional (default=('train', 'test'))
             Data subset(s) identifier(s) to validate on. '' for full dataset.
-        metric_id : srt, list of str
+        metric_id : srt, list/tuple of str
             Metric(s) identifier in `objects`.
         validator : :class:`mlshell.model_selection.Validator`, optional
         (default=None)
@@ -334,9 +336,9 @@ class Workflow(pycnfg.Producer):
             validator = mlshell.model_selection.Validator
         if inspect.isclass(validator):
             validator = validator()
-        if not isinstance(metric_id, list):
+        if not isinstance(metric_id, (list, tuple)):
             metric_id = [metric_id]
-        if not isinstance(subset_id, list):
+        if not isinstance(subset_id, (list, tuple)):
             subset_id = [subset_id]
 
         dataset = self.objects[dataset_id]
@@ -463,9 +465,9 @@ class Workflow(pycnfg.Producer):
             Pipeline identifier in ``objects``.
         dataset_id : str
             Dataset identifier in ``objects``.
-        subset_id : str, tuple of str, optional (default=('train', 'test'))
+        subset_id : str,list/tuple of str, optional (default=('train', 'test'))
             Data subset(s) identifier(s) to plot on. Set '' for full dataset.
-        metric_id : srt, list of str
+        metric_id : srt, list/tuple of str
             Metric(s) identifier in `objects`.
         validator : :class:`mlshell.model_selection.Validator`, optional
         (default=None)
@@ -495,9 +497,9 @@ class Workflow(pycnfg.Producer):
             plotter = mlshell.plot.Plotter
         if inspect.isclass(plotter):
             plotter = plotter()
-        if not isinstance(metric_id, list):
+        if not isinstance(metric_id, (list,tuple)):
             metric_id = [metric_id]
-        if not isinstance(subset_id, list):
+        if not isinstance(subset_id, (list, tuple)):
             subset_id = [subset_id]
 
         dataset = self.objects[dataset_id]
@@ -578,7 +580,7 @@ class Workflow(pycnfg.Producer):
 
         return hp
 
-    def _resolve_scoring(self, scoring, pipeline):
+    def _resolve_scoring(self, metric_id, pipeline):
         """Resolve scoring for grid search.
 
         Notes
@@ -588,17 +590,21 @@ class Workflow(pycnfg.Producer):
         otherwise passed unchanged.
 
         """
-        if scoring is None:
+        if metric_id is None:
             # Hard-code (default estimator could not exist).
             if pipeline.is_classifier():
                 scoring = 'accuracy'
             elif pipeline.is_regressor():
                 scoring = 'r2'
-        elif isinstance(scoring, list):
+            else:
+                assert False, "Unknown pipeline type."
+        else:
+            if not isinstance(metric_id, (list, tuple)):
+                metric_id = [metric_id]
             # Resolve if exist, else use sklearn built-in.
             scoring = {i: self.objects[i] if i in self.objects
                        else sklearn.metrics.SCORERS[i]
-                       for i in scoring}
+                       for i in metric_id}
         return scoring
 
     # ========================== dump/predict =================================
@@ -609,11 +615,11 @@ class Workflow(pycnfg.Producer):
         fit_dataset_id = getattr(pipeline, 'dataset_id', None)
         fit_dataset_hash = hash(self.objects.get(fit_dataset_id, 0))
         best_score = str(res.get('runs', {})
-                            .get((pipeline_id, fit_dataset_id), {})
+                            .get(f"{pipeline_id}|{fit_dataset_id}", {})
                             .get('best_score_', '')
                          ).lower()
-        filepath = f"{dirpath}/{self.oid}_{pipeline_id}_{fit_dataset_id}_" \
-                   f"{best_score}_{hash(pipeline)}_{fit_dataset_hash}_" \
+        filepath = f"{dirpath}/{self.oid}_{pipeline_id}_{fit_dataset_id}_|" \
+                   f"{best_score}|_{hash(pipeline)}_{fit_dataset_hash}_" \
                    f"{pred_dataset_id}_{pred_dataset_hash}"
         return filepath
 

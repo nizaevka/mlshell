@@ -67,7 +67,7 @@ class Steps(object):
 
     def __init__(self, estimator, estimator_type, th_step=False):
         self._steps = [
-            ('pass_custom',      mlshell.preprocessing.FunctionTransformer(func=self.scorer_kwargs, validate=False, skip=True)),
+            ('pass_custom',      mlshell.preprocessing.FunctionTransformer(func=self.scorer_kwargs, validate=False, skip=True, kw_args={})),
             ('select_rows',      mlshell.preprocessing.FunctionTransformer(func=self.subrows, validate=False, skip=True)),
             ('process_parallel', sklearn.pipeline.FeatureUnion(transformer_list=[
                 ('pipeline_categoric', sklearn.pipeline.Pipeline(steps=[

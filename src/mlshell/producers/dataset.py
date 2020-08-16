@@ -428,11 +428,16 @@ class DataPreprocessor(object):
 
         Notes
         -----
-        If split ``train_size`` set to 1.0, test=train used.
+        If split ``train_size==1.0``  or ``test_size==0``: ``test=train`` ,
+        other kwargs ignored.
 
         No copy takes place.
 
         """
+        if 'test_size' not in kwargs:
+            kwargs['test_size'] = None
+        if 'train_size' not in kwargs:
+            kwargs['train_size'] = None
         data = dataset['data']
 
         if (kwargs['train_size'] == 1.0 and kwargs['test_size'] is None
@@ -570,9 +575,11 @@ class DataPreprocessor(object):
         """
         categoric_ind_name = {}
         numeric_ind_name = {}
+        # Turn off: SettingWithCopy, excessive.
+        pd.options.mode.chained_assignment = None
         for ind, column_name in enumerate(features):
             if column_name in categor_names:
-                # Fill gaps with 'unknown', inplace unreliable (copy!)
+                # Fill gaps with 'unknown', inplace unreliable (copy!).
                 features.loc[:, column_name] = features[column_name]\
                     .fillna(value='unknown', method=None, axis=None,
                             inplace=False, limit=None, downcast=None)
@@ -589,12 +596,15 @@ class DataPreprocessor(object):
                 categoric_ind_name[ind] = (column_name,
                                            encoder.categories_[0].tolist())
             else:
-                # Fill gaps with np.nan.
-                features.loc[:, column_name].fillna(value=np.nan, method=None,
-                                                    axis=None, inplace=True,
-                                                    downcast=None)
+                # Fill gaps with np.nan, inplace unreliable (copy!).
+                # Could work with no copy on slice or single col even inplace.
+                features.loc[:, column_name] = features.loc[:, column_name]\
+                    .fillna(value=np.nan, method=None, axis=None,
+                            inplace=False, downcast=None)
                 # Generate {'index': ('feature_id',)}.
                 numeric_ind_name[ind] = (column_name,)
+        # Turn on: SettingWithCopy.
+        pd.options.mode.chained_assignment = 'warn'
         # Cast to np.float64 without copy.
         # python float = np.float = C double =
         # np.float64 = np.double(64 bit processor)).

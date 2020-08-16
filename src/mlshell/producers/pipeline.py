@@ -168,7 +168,7 @@ class PipelineProducer(pycnfg.Producer):
             Resulted pipeline.
 
         """
-        steps = self._steps_resolve(steps, **kwargs)
+        steps = self._steps_resolve(steps, kwargs)
         memory = self._memory_resolve(memory)
         pipeline.pipeline = sklearn.pipeline.Pipeline(steps, memory=memory)
         return pipeline
@@ -220,7 +220,7 @@ class PipelineProducer(pycnfg.Producer):
         return pipeline
 
     # ================================ make ===================================
-    def _steps_resolve(self, steps, **kwargs):
+    def _steps_resolve(self, steps, kwargs):
         """Prepare pipeline steps.
 
         Returns

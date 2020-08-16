@@ -10,7 +10,7 @@ Welcome to MLshell's documentation!
     :width: 1000
     :alt: error
 
-**Easy ML framework**
+**Easy ML framework.**
 
 - Auto ML.
 - Unified pipeline.

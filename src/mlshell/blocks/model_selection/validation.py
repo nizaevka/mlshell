@@ -71,7 +71,9 @@ class Validator(object):
             }
             scores[dataset.oid] = {}
         for metric in metrics:
+            # Level 5 needs for tests.
             logger.log(5, f"{metric.oid}:")
+            logger.info(f"{metric.oid}:")
             for dataset in datasets:
                 x = dataset.x
                 y = dataset.y
@@ -91,6 +93,7 @@ class Validator(object):
                 scores[dataset.oid][metric.oid] = score
                 score_ = metric.pprint(score[-1] if vector else score)
                 logger.log(5, f"{dataset.oid}:\n    {score_}")
+                logger.info(f"{dataset.oid}:\n    {score_}")
         return scores
 
     def _via_metric(self, pipeline, x, y, metric, dataset, infer, vector):
@@ -122,7 +125,7 @@ class Validator(object):
     def _get_y_pred(self, pipeline, x, metric, infer, dataset):
         if getattr(metric, 'needs_proba', False):
             # [...,i] equal to [:,i]/[:,:,i]/.. (for multi-output target)
-            if not infer['predict_proba']:
+            if infer['predict_proba'] is None:
                 # Pipeline predict_proba shape would be based on train
                 # (pos_labels_ind/classes not guaranteed in test).
                 pos_labels_ind = dataset.meta['pos_labels_ind']
@@ -136,13 +139,13 @@ class Validator(object):
             else:
                 y_pred = infer['predict_proba']
         elif getattr(metric, 'needs_threshold', False):
-            if not infer['decision_function']:
+            if infer['decision_function'] is None:
                 y_pred = pipeline.decision_function(x)
                 infer['decision_function'] = y_pred
             else:
                 y_pred = infer['decision_function']
         else:
-            if not infer['predict']:
+            if infer['predict'] is None:
                 y_pred = pipeline.predict(x)
                 infer['predict'] = y_pred
             else:

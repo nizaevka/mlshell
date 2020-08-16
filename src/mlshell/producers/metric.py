@@ -81,7 +81,7 @@ class Metric(object):
 
     def __call__(self, estimator, *args, **kwargs):
         """Redirect call to scorer object."""
-        if self.needs_cutom_kwargs:
+        if self.needs_custom_kwargs:
             self._set_custom_kwargs(estimator)
         return self.scorer(estimator, *args, **kwargs)
 
