@@ -203,7 +203,7 @@ class DataIO(object):
             Absolute path to csv file or relative to 'project__path' started
             with './'.
         random_skip : bool, optional (default=False)
-            If True randomly skip rows while read file, remains 'nrow' lines.
+            If True randomly skip rows while read file, remain 'nrow' lines.
             Rewrite `skiprows` kwarg.
         random_state : int, optional (default=None).
             Fix random state for `random_skip`.
@@ -229,7 +229,7 @@ class DataIO(object):
         if 'skiprows' in kwargs and random_skip:
             self.logger.warning("random_skip rewrite skiprows kwarg.")
         nrows = kwargs.get('nrows', None)
-        skiprows = kwargs.get('skipwoes', None)
+        skiprows = kwargs.get('skiprows', None)
         if nrows:
             if nrows > lines:
                 nrows = None

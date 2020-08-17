@@ -175,7 +175,7 @@ Levels of logging:
     reset on logger creation.
     detailed workflow information.
 * test
-    only for test purposes.
+    only for test purposes (will be created only in pytest env).
         
 """
 

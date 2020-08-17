@@ -29,9 +29,31 @@ hp_grid = {
 }
 
 CNFG = {
+    # Path section - specify project directory.
+    'path': {
+        'default': {
+            'priority': 1,
+            'init': pycnfg.find_path,
+            'producer': pycnfg.Producer,
+        }
+    },
+    # Logger section - create logger.
+    'logger': {
+        'default': {
+            'priority': 2,
+            'init': 'default',
+            'producer': mlshell.LoggerProducer,
+            'steps': [
+                ('make',),
+            ],
+        }
+    },
     # Pipeline section - specify pipelines creation/loading.
     'pipeline': {
         'sgd': {
+            'priority': 3,
+            'init': mlshell.Pipeline,
+            'producer': mlshell.PipelineProducer,
             'steps': [
                 ('make', {
                     'estimator_type': 'regressor',
@@ -42,6 +64,9 @@ CNFG = {
             ],
         },
         'lgbm': {
+            'priority': 3,
+            'init': mlshell.Pipeline,
+            'producer': mlshell.PipelineProducer,
             'steps': [
                 ('make', {
                     'estimator_type': 'regressor',
@@ -55,6 +80,9 @@ CNFG = {
     # Metric section - specify metric creation/loading.
     'metric': {
         'r2': {
+            'priority': 3,
+            'init': mlshell.Metric,
+            'producer': mlshell.MetricProducer,
             'steps': [
                 ('make', {
                     'score_func': sklearn.metrics.r2_score,
@@ -63,6 +91,9 @@ CNFG = {
             ],
         },
         'mse': {
+            'priority': 3,
+            'init': mlshell.Metric,
+            'producer': mlshell.MetricProducer,
             'steps': [
                 ('make', {
                     'score_func': sklearn.metrics.mean_squared_error,
@@ -75,6 +106,9 @@ CNFG = {
     # Dataset section - specify dataset loading/preprocessing/splitting.
     'dataset': {
         'train': {
+            'priority': 3,
+            'init': mlshell.Dataset,
+            'producer': mlshell.DatasetProducer,
             'steps': [
                 ('load', {'filepath': './data/train.csv'}),
                 ('info',),
@@ -86,6 +120,9 @@ CNFG = {
             ],
         },
         'test': {
+            'priority': 3,
+            'init': mlshell.Dataset,
+            'producer': mlshell.DatasetProducer,
             'steps': [
                 ('load', {'filepath': 'data/test.csv'}),
                 ('info',),
@@ -100,8 +137,11 @@ CNFG = {
     # metrics.
     'workflow': {
         'conf': {
+            'priority': 4,
+            'init': {},
+            'producer': mlshell.Workflow,
             'steps': [
-                # Train 'lgbm' pipeline on 'train' subset of 'train' dataset
+                # Train 'sgd' pipeline on 'train' subset of 'train' dataset
                 # with zero position hp from 'hp_grid'.
                 ('fit', {
                     'pipeline_id': 'pipeline__sgd',
@@ -109,7 +149,15 @@ CNFG = {
                     'subset_id': 'train',
                     'hp': hp_grid,
                 }),
-                # Optimize 'lgbm' pipeline on 'train' subset of 'train' dataset
+                # Validate 'sgd' pipeline on 'train' and 'test' subsets of
+                # 'train' dataset with 'r2' scorer (after fit).
+                ('validate', {
+                    'pipeline_id': 'pipeline__sgd',
+                    'dataset_id': 'dataset__train',
+                    'subset_id': ['train', 'test'],
+                    'metric_id': ['metric__r2', 'metric__mse'],
+                }),
+                # Optimize 'sgd' pipeline on 'train' subset of 'train' dataset
                 # on hp combinations from 'hp_grid'. Score and refit on 'r2'
                 # scorer.
                 ('optimize', {
@@ -130,21 +178,21 @@ CNFG = {
                         'return_train_score': True,
                     },
                 }),
-                # Validate 'lgbm' pipeline on 'train' and 'test' subsets of
-                # 'train' dataset with 'r2' scorer.
+                # Validate 'sgd' pipeline on 'train' and 'test' subsets of
+                # 'train' dataset with 'r2' scorer (after optimization).
                 ('validate', {
                     'pipeline_id': 'pipeline__sgd',
                     'dataset_id': 'dataset__train',
                     'subset_id': ['train', 'test'],
                     'metric_id': ['metric__r2', 'metric__mse'],
                 }),
-                # Predict with 'lgbm' pipeline on whole 'test' dataset.
+                # Predict with 'sgd' pipeline on whole 'test' dataset.
                 ('predict', {
                     'pipeline_id': 'pipeline__sgd',
                     'dataset_id': 'dataset__test',
                     'subset_id': '',
                 }),
-                # Dump 'lgbm' pipeline on disk.
+                # Dump 'sgd' pipeline on disk.
                 ('dump', {'pipeline_id': 'pipeline__sgd',
                           'dirpath': None}),
             ],
@@ -154,4 +202,4 @@ CNFG = {
 
 
 if __name__ == '__main__':
-    pycnfg.run(CNFG, dcnfg=mlshell.CNFG)
+    objects = pycnfg.run(CNFG, dcnfg={})

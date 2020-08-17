@@ -73,7 +73,7 @@ class Validator(object):
         for metric in metrics:
             # Level 5 needs for tests.
             logger.log(5, f"{metric.oid}:")
-            logger.info(f"{metric.oid}:")
+            logger.log(25, f"{metric.oid}:")
             for dataset in datasets:
                 x = dataset.x
                 y = dataset.y
@@ -93,7 +93,7 @@ class Validator(object):
                 scores[dataset.oid][metric.oid] = score
                 score_ = metric.pprint(score[-1] if vector else score)
                 logger.log(5, f"{dataset.oid}:\n    {score_}")
-                logger.info(f"{dataset.oid}:\n    {score_}")
+                logger.log(25, f"{dataset.oid}:\n    {score_}")
         return scores
 
     def _via_metric(self, pipeline, x, y, metric, dataset, infer, vector):

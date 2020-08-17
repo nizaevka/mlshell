@@ -27,7 +27,6 @@ Shortened version using :mod:`pycnfg` features :
 .. literalinclude:: /../../examples/simplest/conf_short.py
    :language: python
    :start-at: CNFG
-   :end-before: if __name__ == '__main__':
 
 Next
 ~~~~
@@ -38,4 +37,4 @@ For more complex examples please follow:
 - `classification <Examples.html#classification>`_
 
 | :doc:`User Guide <Concepts>`
-| :doc:`default CNFG <Default-configuration.html#cnfg`
+| :ref:`default CNFG <Default-configuration:CNFG>`

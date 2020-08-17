@@ -84,14 +84,6 @@ try different ideas:
   * splitters.
   * hps.
 
-If time is limited:
-
-    * use subset of data (`rows_limit` and `random_skip` implemented in classes.GetData examples)
-    * use greedy approach:
-
-        * find approximately reasonable estimator` hps.
-        * try ideas.
-        * for the best refine estimator hps.
 
 **Example conf.py**
 ^^^^^^^^^^^^^^^^^^^
@@ -102,9 +94,6 @@ If time is limited:
 .. literalinclude:: /../../examples/classification/conf.py
    :language: python
    :linenos:
-
-
-.. .. code-block:: python
 
 
 **Results**

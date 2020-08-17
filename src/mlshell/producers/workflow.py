@@ -114,8 +114,8 @@ class Workflow(pycnfg.Producer):
         subset_id : str, optional (default='train')
             Data subset identifier to fit on. If '', use full dataset.
         hp : dict, optional (default=None)
-            Hyper-parameters to use in pipeline: {`hp_name`: val/container}.
-            If container provided, zero position will be used. If None, {}
+            Hyper-parameters to use in pipeline: {`hp_name`: val/container}. If
+            range provided for any hp, zero position will be used. If None, {}.
         resolver : :class:`mlshell.model_selection.Resolver`, optional
                 (default=None)
             If hp value = 'auto', hp will be resolved: ``resolver.resolve()``.
@@ -542,6 +542,8 @@ class Workflow(pycnfg.Producer):
                 # Container type.
                 iterator = iter(vals)
                 zero_hp.update(**{name: iterator.__next__()})
+            else:
+                zero_hp[name] = vals
         return zero_hp
 
     def _resolve_hp(self, hp, pipeline, resolver, dataset, resolve_params):

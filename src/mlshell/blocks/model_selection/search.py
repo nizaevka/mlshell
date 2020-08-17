@@ -209,16 +209,17 @@ class Optimizer(object):
 
     def _find_modifiers(self, cv_results_):
         """Find varied hp."""
+        # [alternative] from optimizer.param_distributions, but would not work
+        #   if sampler set. So better find out from already sampled.
         # Remove 'param_' prefix.
         modifiers = []
         for key, val in cv_results_.items():
             if not key.startswith('param_'):
                 continue
-            if isinstance(val, list):
-                size = len(val)
-            else:
-                size = val.shape[0]
-            if size > 1:
+            # Internally always masked array.
+            # Unmask, check if not homo.
+            val = val.data
+            if not np.all(val == val[0]):
                 modifiers.append(key.replace('param_', '', 1))
         return modifiers
 

@@ -86,7 +86,6 @@ WORKFLOWS = {
         'patch': {},
         'priority': 4,
         'steps': [
-            ('fit', ),
             ('optimize', ),
             ('validate', ),
             ('predict', ),

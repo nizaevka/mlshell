@@ -31,6 +31,8 @@ hp_grid = {
 
 
 CNFG = {
+    # In ``pycnfg.run`` set default configuration :data:`mlshell.CNFG`, that
+    # has pre-defined path, logger sections and main sub-keys (see below).
     'pipeline': {
         'sgd': {
             'kwargs': {
@@ -79,9 +81,9 @@ CNFG = {
     },
     'workflow': {
         'conf': {
-            # Global values will replace kwargs in corresponding steps => easy
-            # switch between pipeline for example (pycnfg move unknown keys to
-            # 'global' by default).
+            # Global values will replace kwargs in corresponding default steps
+            # => easy switch between pipeline for example (pycnfg move unknown
+            # keys to 'global' by default).
             'pipeline_id': 'pipeline__sgd',
             'dataset_id': 'dataset__train',
             'predict__dataset_id': 'dataset__test',
@@ -89,6 +91,14 @@ CNFG = {
             'hp_grid': hp_grid,
             'gs_params': 'gs_params__conf',
             'metric_id': ['metric__r2', 'metric__mse'],
+            'steps': [
+                ('fit',),
+                ('validate',),
+                ('optimize',),
+                ('validate',),
+                ('predict',),
+                ('dump',),
+            ],
         },
     },
     # Separate section for 'gs_params' kwarg.
@@ -112,4 +122,4 @@ CNFG = {
 
 
 if __name__ == '__main__':
-    pycnfg.run(CNFG, dcnfg=mlshell.CNFG)
+    objects = pycnfg.run(CNFG, dcnfg=mlshell.CNFG)

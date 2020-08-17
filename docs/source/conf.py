@@ -103,6 +103,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinx.ext.extlinks',
+    'sphinx.ext.autosectionlabel',
 
     'sphinxcontrib.napoleon',
     'sphinx_autodoc_typehints',
@@ -236,6 +237,11 @@ epub_title = project
 epub_exclude_files = ['search.html']
 
 # -- Extension configuration -------------------------------------------------
+
+# Add ref on headers in document:
+# :ref:`Concepts:classification`
+# :ref:`default CNFG <Default-configuration:CNFG>`
+autosectionlabel_prefix_document = True
 
 napoleon_use_param = True
 
