@@ -61,7 +61,7 @@ class Resolver(object):
             dataset.meta['numeric_ind_name'].
         ``estimate__apply_threshold__threshold``
             ``Resolver.th_resolver()``.
-        ``estimate__apply_threshold__kw_args``
+        ``estimate__apply_threshold__params``
             {i: dataset.meta[i]
             for i in ['pos_labels_ind', 'pos_labels', 'classes']}
 
@@ -77,9 +77,9 @@ class Resolver(object):
             value = {'indices': list(numeric_ind_name.keys())}
         elif hp_name == 'estimate__apply_threshold__threshold':
             value = self.th_resolver(pipeline, dataset, **kwargs)
-        elif hp_name == 'estimate__apply_threshold__kw_args':
-            value = {i: dataset.meta[i]
-                     for i in ['pos_labels_ind', 'pos_labels', 'classes']}
+        elif hp_name == 'estimate__apply_threshold__params':
+            value = {i: dataset.meta[i] for i in
+                     ['pos_labels_ind', 'pos_labels', 'classes']}
         else:
             flag = False
 
@@ -110,8 +110,8 @@ class Resolver(object):
             Dataset.
         **kwargs : dict
             kwargs['cross_val_predict'] to pass in:
-             :func:`sklearn.model_selection.cross_val_predict` , where
-             ``method`` always should be set to 'predict_proba', ``y`` ignored.
+             :func:`sklearn.model_selection.cross_val_predict` . ``method``
+             always should be set to 'predict_proba', ``y`` argument ignored.
             kwargs['calc_th_range'] to pass in:
              :func:`mlshell.model_selection.Resolver.calc_th_range` .
 
@@ -144,7 +144,7 @@ class Resolver(object):
                                 'pos_labels_ind')(dataset.meta)
         # Extended sklearn.model_selection.cross_val_predict (TimeSplitter).
         y_pred_proba, index = mlshell.model_selection.cross_val_predict(
-            pipeline, x, y=y, **kwargs_cvp)
+            pipeline.pipeline, x, y=y, **kwargs_cvp)
         # y_true!=y for TimeSplitter.
         y_true = y.values[index] if hasattr(y, 'loc') else y[index]
         # Calculate roc_curve, sample th close to tpr/(tpr+fpr) maximum.
@@ -197,10 +197,11 @@ class Resolver(object):
         if y_true.ndim == 1:
             # Add dimension, for compliance to multi-output.
             y_true = y_true[..., None]
+            y_pred_proba = [y_pred_proba]
 
         # Process targets separately.
         res = []
-        for i in range(len(y_true)):
+        for i in range(y_true.shape[1]):
             # Calculate ROC curve.
             fpr, tpr, th_ = sklearn.metrics.roc_curve(
                 y_true[:, i], y_pred_proba[i][:, pos_labels_ind[i]],
@@ -218,7 +219,7 @@ class Resolver(object):
                               pos_labels_ind[i], best_th_, q, tpr, fpr,
                               th_, th_range, index)
             res.append(th_range)
-        th_range = res if len(res) > 1 else res[0]
+        th_range = res[0] if len(res) == 1 else res
         return th_range
 
     def _metric(self, fpr, tpr, th_):

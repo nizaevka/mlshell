@@ -58,7 +58,7 @@ class CustomFormatter(logging.Formatter):
             if s[-1:] != "\n":
                 s = s + "\n"
             s = s + self.formatStack(record.stack_info)
-        s = s.replace('    |__ ', '\u25CF \u25B6 ')
+        s = s.replace('    |__ ', '     \u25B6 ')
         s = s.replace('|__ ', '\u25CF ')
         return s
 

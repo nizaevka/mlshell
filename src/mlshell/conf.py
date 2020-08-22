@@ -12,8 +12,6 @@ PATHS = {
     'default': {
         'init': pycnfg.find_path,
         'producer': pycnfg.Producer,
-        'global': {},
-        'patch': {},
         'priority': 1,
         'steps': [],
     }
@@ -24,8 +22,6 @@ LOGGERS = {
     'default': {
         'init': 'default',
         'producer': mlshell.LoggerProducer,
-        'global': {},
-        'patch': {},
         'priority': 2,
         'steps': [
             ('make',),
@@ -38,8 +34,6 @@ PIPELINES = {
     'default': {
         'init': mlshell.Pipeline,
         'producer': mlshell.PipelineProducer,
-        'global': {},
-        'patch': {},
         'priority': 3,
         'steps': [
             ('make', ),
@@ -52,8 +46,6 @@ METRICS = {
     'default': {
         'init': mlshell.Metric,
         'producer': mlshell.MetricProducer,
-        'global': {},
-        'patch': {},
         'priority': 3,
         'steps': [
             ('make', ),
@@ -66,8 +58,6 @@ DATASETS = {
     'default': {
         'init': mlshell.Dataset,
         'producer': mlshell.DatasetProducer,
-        'global': {},
-        'patch': {},
         'priority': 3,
         'steps': [
             ('load', ),

@@ -104,20 +104,20 @@ class Validator(object):
         """
         y_pred = self._get_y_pred(pipeline, x, metric, infer, dataset)
         # Update metric kwargs with pass_custom kwarg from pipeline.
-        if getattr(metric, 'needs_custom_kwargs', False):
+        if getattr(metric, 'needs_custom_kw_args', False):
             if hasattr(pipeline, 'steps'):
                 for step in pipeline.steps:
                     if step[0] == 'pass_custom':
                         temp = step[1].kw_args.get(metric.oid, {})
-                        metric.kwargs.update(temp)
+                        metric.kw_args.update(temp)
         # Score.
-        score = metric.score_func(y, y_pred, **metric.kwargs)
+        score = metric.score_func(y, y_pred, **metric.kw_args)
         if vector:
-            score_vec = metric.score_func_vector(y, y_pred, **metric.kwargs) \
+            score_vec = metric.score_func_vector(y, y_pred, **metric.kw_args) \
                 if metric.score_func_vector is not None else [score]
             if score_vec[-1] == score:
                 raise ValueError(
-                    f"Found inconsistent betwee score and score_vector[-1]:\n"
+                    f"Found inconsistent between score and score_vector[-1]:\n"
                     f"    {metric.oid} {pipeline.oid} {dataset.oid}")
             score = score_vec
         return score
@@ -172,7 +172,7 @@ def cross_val_predict(*args, **kwargs):
         or [n_outputs, n_test_samples, n_classes] for multi-output.
     index_oof : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
         Samples reset indices where predictions available of shape
-        [n_test_samples,] or [n_test_samples, n_outputs] for multi-output.
+        [n_test_samples,].
 
     """
     # Debug key (compare predictions for no TimeSplitter cv strategy).
@@ -215,18 +215,22 @@ def partial_cross_val_predict(estimator, x, y, cv, fit_params=None,
         index_oof_ = []
         ind = 0
         for fold_train_index, fold_test_index in cv.split(x_):
+            # Not necessary both x,y of the same type.
             if hasattr(x_, 'loc'):
-                estimator.fit(x_.loc[x_.index[fold_train_index]],
-                              y_.loc[y_.index[fold_train_index]],
-                              **fit_params)
-                # In order of pipeline.classes_.
-                fold_y_pred = estimator.predict_proba(
-                    x_.loc[x_.index[fold_test_index]])
+                fold_train_x_ = x_.loc[x_.index[fold_train_index]]
+                fold_test_x_ = x_.loc[x_.index[fold_test_index]]
             else:
-                estimator.fit(x_[fold_train_index], y_[fold_train_index],
-                              **fit_params)
-                # In order of pipeline.classes_.
-                fold_y_pred = estimator.predict_proba(x_[fold_test_index])
+                fold_train_x_ = x_[fold_train_index]
+                fold_test_x_ = x_[fold_test_index]
+            if hasattr(y_, 'loc'):
+                fold_train_y_ = y_.loc[y_.index[fold_train_index]]
+                fold_test_y_ = y_.loc[y_.index[fold_test_index]]
+            else:
+                fold_train_y_ = y_[fold_train_index]
+                fold_test_y_ = y_[fold_test_index]
+            estimator.fit(fold_train_x_, fold_train_y_, **fit_params)
+            # In order of pipeline.classes_.
+            fold_y_pred = estimator.predict_proba(fold_test_x_)
             index_oof_.extend(fold_test_index)
             y_pred_oof_.extend(fold_y_pred)
             ind += 1
@@ -237,10 +241,15 @@ def partial_cross_val_predict(estimator, x, y, cv, fit_params=None,
     # Process targets separately.
     y_pred_oof = []
     index_oof = []
-    for i in range(len(y)):
+    for i in range(y.shape[1]):
         l, r = single_output(x, y[:, i])
         y_pred_oof.append(l)
         index_oof.append(r)
+    # In single output should 1d.
+    y_pred_oof = y_pred_oof[0] if len(y_pred_oof) == 1 else y_pred_oof
+    # Index is the same for all target (later apply y[index_oof] for
+    # single-/multi-output).
+    index_oof = index_oof[0]
     index_oof = np.array(index_oof).T
     return y_pred_oof, index_oof
 

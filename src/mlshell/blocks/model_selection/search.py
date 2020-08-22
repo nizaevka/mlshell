@@ -109,7 +109,8 @@ class Optimizer(object):
         if best_index_ is None or cv_results_ is None:
             return prev
 
-        params = cv_results_['params']  # Only modifiers.
+        # Only modifiers.
+        params = cv_results_['params']
         best_params_ = params[best_index_]
         best_estimator_ = getattr(curr, 'best_estimator_', None)
         if best_estimator_ is None:
@@ -126,8 +127,8 @@ class Optimizer(object):
 
         nxt = {
             'best_estimator_': best_estimator_,
-            'best_params_': prev.get('best_params_', {}).update(best_params_),
-            'params': prev.get('params', []).extend(params_full),
+            'best_params_': {**prev.get('best_params_', {}), **best_params_},
+            'params': [*prev.get('params', []), *params_full],
             'best_score_': (scorer_id, best_score_),
         }
         return nxt
@@ -196,14 +197,16 @@ class Optimizer(object):
         with pd.option_context('display.max_rows', None,
                                'display.max_columns', None):
             msg = tabulate.tabulate(df, headers='keys', tablefmt='psql')
-            logger.info(msg)
-        logger.info(f"GridSearch best index:\n    {optimizer.best_index_}")
+            logger.info(f"")
+            logger.info(f"CV results:\n{msg}")
         logger.info(f"GridSearch time:\n    {runs_avg}")
+        logger.info(f"GridSearch best index:\n    {optimizer.best_index_}")
         logger.log(25, f"CV best modifiers:\n"
                        f"    {jsb(str(best_modifiers))}")
         logger.info(f"CV best configuration:\n"
                     f"    {jsb(str(optimizer.best_params_))}")
-        logger.info(f"CV best mean test score:\n"
+        logger.info(f"CV best mean test score "
+                    f"{getattr(optimizer, 'refit', '')}:\n"
                     f"    {getattr(optimizer, 'best_score_', 'n/a')}")
         return None
 
@@ -363,7 +366,7 @@ class MockOptimizer(RandomizedSearchOptimizer):
         :class:`sklearn.model_selection.RandomizedSearchCV`.
     method : str {'predict_proba', 'predict'}
         See corresponding argument for
-        :class:`sklearn.model_selection.RandomizedSearchCV`.
+        :class:`mlshell.model_selection.cross_val_predict`.
     **kwargs : dict
         Kwargs for :class:`sklearn.model_selection.RandomizedSearchCV`.
         If kwargs['n_iter']=None, replaced with number of hp combinations
@@ -406,7 +409,9 @@ class MockOptimizer(RandomizedSearchOptimizer):
 
         Notes
         -----
-        If 'a_b_c' in hp_grid, remains 'a_b' sub-path.
+        if 'a_b_c' in hp_grid, remains 'a_b' sub-path: copy 'a', remove unused
+        paths.
+
 
         If resulted mock pipeline has no predict method, added:
         ('estimate_del',
@@ -418,23 +423,53 @@ class MockOptimizer(RandomizedSearchOptimizer):
         pipeline optimization on another dataset.
 
         """
-        r_step = []
         params = pipeline.get_params()
-        for step in pipeline.steps:
-            if step[0] == 'pass_custom':
-                # always remain pass_custom when mock.
-                r_step.append(step)
-        for hp_name in hp_grid:  # 'a__b__c'
-            path = hp_name.split('__')[:-1]  # 'a__b'
-            if not path.startswith('pass_custom'):  # already in.
-                r_step.append(params[path])
+        # Set of used path subpaths.
+        # Always remain pass_custom when mock.
+        paths = {'pass_custom'}
+        for i in hp_grid:
+            lis = i.split('__')
+            for j in range(len(lis)):
+                paths.add('__'.join(lis[:j+1]))
+
+        def recursion(steps, path):
+            del_inds = []
+            for ind, substep in enumerate(steps):
+                subpath = f'{path}__{substep[0]}' if path else substep[0]
+                if subpath not in paths:
+                    # Delete.
+                    del_inds.append(ind)
+                elif hasattr(substep[1], 'steps'):
+                    # Level down.
+                    recursion(substep[1].steps, subpath)
+                else:
+                    # Remain full element.
+                    pass
+            for ind in del_inds[::-1]:
+                del steps[ind]
+            return
+
+        r_steps = copy.deepcopy(pipeline.steps)
+        recursion(r_steps, '')
+        # [deprecated]
+        # for step in pipeline.steps:
+        #     if step[0] == 'pass_custom':
+        #         # Always remain pass_custom when mock.
+        #         r_step.append(step)
+        # for hp_name in hp_grid:  # 'a__b__c'
+        #     path_lis = hp_name.split('__')[:-1]  # ['a', 'b']
+        #     path = '__'.join(path_lis)  # 'a__b'
+        #     if path.startswith('pass_custom'):
+        #         # Already in.
+        #         continue
+        #     r_step.append((path, params[path]))
         # Check if fit step exist.
-        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
+        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_steps)
         if not hasattr(mock_pipeline, 'predict'):
-            # Add MockEstimator step (not modifier, not change cv_results_).
-            r_step.append(('estimate_del',
+            # Add MockEstimator step (non modifier, not change cv_results_).
+            r_steps.append(('estimate_del',
                            mlshell.model_selection.MockEstimator))
-        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_step)
+        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_steps)
         return mock_pipeline
 
     def _mock_optimizer(self, optimizer, x, y, fit_params):

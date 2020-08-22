@@ -285,9 +285,10 @@ Any pipeline parameter ``hp`` can be optimized in grid search.
 Resolver
 ~~~~~~~~
 Some parameters like categoric/numeric indices depend on specific dataset,
-they need resolving before pipeline fitting. For that case, 'auto' can be set
-to parameter, that will trigger hp value resolution according to
-:class:`mlshell.model_selection.Resolver` .
+they need resolving before pipeline fitting. For that case, 'auto'/['auto'] can
+be set in parameters (``hp`` or ``hp_grid``), that will trigger hp value
+resolution according to :class:`mlshell.model_selection.Resolver` .
+If ['auto'], parameter will be substituted with ['resolved value'].
 
 .. note::
 
@@ -387,12 +388,12 @@ Set last pipeline step to:
         * Either set arbitrary range in ``hp_grid``.
         {'estimate__apply_threshold__threshold': [val,] }
 
-        * Or set 'auto' in ``hp_grid`` to resolve typical values from ROC curve on OOF probabilities predictions.
-        Either default hps in (1), or best hps in (2) will be used.
+        * Or set 'auto'/['auto'] in ``hp_grid`` to resolve typical values from ROC curve on OOF probabilities predictions.
+        Note, will be used default hps in case (1), best on previous stage hps in case (2).
         {'estimate__apply_threshold__threshold': 'auto'}
 
 
-``th_`` range extracting from ROC curve example:
+``th_`` range extracted from ROC curve example:
 
 .. image:: ./_static/images/th_.png
   :width: 1000

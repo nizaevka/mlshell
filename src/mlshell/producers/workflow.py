@@ -165,9 +165,9 @@ class Workflow(pycnfg.Producer):
         return res
 
     def optimize(self, res, pipeline_id, dataset_id, subset_id='train',
-                 metric_id=None, hp_grid=None, resolver=None,
-                 resolve_params=None, optimizer=None, gs_params=None,
-                 fit_params=None, dirpath=None, dump_params=None):
+                 metric_id=None, hp_grid=None, resolver=None, optimizer=None,
+                 dirpath=None, resolve_params=None, fit_params=None,
+                 gs_params=None, dump_params=None):
         """Optimize pipeline.
 
         Parameters
@@ -195,24 +195,24 @@ class Workflow(pycnfg.Producer):
             If hp value = ['auto'] in ``hp_grid``, hp will be resolved via
             ``resolver.resolve()``. Auto initialized if class provided.
             If None, :class:`mlshell.model_selection.Resolver` used.
-        resolve_params : dict, optional (default=None)
-            Additional kwargs to pass in ``resolver.resolve(*args,
-            **resolve_params[hp_name])`` . If None, {}.
         optimizer : :class:`mlshell.model_selection.Optimizer``, optional
                 (default=None)
             Class to optimize ``hp_grid``. Will be called ``optimizer(pipeline,
             hp_grid, scoring, **gs_params).fit(x, y, **fit_params)``. If None,
             :class:`mlshell.model_selection.RandomizedSearchOptimizer` .
+        dirpath : str, optional (default=None)
+            Absolute path to the dump result 'runs' dir or relative to
+            'project__path' started with './'. If None, "project__path
+            /results/runs" is used. See Notes for runs description.
+        resolve_params : dict, optional (default=None)
+            Additional kwargs to pass in ``resolver.resolve(*args,
+            **resolve_params[hp_name])`` . If None, {}.
         fit_params : dict, optional (default=None)
             Additional kwargs to pass in ``optimizer.fit(*args,
             **fit_params)``. If None, {}.
         gs_params : dict, optional (default=None)
             Additional kwargs to ``optimizer(pipeline, hp_grid, scoring,
             **gs_params)`` initialization. If None, {}.
-        dirpath : str, optional (default=None)
-            Absolute path to the dump result 'runs' dir or relative to
-            'project__path' started with './'. If None, "project__path
-            /results/runs" is used. See Notes for runs description.
         dump_params: dict, optional (default=None)
             Additional kwargs to pass in ``optimizer.dump_runs(**dump_params)``.
             If None, {}.
@@ -277,7 +277,7 @@ class Workflow(pycnfg.Producer):
         pipeline = self.objects[pipeline_id]
         dataset = self.objects[dataset_id]
         # Resolve and set hp. Otherwise could be problem if hp_grid={}, as
-        # pipeline initially could have unresolved.
+        # pipeline initially could be unresolved.
         pipeline = self._set_hp(
             {}, pipeline, resolver, dataset, resolve_params)
         # Resolve hp_grid.
@@ -289,7 +289,6 @@ class Workflow(pycnfg.Producer):
         train = dataset.subset(subset_id)
         optimizer = optimizer(pipeline.pipeline, hp_grid, scoring, **gs_params)
         optimizer.fit(train.x, train.y, **fit_params)
-
         optimizer.dump_runs(self.logger, dirpath, pipeline, dataset,
                             **dump_params)
 
@@ -620,9 +619,9 @@ class Workflow(pycnfg.Producer):
                             .get(f"{pipeline_id}|{fit_dataset_id}", {})
                             .get('best_score_', '')
                          ).lower()
-        filepath = f"{dirpath}/{self.oid}_{pipeline_id}_{fit_dataset_id}_|" \
-                   f"{best_score}|_{hash(pipeline)}_{fit_dataset_hash}_" \
-                   f"{pred_dataset_id}_{pred_dataset_hash}"
+        filepath = f"{dirpath}/{self.oid}|{pipeline_id}|{fit_dataset_id}|" \
+                   f"{best_score}|{hash(pipeline)}|{fit_dataset_hash}|" \
+                   f"{pred_dataset_id}|{pred_dataset_hash}"
         return filepath
 
 

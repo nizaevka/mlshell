@@ -13,6 +13,7 @@ Ideas:
 * estimator hyper-parameters.
 
 Current configuration:
+
 * use 10000 rows subset of train and test.
 * use lgbm.
 * use target y**0.25 transformation and features 'yeo-johnson' transformation.
@@ -131,6 +132,13 @@ CNFG = {
             'hp_grid': hp_grid,
             'gs_params': 'gs_params__conf',
             'metric_id': ['metric__mae', 'metric__r2'],
+            'steps': [
+                ('optimize',),
+                ('validate',),
+                ('predict',),
+                ('dump',),
+            ],
+
         },
     },
     # Separate section for 'gs_params' kwarg.

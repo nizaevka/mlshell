@@ -109,14 +109,17 @@ class Dataset(dict):
         """:class:`pandas.DataFrame` : Extracted features columns."""
         df = self['data']
         meta = self['meta']
-        return df[meta['features']]
+        return df.loc[:, meta['features']]
 
     @property
     def y(self):
         """:class:`pandas.DataFrame` : Extracted targets columns."""
         df = self['data']
         meta = self['meta']
-        return df[meta['targets']]
+        # return df[meta['targets']].values
+        res = df.loc[:, meta['targets']].values.ravel() \
+            if len(meta['targets']) == 1 else df.loc[:, meta['targets']]
+        return res
 
     @property
     def meta(self):
@@ -191,7 +194,7 @@ class DataIO(object):
         self.logger = logger
         self.project_path = project_path
 
-    def load(self, dataset, filepath,
+    def load(self, dataset, filepath, key='data',
              random_skip=False, random_state=None, **kwargs):
         """Load data from csv-file.
 
@@ -202,6 +205,9 @@ class DataIO(object):
         filepath : str
             Absolute path to csv file or relative to 'project__path' started
             with './'.
+        key : str, optional (default='data')
+            Loaded data identifier to add in dataset dictionary. Useful when
+            load multiple files and combine them in separate step under 'data'.
         random_skip : bool, optional (default=False)
             If True randomly skip rows while read file, remain 'nrow' lines.
             Rewrite `skiprows` kwarg.
@@ -245,7 +251,7 @@ class DataIO(object):
         with open(filepath, 'r') as f:
             raw = pd.read_csv(f, **kwargs)
         self.logger.info("Data loaded from:\n    {}".format(filepath))
-        dataset['data'] = raw
+        dataset[key] = raw
         return dataset
 
 
@@ -530,9 +536,12 @@ class DataPreprocessor(object):
         # Classification.
         # Find classes, example: [array([1]), array([2, 7])].
         classes = [np.unique(j) for i, j in targets.iteritems()]
+
         if pos_labels is None:
-            pos_labels_ind = -1
-            pos_labels = [i[-1] for i in classes]  # [2,4]
+            n_targets = len(classes)
+            pos_labels_ind = [len(classes[i]) - 1 for i in range(n_targets)]
+            pos_labels = [classes[i][pos_labels_ind[i]]
+                          for i in range(n_targets)]  # [2,4]
         else:
             # Find where pos_labels in sorted labels, example: [1, 0].
             pos_labels_ind = [np.where(classes[i] == pos_labels[i])[0][0]

@@ -51,7 +51,7 @@ class Metric(object):
         Whether `score_func` takes a continuous decision certainty.
         This only works for classification using estimators that
         have either a decision_function or predict_proba method.
-    needs_custom_kwargs : bool, optional (default=False)
+    needs_custom_kw_args : bool, optional (default=False)
         If True, before score evaluation extract scorer kwargs from pipeline
         'pass_custom' step (if existed).
 
@@ -59,7 +59,7 @@ class Metric(object):
     -----
     Extended :term:`sklearn:scorer` object:
 
-    * Additional ``needs_custom_kwargs`` kwarg.
+    * Additional ``needs_custom_kw_args`` kwarg.
      Allows to optimize custom scorer kwargs as hyper-parameters.
     * Additional ``score_func_vector`` kwarg.
      Allows to evaluate vectorized score for more detailed analyze.
@@ -68,7 +68,7 @@ class Metric(object):
     def __init__(self, scorer=None, oid=None, score_func=None,
                  score_func_vector=None, greater_is_better=True,
                  needs_proba=False, needs_threshold=False,
-                 needs_custom_kwargs=False):
+                 needs_custom_kw_args=False):
         self.scorer = scorer
         self.score_func = score_func
         self.score_func_vector = score_func_vector
@@ -77,11 +77,11 @@ class Metric(object):
         self.greater_is_better = greater_is_better
         self.needs_proba = needs_proba
         self.needs_threshold = needs_threshold
-        self.needs_custom_kwargs = needs_custom_kwargs
+        self.needs_custom_kw_args = needs_custom_kw_args
 
     def __call__(self, estimator, *args, **kwargs):
         """Redirect call to scorer object."""
-        if self.needs_custom_kwargs:
+        if self.needs_custom_kw_args:
             self._set_custom_kwargs(estimator)
         return self.scorer(estimator, *args, **kwargs)
 
@@ -92,7 +92,7 @@ class Metric(object):
         return wrapper
 
     @property
-    def kwargs(self):
+    def kw_args(self):
         """dict: Additional kwargs passed to `score_func`."""
         # Unchanged if no `pass_custom` step in pipeline.
         return self.scorer._kwargs
@@ -134,7 +134,7 @@ class Metric(object):
             for step in estimator.steps:
                 if step[0] == 'pass_custom':
                     temp = step[1].kw_args.get(self.oid, {})
-                    self.kwargs.update(temp)
+                    self.kw_args.update(temp)
 
 
 class MetricProducer(pycnfg.Producer):
@@ -175,7 +175,7 @@ class MetricProducer(pycnfg.Producer):
                                  logger_id=logger_id)
 
     def make(self, scorer, score_func, score_func_vector=None,
-             needs_custom_kwargs=False, **kwargs):
+             needs_custom_kw_args=False, **kwargs):
         """Make scorer from metric callable.
 
         Parameters
@@ -187,7 +187,7 @@ class MetricProducer(pycnfg.Producer):
         score_func_vector: callback, optional (default=None)
             Vectorized `score_func` returning vector of values for all samples.
             Mainly for result visualization purpose.
-        needs_custom_kwargs : bool, optional (default=False)
+        needs_custom_kw_args : bool, optional (default=False)
             If True, before score evaluation extract scorer kwargs from
             pipeline 'pass_custom' step (if existed).
         **kwargs : dict
@@ -210,13 +210,13 @@ class MetricProducer(pycnfg.Producer):
             scorer.scorer = sklearn.metrics.make_scorer(score_func, **kwargs)
         scorer.score_func = score_func
         scorer.score_func_vector = score_func_vector
-        scorer.needs_custom_kwargs = needs_custom_kwargs
+        scorer.needs_custom_kw_args = needs_custom_kw_args
         scorer.greater_is_better = scorer.scorer._sign > 0
         scorer.needs_proba =\
             isinstance(scorer.scorer, sklearn.metrics._scorer._ProbaScorer)
         scorer.needs_threshold =\
             isinstance(scorer.scorer, sklearn.metrics._scorer._ThresholdScorer)
-        scorer.needs_custom_kwargs = needs_custom_kwargs
+        scorer.needs_custom_kw_args = needs_custom_kw_args
         return scorer
 
 

@@ -48,7 +48,7 @@ class Steps(object):
         'process_parallel__pipeline_categoric__select_columns__kw_args'
         'process_parallel__pipeline_numeric__select_columns__kw_args'
         'estimate__apply_threshold__threshold'
-        'estimate__apply_threshold__kw_args'
+        'estimate__apply_threshold__params'
 
     Set corresponding parameters with ``set_params()`` to overwrite default in
     created pipeline or use :class:`mlshell.model_selection.Resolver` .
@@ -105,7 +105,7 @@ class Steps(object):
                         estimator)),
                 ('apply_threshold',
                     mlshell.model_selection.ThresholdClassifier(
-                        threshold=None, kw_args='auto')),
+                        params='auto', threshold=None)),
                     ])
         elif estimator_type == 'classifier' and not th_step:
             last_step = sklearn.pipeline.Pipeline(steps=[('classifier',
@@ -117,7 +117,7 @@ class Steps(object):
                 ^ (estimator_type == "classifier"):
             raise TypeError(f"{self.__class__.__name__}:"
                             f"{inspect.stack()[0][3]}:"
-                            f" wrong estimator type")
+                            f" wrong estimator type: {last_step}")
         return last_step
 
     @property

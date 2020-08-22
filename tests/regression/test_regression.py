@@ -1,13 +1,4 @@
-"""The module to test code on real data
-
-TODO
-    explore: filecmp True despite of different file separator in logs. (maybe None was not extst in linux)
-    explore: can`t import classes
-    explore: there are difference in model and predictions for windows/unix why?
-        maybe csv problem https://stackoverflow.com/questions/12877189/float64-with-pandas-to-csv
-        or models difference
-
-"""
+"""The full regression project test."""
 
 
 import shutil

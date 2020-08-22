@@ -40,16 +40,15 @@ class PredictionTransformer(sklearn.base.BaseEstimator,
         Classifier supported predict_proba.
 
     """
-
     def __init__(self, classifier):
-        self.clf = classifier
+        self.classifier = classifier
 
     def fit(self, x, y, **fit_params):
-        self.clf.fit(x, y, **fit_params)
+        self.classifier.fit(x, y, **fit_params)
         return self
 
     def transform(self, x):
-        return self.clf.predict_proba(x)
+        return self.classifier.predict_proba(x)
 
 
 class ThresholdClassifier(sklearn.base.BaseEstimator,
@@ -61,14 +60,7 @@ class ThresholdClassifier(sklearn.base.BaseEstimator,
 
     Parameters
     ----------
-    threshold : float [0,1], list of float [0,1], optional(default=None)
-        Classification threshold. For multi-output target list of [n_outputs].
-        If None, :func:`numpy.argmax` (in binary case equivalent to 0.5).
-        If positive class probability P(pos_label) = 1 - P(neg_labels) > th_
-        for some sample, classifier predict pos_label, else label in neg_labels
-        with max probability.
-
-    kw_args : dict
+    params : dict
         Parameters combined in dictionary to set together. {
 
         'classes': list of :class:`numpy.ndarray`
@@ -81,32 +73,47 @@ class ThresholdClassifier(sklearn.base.BaseEstimator,
             target(s) (n_outputs).
         }
 
+    threshold : float [0,1], list of float [0,1], optional(default=None)
+        Classification threshold. For multi-output target list of [n_outputs].
+        If None, :func:`numpy.argmax` (in binary case equivalent to 0.5).
+        If positive class probability P(pos_label) = 1 - P(neg_labels) > th_
+        for some sample, classifier predict pos_label, else label in neg_labels
+        with max probability.
+
+
     Notes
     -----
     Will be replaced with:
         https://github.com/scikit-learn/scikit-learn/pull/16525.
 
     """
-    def __init__(self, threshold=None, kw_args={}):
-        self.classes = kw_args['classes']
-        self.pos_labels = kw_args['pos_labels']
-        self.pos_labels_ind = kw_args['pos_labels_ind']
+    def __init__(self, params, threshold=None):
+        self.params = params
         self.threshold = threshold
-        if any(not isinstance(i, np.ndarray) for i in self.classes):
-            raise ValueError("Each target 'classes' should be numpy.ndarray.")
+
+    @property
+    def classes_(self):
+        # Mandatory for classifiers (attribute or property).
+        classes = self.params['classes']
+        return classes if len(classes) > 1 else classes[0]
 
     def fit(self, x, y, **fit_params):
         return self
 
     def predict(self, x):
-        # x - predict_proba.
+        # x - predict_proba (n_outputs, n_samples, n_classes).
         if not isinstance(x, list):
             # Compliance to multi-output.
             x = [x]
             threshold = [self.threshold]
         else:
             threshold = self.threshold
-        assert len(x) == len(self.classes), "Multi-output inconsistent."
+        classes = self.params['classes']
+        pos_labels = self.params['pos_labels']
+        pos_labels_ind = self.params['pos_labels_ind']
+        if any(not isinstance(i, np.ndarray) for i in classes):
+            raise ValueError("Target classes should be numpy.ndarray.")
+        assert len(x) == len(classes), "Multi-output inconsistent."
 
         res = []
         for i in range(len(x)):
@@ -114,31 +121,33 @@ class ThresholdClassifier(sklearn.base.BaseEstimator,
             # predict_proba, since can`t reconstruct probabilities (add zero),
             # cause don`t know which one class is absent.
             n_classes = x[i].shape[1]
-            if n_classes != self.classes[i].shape[0]:
+            if n_classes != classes[i].shape[0]:
                 raise ValueError("Train folds missed some classes:\n"
                                  "    ThresholdClassifier "
                                  "can`t identify class probabilities.")
 
             if threshold[i] is None:
                 # Take the one with max probability.
-                res.append(self.classes[i].take(np.argmax(x[i],
-                                                          axis=1), axis=0))
+                res.append(classes[i].take(np.argmax(x[i], axis=1), axis=0))
             else:
+                if pos_labels_ind[i] < 0:
+                    raise ValueError("pos_labels_ind values should be "
+                                     "non-negative.")
                 if n_classes > 2:
                     # Multi-class classification.
                     # Remain label with max prob.
-                    mask = np.arange(n_classes) != self.pos_labels_ind
+                    mask = np.arange(n_classes) != pos_labels_ind[i]
                     remain_x = x[i][..., mask]
-                    remain_classes = self.classes[i][mask]
+                    remain_classes = classes[i][mask]
                     neg_labels = remain_classes.take(np.argmax(remain_x,
                                                                axis=1), axis=0)
                 else:
                     # Binary classification.
-                    mask = np.arange(n_classes) != self.pos_labels_ind
-                    neg_labels = self.classes[i][mask]
+                    mask = np.arange(n_classes) != pos_labels_ind[i]
+                    neg_labels = classes[i][mask]
                 res.append(
-                    np.where(x[i][..., self.pos_labels_ind] > threshold[i],
-                             [self.pos_labels], neg_labels)
+                    np.where(x[i][..., pos_labels_ind[i]] > threshold[i],
+                             [pos_labels[i]], neg_labels)
                 )
         return res if len(res) > 1 else res[0]
 
