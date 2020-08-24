@@ -157,9 +157,11 @@ class Optimizer(object):
         * 'id' random UUID for run (hp combination).
         * All pipeline parameters.
         * Grid search output ``runs`` keys.
-        * Pipeline info: 'pipeline__id', 'pipeline__hash'. 'pipeline__type'.
-        * Dataset info: 'dataset__id', 'dataset__hash',
+        * Pipeline info: 'pipeline__id', 'pipeline__hash', 'pipeline__type'.
+        * Dataset info: 'dataset__id', 'dataset__hash'.
 
+        Hash could alter when interpreter restarted, because of address has
+        changed for some underlying function.
         """
         runs = copy.deepcopy(self.optimizer.cv_results_)
         best_ind = self.optimizer.best_index_
@@ -320,7 +322,7 @@ class RandomizedSearchOptimizer(Optimizer):
     **kwargs : dict
         Kwargs for :class:`sklearn.model_selection.RandomizedSearchCV`.
         If kwargs['n_iter']=None, replaced with number of hp combinations
-        in ``hp_grid``.
+        in ``hp_grid`` ("1" if only distributions found or empty).
 
     """
     def __init__(self, pipeline, hp_grid, scoring, **kwargs):
@@ -334,13 +336,15 @@ class RandomizedSearchOptimizer(Optimizer):
         # Calculate from hps ranges if 'n_iter' is None.
         if n_iter is not None:
             return n_iter
-        try:
-            # 1.0 if hp_grid = {}.
-            n_iter = np.prod([len(i) if isinstance(i, list) else i.shape[0]
-                              for i in hp_grid.values()])
-        except AttributeError:
-            raise ValueError("Distribution is used for hyperparameter grid, "
-                             "specify 'runs' in gs_params.")
+
+        # 1.0 if hp_grid = {} or distributions.
+        n_iter = 1
+        for i in hp_grid.values():
+            try:
+                n_iter *= len(i)
+            except AttributeError:
+                # Either distribution, or single value(error raise in sklearn).
+                continue
         return n_iter
 
 

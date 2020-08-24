@@ -2,22 +2,10 @@
 
 https://www.kaggle.com/c/allstate-claims-severity
 
-Ideas:
-
-* estimator: linear vs lightgbm vs xgboost.
-* features 'yeo-johnson' transformation.
-* features quantile scaler.
-* polynomial feature generation: degree 1 vs 2.
-* target transformer: None vs np.log vs y**0.25.
-* loss: mse vs mae vs `ln(cosh(x)).
-* estimator hyper-parameters.
-
 Current configuration:
 
-* use 10000 rows subset of train and test.
-* use lgbm with 'fair' objective.
-* use target y**0.25 transformation and features 'yeo-johnson' transformation.
-* optimize polynomial degree and 'yeo-johnson'.
+* use 1000 rows subset of train and test.
+* use lgbm with default objective.
 
 """
 
@@ -27,6 +15,7 @@ import numpy as np
 import pycnfg
 import sklearn
 import xgboost
+import pathlib
 
 
 def target_func(y):
@@ -47,10 +36,13 @@ target_transformer_2 = sklearn.preprocessing.FunctionTransformer(
 # Set hp ranges for optimize.
 hp_grid = {
     # 'process_parallel__pipeline_numeric__impute__gaps__strategy': ['median', 'constant'],
-    'process_parallel__pipeline_numeric__transform_normal__skip': [True, False],
+    ## 'process_parallel__pipeline_numeric__transform_normal__skip': [True, False],
     # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(0, 100), (1, 99)],
-    'process_parallel__pipeline_numeric__add_polynomial__degree': [1, 2],
-    'estimate__transformer': [target_transformer],
+    # TODO: remove
+    ## 'process_parallel__pipeline_numeric__add_polynomial__degree': [1, 2],
+    ## 'estimate__transformer': [target_transformer],
+    'process_parallel__pipeline_numeric__add_polynomial__degree': [3],
+    'estimate__transformer': [None, target_transformer_2],
 
     # lgbm
     # 'estimate__regressor__n_estimators': np.linspace(50, 1000, 10, dtype=int),
@@ -77,7 +69,7 @@ CNFG = {
             'kwargs': {
                 'estimator_type': 'regressor',
                 'estimator': lightgbm.LGBMRegressor(
-                    objective='fair', num_leaves=2, min_data_in_leaf=1,
+                    num_leaves=2, min_data_in_leaf=1,
                     n_estimators=250, max_depth=-1, silent=False,
                     random_state=42),
             }
@@ -110,14 +102,14 @@ CNFG = {
         # Section level 'global' to specify common kwargs for test and train.
         'global': {'targets_names': ['loss'],
                    'categor_names': [f'cat{i}' for i in range(1, 117)],
-                   'load__kwargs': {'nrows': 10000, 'index_col': 'id'},
+                   'load__kwargs': {'nrows': 1000, 'index_col': 'id'},
                    },
         'train': {
-            'filepath': './data/train.csv',
+            'filepath': './data/train_10k.csv',
             'split__kwargs': {'train_size': 0.7, 'shuffle': False},
         },
         'test': {
-            'filepath': 'data/test.csv',
+            'filepath': './data/test_10k.csv',
             'split__kwargs': {'train_size': 1},
         },
     },

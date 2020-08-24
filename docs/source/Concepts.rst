@@ -437,20 +437,20 @@ Each optimization stage produces ``<timestamp>_runs.csv`` file. See
 
 .. code-block:: python
 
-    from os import listdir
-    files = [f for f in listdir('results/runs/') if 'runs.csv' in f]
+    import glob
+
+    files = glob.glob(f"{path}/*_runs.csv")
     df_lis = list(range(len(files)))
-    for i,f in enumerate(files):
-        if '.csv' not in f:
-            continue
+    for i, f in enumerate(files):
         try:
-            df_lis[i]=pd.read_csv("results/runs/" + f, sep=",", header=0)
-            print(f, df_lis[i].shape, df_lis[i]['dataset__id'][0], df_lis[i]['pipeline__id'][0])
+            df_lis[i] = pd.read_csv(f, sep=",", header=0)
+            print('Read runs.csv\n', f, df_lis[i].shape,
+                  df_lis[i]['dataset__id'][0], df_lis[i]['pipeline__id'][0])
         except Exception as e:
             print(e)
             continue
+    df = pd.concat(df_lis, axis=0, sort=False).reset_index()
 
-    df=pd.concat(df_lis,axis=0,sort=False).reset_index()
     # groupby data hash
     df.groupby('dataset__hash').size()
     # groupby estimator
@@ -494,5 +494,3 @@ It is convenient to follow the structure:
                     ~~ cache for producer objects ~~
                 |__ pipeline/
                     ~~ cache for sklearn.pipeline.Pipeline(memory=<./.temp/pipeline>) ~~
-
-

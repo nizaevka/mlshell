@@ -36,7 +36,7 @@ class Dataset(dict):
 
     Implements interface to access arbitrary data.
 
-    Interface: x, y, data, meta, subset, dump_prediction and whole dict api.
+    Interface: x, y, data, meta, subset, dump_pred and whole dict api.
 
     Parameters
     ----------
@@ -165,9 +165,10 @@ class Dataset(dict):
         """
         meta = self.meta
         # Recover original index and names.
+        dic = dict(zip(meta['targets'],
+                   [y_pred] if len(meta['targets']) == 1 else y_pred))
         obj = pd.DataFrame(index=meta['indices'],
-                           data={zip(meta['targets'], y_pred)})\
-            .rename_axis(meta['index'])
+                           data=dic).rename_axis(meta['index'], axis=0)
         fullpath = f"{filepath}_pred.csv"
         with open(fullpath, 'w', newline='') as f:
             obj.to_csv(f, mode='w', header=True,
@@ -382,6 +383,7 @@ class DataPreprocessor(object):
             **raw_info_features,
             **raw_info_targets,
         }
+        self.logger.debug(f"Dataset meta:\n    {meta}")
         dataset.update({'data': data,
                         'meta': meta,
                         'subsets': {},
@@ -527,7 +529,7 @@ class DataPreprocessor(object):
             for target(s) (n_outputs,).
 
         """
-        # Resgression.
+        # Regression.
         if isinstance(pos_labels, list) and not pos_labels:
             classes = []
             pos_labels_ind = []

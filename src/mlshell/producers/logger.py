@@ -258,7 +258,7 @@ class LoggerProducer(pycnfg.Producer):
             config = copy.deepcopy(LOGGER_CONFIG)
         if extra is None:
             # Add extra in every entry.
-            extra = {'delimeter': '\n' + '=' * 100}
+            extra = {'delimeter': '\n' + '=' * 79}
         if clean is None:
             clean = ["debug_handler", "warning_handler",
                      "error_handler", "critical_handler"]

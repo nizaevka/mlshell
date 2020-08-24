@@ -72,7 +72,6 @@ class Validator(object):
             scores[dataset.oid] = {}
         for metric in metrics:
             # Level 5 needs for tests.
-            logger.log(5, f"{metric.oid}:")
             logger.log(25, f"{metric.oid}:")
             for dataset in datasets:
                 x = dataset.x
@@ -92,7 +91,7 @@ class Validator(object):
                     break
                 scores[dataset.oid][metric.oid] = score
                 score_ = metric.pprint(score[-1] if vector else score)
-                logger.log(5, f"{dataset.oid}:\n    {score_}")
+                logger.log(5, f"{score_}")
                 logger.log(25, f"{dataset.oid}:\n    {score_}")
         return scores
 
