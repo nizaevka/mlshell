@@ -1,3 +1,4 @@
+import time
 import filecmp
 import glob
 import importlib.util
@@ -20,7 +21,7 @@ def get_params():
 
 def runs_loader(path):
     """Import runs.csv as DataFrame."""
-    files = glob.glob(f"{path}/*_runs.csv")
+    files = sorted(glob.glob(f"{path}/*_runs.csv"))
     df_lis = list(range(len(files)))
     for i, f in enumerate(files):
         try:
@@ -82,5 +83,11 @@ def test_run(id_, args, kwargs, expected):
     columns = list(df_diff[df_diff==False].dropna().index)
     columns_ = expected['columns_diff']
     print('Columns diff:\n', columns)
+    print('Columns diff:\n', columns_)
+    time.sleep(1)
     assert columns == columns_
+    # * Compare model.
+    model_path = glob.glob(f"{results_path}/models/*.model")[0]
+    model_path_ = expected['model_path']
+    assert filecmp.cmp(model_path, model_path_)
     return

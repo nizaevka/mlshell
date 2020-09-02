@@ -34,13 +34,10 @@ target_transformer_2 = sklearn.preprocessing.FunctionTransformer(
 
 
 # Set hp ranges for optimize.
-hp_grid = {
+hp_grid_1 = {
     # 'process_parallel__pipeline_numeric__impute__gaps__strategy': ['median', 'constant'],
     ## 'process_parallel__pipeline_numeric__transform_normal__skip': [True, False],
     # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(0, 100), (1, 99)],
-    # TODO: remove
-    ## 'process_parallel__pipeline_numeric__add_polynomial__degree': [1, 2],
-    ## 'estimate__transformer': [target_transformer],
     'process_parallel__pipeline_numeric__add_polynomial__degree': [3],
     'estimate__transformer': [None, target_transformer_2],
 
@@ -50,6 +47,11 @@ hp_grid = {
     # 'estimate__regressor__min_data_in_leaf': np.linspace(1, 100, 10, dtype=int),
     # 'estimate__regressor__min_data_in_leaf': scipy.stats.randint(1, 100),
     # 'estimate__regressor__max_depth': np.linspace(1, 30, 10, dtype=int),
+}
+
+hp_grid_2 = {
+    'pass_custom__kw_args': [{'metric__custom': {'param_a': 1, 'param_b': 'c'}},
+                             {'metric__custom': {'param_a': 2, 'param_b': 'd'}}],
 }
 
 
@@ -121,21 +123,29 @@ CNFG = {
             'pipeline_id': 'pipeline__lgbm',
             'dataset_id': 'dataset__train',
             'predict__dataset_id': 'dataset__test',
-            'hp_grid': hp_grid,
-            'gs_params': 'gs_params__conf',
             'metric_id': ['metric__mae', 'metric__r2'],
             'steps': [
-                ('optimize',),
+                ('optimize', {'hp_grid': hp_grid_1,
+                              'gs_params': 'gs_params__conf_1'}),
+                ('optimize', {'hp_grid': hp_grid_2,
+                              'optimizer': mlshell.model_selection.MockOptimizer,
+                              'gs_params': 'gs_params__conf_1'}),
+                ('optimize', {'hp_grid': {},
+                              'gs_params': 'gs_params__conf_1'}),
+                ('optimize', {'hp_grid': {},
+                              'optimizer': mlshell.model_selection.MockOptimizer,
+                              'gs_params': 'gs_params__conf_1'}),
                 ('validate',),
                 ('predict',),
                 ('dump',),
+                ('plot',),
             ],
 
         },
     },
     # Separate section for 'gs_params' kwarg.
     'gs_params': {
-        'conf': {
+        'conf_1': {
             'priority': 3,
             'init': {
                 'n_iter': None,

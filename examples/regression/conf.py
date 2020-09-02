@@ -37,7 +37,7 @@ def target_inverse_func(y):
     return y**4
 
 
-# Create target transformers (don`t use lambda function)
+# Create target transformers (avoid lambda function).
 target_transformer = sklearn.preprocessing.FunctionTransformer(
     func=target_func, inverse_func=target_inverse_func,)
 target_transformer_2 = sklearn.preprocessing.FunctionTransformer(
@@ -46,9 +46,7 @@ target_transformer_2 = sklearn.preprocessing.FunctionTransformer(
 
 # Set hp ranges for optimize.
 hp_grid = {
-    # 'process_parallel__pipeline_numeric__impute__gaps__strategy': ['median', 'constant'],
     'process_parallel__pipeline_numeric__transform_normal__skip': [True, False],
-    # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(0, 100), (1, 99)],
     'process_parallel__pipeline_numeric__add_polynomial__degree': [1, 2],
     'estimate__transformer': [target_transformer],
 

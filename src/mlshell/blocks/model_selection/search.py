@@ -17,6 +17,7 @@ pipeline refit to probe.
 """
 
 import copy
+import platform
 import time
 import uuid
 
@@ -203,13 +204,13 @@ class Optimizer(object):
             logger.info(f"CV results:\n{msg}")
         logger.info(f"GridSearch time:\n    {runs_avg}")
         logger.info(f"GridSearch best index:\n    {optimizer.best_index_}")
-        logger.log(25, f"CV best modifiers:\n"
-                       f"    {jsb(str(best_modifiers))}")
-        logger.info(f"CV best configuration:\n"
-                    f"    {jsb(str(optimizer.best_params_))}")
-        logger.info(f"CV best mean test score "
-                    f"{getattr(optimizer, 'refit', '')}:\n"
-                    f"    {getattr(optimizer, 'best_score_', 'n/a')}")
+        logger.info(f"CV best modifiers:\n"
+                    f"    {jsb(str(best_modifiers))}")
+        logger.log(25, f"CV best configuration:\n"
+                       f"    {jsb(str(optimizer.best_params_))}")
+        logger.log(25, f"CV best mean test score "
+                       f"{getattr(optimizer, 'refit', '')}:\n"
+                       f"    {getattr(optimizer, 'best_score_', 'n/a')}")
         return None
 
     def _find_modifiers(self, cv_results_):
@@ -270,7 +271,7 @@ class Optimizer(object):
         object_labels = list(df.select_dtypes(include=['object']).columns)
         df[object_labels] = df[object_labels].astype(str)
         # Dump.
-        filepath = '{}/{}_runs.csv'.format(dirpath, int(time.time()))
+        filepath = f"{dirpath}/{int(time.time())}_{platform.system()}_runs.csv"
         with open(filepath, 'a', newline='') as f:
             df.to_csv(f, mode='a', header=f.tell() == 0, index=False,
                       line_terminator='\n')
@@ -364,12 +365,14 @@ class MockOptimizer(RandomizedSearchOptimizer):
         :class:`sklearn.model_selection.RandomizedSearchCV`.
     hp_grid : dict
         Specify only ``hp`` supported mock optimization. If {}, used:
-        :class:`mlshell.custom.MockEstimator`.
+        :class:`mlshell.custom.MockClassifier` or :class:`mlshell.custom.
+        MockRegressor` .
     scoring: string, callable, list/tuple, dict, optional (default=None)
         See corresponding argument for
         :class:`sklearn.model_selection.RandomizedSearchCV`.
-    method : str {'predict_proba', 'predict'}
-        See corresponding argument for
+    method : str {'predict_proba', 'predict'}, optional (default='predict')
+        Set ``predict_proba`` if classifier supports and any metric
+        ``needs_proba``. See corresponding argument for
         :class:`mlshell.model_selection.cross_val_predict`.
     **kwargs : dict
         Kwargs for :class:`sklearn.model_selection.RandomizedSearchCV`.
@@ -379,20 +382,38 @@ class MockOptimizer(RandomizedSearchOptimizer):
     Notes
     -----
     To brute force threshold, set method to 'predict_proba'.
-    To brute force scorer kwargs alone set method to 'predict', if
-    simultaneously with threshold, set to 'predict_proba'.
+    To brute force scorer kwargs alone could be 'predict' or 'predict_proba'
+    depends on if scoring needs probabilities.
 
     """
     def __init__(self, pipeline, hp_grid, scoring,
-                 method='predict_proba', **kwargs):
+                 method='predict', **kwargs):
+        self._check_method(method, scoring)
         self.method = method
         self.pipeline = pipeline
-        if hp_grid == {}:
-            mock_pipeline = mlshell.model_selection.prediction.MockEstimator
-        elif hasattr(pipeline, 'steps'):
-            mock_pipeline = self._mock_pipeline(pipeline, hp_grid)
-        else:
-            mock_pipeline = pipeline
+        # [deprecated]
+        # if hp_grid == {}:
+        #     if sklearn.base.is_regressor(estimator=pipeline):
+        #         mock = mlshell.model_selection.prediction.MockRegressor()
+        #     elif method == 'predict':
+        #         mock = mlshell.model_selection.prediction.MockClassifier()
+        #     elif method == 'predict_proba':
+        #         # Would be problem if no ThCl, classes not resolved.
+        #         # [alternative] extract in fit from y (sklearn logic), but no
+        #         # pos_label.
+        #         if not hasattr(pipeline, 'params'):
+        #             raise ValueError("Needs ThresholdClassifier "
+        #                              "in pipeline steps.")
+        #         # mock = mlshell.model_selection.prediction.ThresholdClassifier(
+        #         #     pipeline.params, pipeline.threshold)
+        #     else:
+        #         raise ValueError(f"Unknown method {method}")
+        #     mock_pipeline = mock
+        # elif hasattr(pipeline, 'steps'):
+        #     mock_pipeline = self._mock_pipeline(pipeline, hp_grid)
+        # else:
+        #     mock_pipeline = pipeline
+        mock_pipeline = self._mock_pipeline(pipeline, hp_grid)
         super().__init__(mock_pipeline, hp_grid, scoring, **kwargs)
 
     def fit(self, x, y, **fit_params):
@@ -408,6 +429,20 @@ class MockOptimizer(RandomizedSearchOptimizer):
         self.optimizer = optimizer
         return None
 
+    def _check_method(self, method, scoring):
+        """Check method arg."""
+        if isinstance(scoring, dict):
+            for key, val in scoring.items():
+                # scorer could be from sklearn SCORERS => no needs_proba attr.
+                typ = sklearn.metrics._scorer._ProbaScorer
+                if method == 'predict':
+                    if isinstance(val, typ) \
+                            or getattr(val, 'needs_proba', False):
+                        raise ValueError(f"MockOptimizer: scoring {key} needs "
+                                         f"method=predict_proba in gs_params,"
+                                         f" but predict use.")
+        return
+
     def _mock_pipeline(self, pipeline, hp_grid):
         """Remain steps only if in hp_grid.
 
@@ -419,7 +454,9 @@ class MockOptimizer(RandomizedSearchOptimizer):
 
         If resulted mock pipeline has no predict method, added:
         ('estimate_del',
-            :class:`mlshell.model_selection.prediction.MockEstimator` ).
+            :class:`mlshell.model_selection.prediction.MockClassifier` or
+            :class:`mlshell.model_selection.prediction.MockRegressor`
+        ).
 
         Always remains 'pass_custom' step. If pipeline use `pass_custom` and
         `pass_custom__kwargs` not in hp_grid, corresponding custom score(s)
@@ -427,10 +464,13 @@ class MockOptimizer(RandomizedSearchOptimizer):
         pipeline optimization on another dataset.
 
         """
-        params = pipeline.get_params()
+        # params = pipeline.get_params()
         # Set of used path subpaths.
         # Always remain pass_custom when mock.
         paths = {'pass_custom'}
+        if self.method == 'predict_proba':
+            paths.add('estimate')
+            paths.add('estimate__apply_threshold')
         for i in hp_grid:
             lis = i.split('__')
             for j in range(len(lis)):
@@ -443,11 +483,16 @@ class MockOptimizer(RandomizedSearchOptimizer):
                 if subpath not in paths:
                     # Delete.
                     del_inds.append(ind)
+                elif subpath in hp_grid:
+                    # Remain full element, no need to level up, otherwised
+                    # will remove all inside the step
+                    # for example 'estimate'.
+                    continue
                 elif hasattr(substep[1], 'steps'):
                     # Level down.
                     recursion(substep[1].steps, subpath)
                 else:
-                    # Remain full element.
+                    # Remain full element(no level up and in paths)
                     pass
             for ind in del_inds[::-1]:
                 del steps[ind]
@@ -455,26 +500,39 @@ class MockOptimizer(RandomizedSearchOptimizer):
 
         r_steps = copy.deepcopy(pipeline.steps)
         recursion(r_steps, '')
-        # [deprecated]
-        # for step in pipeline.steps:
-        #     if step[0] == 'pass_custom':
-        #         # Always remain pass_custom when mock.
-        #         r_step.append(step)
-        # for hp_name in hp_grid:  # 'a__b__c'
-        #     path_lis = hp_name.split('__')[:-1]  # ['a', 'b']
-        #     path = '__'.join(path_lis)  # 'a__b'
-        #     if path.startswith('pass_custom'):
-        #         # Already in.
-        #         continue
-        #     r_step.append((path, params[path]))
-        # Check if fit step exist.
-        mock_pipeline = sklearn.pipeline.Pipeline(steps=r_steps)
-        if not hasattr(mock_pipeline, 'predict'):
+
+        flag = False
+        if not r_steps:
+            # No estimator save from hp_grid (for example empty).
+            flag = True
+        elif r_steps:
+            mock_pipeline = sklearn.pipeline.Pipeline(steps=r_steps)
+            if not hasattr(mock_pipeline, 'predict'):
+                # No estimator.
+                flag = True
+        if flag:
             # Add MockEstimator step (non modifier, not change cv_results_).
-            r_steps.append(('estimate_del',
-                           mlshell.model_selection.MockEstimator))
+            mock = self._mock_estimator(pipeline)
+            r_steps.append(('estimate_del', mock))
         mock_pipeline = sklearn.pipeline.Pipeline(steps=r_steps)
         return mock_pipeline
+
+    def _mock_estimator(self, pipeline):
+        """Mock last step estimator."""
+        if sklearn.base.is_regressor(estimator=pipeline):
+            mock = mlshell.model_selection.prediction.MockRegressor()
+        elif self.method == 'predict':
+            mock = mlshell.model_selection.prediction.MockClassifier()
+        elif self.method == 'predict_proba':
+            # If already in, should have remained.
+            raise ValueError("MockOptimizer: needs ThresholdClassifier "
+                             "in pipeline steps.")
+            # TODO: somehow resolved here, additional kwargs.
+            # mock = mlshell.model_selection.prediction.ThresholdClassifier(
+            #     pipeline.params, pipeline.threshold)
+        else:
+            raise ValueError(f"Unknown method {self.method}")
+        return mock
 
     def _mock_optimizer(self, optimizer, x, y, fit_params):
         if hasattr(optimizer, 'refit') and optimizer.refit:

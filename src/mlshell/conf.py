@@ -72,8 +72,6 @@ WORKFLOWS = {
     'default': {
         'init': {},
         'producer': mlshell.Workflow,
-        'global': {},
-        'patch': {},
         'priority': 4,
         'steps': [
             ('optimize', ),

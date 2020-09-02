@@ -12,12 +12,14 @@ it in the next stage.
 
 """
 
-
 import inspect
 import os
 import pathlib
+import platform
 import threading
+import time
 
+import jsbeautifier
 import mlshell
 import numpy as np
 import pandas as pd
@@ -234,7 +236,7 @@ class Workflow(pycnfg.Producer):
         Optimization flow:
 
         * Call grid search.
-         ``optimizer(pipeline, hp_grid, scoring, **gs_params)
+         ``optimizer(pipeline.pipeline, hp_grid, scoring, **gs_params)
          .fit(x, y, **fit_params)`` .
         * Call dump runs.
          ``optimizer.dump_runs(logger, dirpath, **dump_params)``,
@@ -283,6 +285,8 @@ class Workflow(pycnfg.Producer):
         # Resolve hp_grid.
         hp_grid = self._resolve_hp(
             hp_grid, pipeline, resolver, dataset, resolve_params)
+        msg = jsbeautifier.beautify(str(hp_grid))
+        self.logger.info(f"hp_grid:\n    {msg}")
         # Resolve scoring.
         scoring = self._resolve_scoring(metric_id, pipeline)
 
@@ -373,10 +377,10 @@ class Workflow(pycnfg.Producer):
         Notes
         -----
         Resulted filename includes prefix:
-        ``{workflow_id}_{pipeline_id}_{fit_dataset_id}_{best_score}_
-        {pipeline_hash}_{fit_dataset_hash}``.
+        ``workflow_id|pipeline_id|fit_dataset_id|best_score|pipeline_hash|
+        fit_dataset_hash|os_type|timestamp``.
 
-        If pipeline not fitted, 'fit_dataset_id' = None .
+        fit_dataset_id = None if pipeline not fitted or hasn`t such attribute.
         The 'best_score' available after optimize step(s) only if optimizer
         supported.
 
@@ -424,11 +428,11 @@ class Workflow(pycnfg.Producer):
         Notes
         -----
         Resulted filename includes prefix:
-        ``{workflow_id}_{pipeline_id}_{fit_dataset_id}_{best_score}
-        _{pipeline_hash}_{fit_dataset_hash}
-        _{predict_dataset_id}_{predict_dataset_hash}``
+        ``workflow_id|pipeline_id|fit_dataset_id|best_score|pipeline_hash|fit_
+        dataset_hash|predict_dataset_id|predict_dataset_hash|os_type|timestamp``
 
-        If pipeline not fitted, 'fit_dataset_id' = None .
+
+        fit_dataset_id = None if pipeline not fitted or hasn`t such attribute.
         The `best_score` available only after optimize step(s) if optimizer
         supported.
 
@@ -510,8 +514,9 @@ class Workflow(pycnfg.Producer):
                    for id_ in subset_id}
 
         args = (subruns, pipeline, metrics, subsets, validator, self.logger)
-        threading.Thread(target=plotter.plot, args=args, kwargs=kwargs,
-                         daemon=True).start()
+        thread = threading.Thread(target=plotter.plot, args=args, kwargs=kwargs,
+                                  daemon=False)
+        thread.start()
         return res
 
     # ========================== fit/optimize =================================
@@ -610,18 +615,25 @@ class Workflow(pycnfg.Producer):
 
     # ========================== dump/predict =================================
     def _prefix(self, res, dirpath, pipeline, pipeline_id,
-                pred_dataset=0, pred_dataset_id=''):
+                pred_dataset=None, pred_dataset_id=''):
         """Generate informative file prefix."""
-        pred_dataset_hash = hash(pred_dataset)
+        pred_dataset_hash = None if pred_dataset is None else hash(pred_dataset)
         fit_dataset_id = getattr(pipeline, 'dataset_id', None)
-        fit_dataset_hash = hash(self.objects.get(fit_dataset_id, 0))
+        # Could be dataset a__b or subset a__b__c.
+        tmp = f"{fit_dataset_id}__".split('__')
+        fit_dataset = self.objects.get('__'.join(tmp[0:2]), None)
+        if fit_dataset is None:
+            fit_dataset_hash = None
+        else:
+            fit_dataset_hash = hash(fit_dataset.subset(tmp[2]))
         best_score = str(res.get('runs', {})
                             .get(f"{pipeline_id}|{fit_dataset_id}", {})
                             .get('best_score_', '')
                          ).lower()
         filepath = f"{dirpath}/{self.oid}|{pipeline_id}|{fit_dataset_id}|" \
                    f"{best_score}|{hash(pipeline)}|{fit_dataset_hash}|" \
-                   f"{pred_dataset_id}|{pred_dataset_hash}"
+                   f"{pred_dataset_id}|{pred_dataset_hash}|" \
+                   f"{platform.system()}|{int(time.time())}"
         return filepath
 
 

@@ -91,8 +91,9 @@ class Validator(object):
                     break
                 scores[dataset.oid][metric.oid] = score
                 score_ = metric.pprint(score[-1] if vector else score)
-                logger.log(5, f"{score_}")
-                logger.log(25, f"{dataset.oid}:\n    {score_}")
+                logger.log(5, f"    {score_}")
+                logger.log(25, f"    {dataset.oid}:\n"
+                               f"    {score_}")
         return scores
 
     def _via_metric(self, pipeline, x, y, metric, dataset, infer, vector):
@@ -109,6 +110,7 @@ class Validator(object):
                     if step[0] == 'pass_custom':
                         temp = step[1].kw_args.get(metric.oid, {})
                         metric.kw_args.update(temp)
+
         # Score.
         score = metric.score_func(y, y_pred, **metric.kw_args)
         if vector:

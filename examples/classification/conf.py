@@ -6,12 +6,16 @@ Current configuration:
 * use 10000 rows subset of train and test.
 * use lgbm.
 * custom metric example to pass_custom__kw_args.
-* two-stage optimization:
+* three-stage optimization:
     1. default mlshell.model_selection.RandomizedSearchOptimizer on 'roc_auc':
-     'estimate__classifier__num_leaves'/ 'pass_custom__kw_args' hps.
+      hp: 'estimate__classifier__num_leaves'.
     2. efficient mlshell.model_selection.MockOptimizer on custom metric:
-     'estimate__apply_threshold__threshold', grid values (10 samples) auto
-     resolved with ROC curve on predictions of first stage best estimator.
+      hp: 'estimate__apply_threshold__threshold' to grid search classification
+      threshold. Test values (10 samples) auto sampled from ROC curve plotted
+      on first stage best estimator`s predictions.
+    3. efficient mlshell.model_selection.MockOptimizer on custom metric:
+      hp: 'pass_custom__kw_args' to pass kwargs in custom metric. Could be use
+      to brute force arbitrary parameters (as if additional nested loops).
 
 """
 
@@ -26,16 +30,9 @@ import pandas as pd
 
 # Set hp ranges for optimization stage 1.
 hp_grid_1 = {
-    # TODO: test with Mock.
-    'pass_custom__kw_args': [{'param_a': 1, 'param_b': 'c'}, {'param_a': 2, 'param_b': 'd'}, ],
-    # 'process_parallel__pipeline_numeric__impute__gaps__strategy': ['median', 'constant'],
-    # 'process_parallel__pipeline_numeric__transform_normal__skip': [True],
-    # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(0, 100), (1, 99)],
-    # 'process_parallel__pipeline_numeric__add_polynomial__degree': [1],
-
-    # # lgbm
-    # 'estimate__classifier__n_estimators': np.linspace(50, 1000, 10, dtype=int),
+    # lgbm
     'estimate__predict_proba__classifier__num_leaves': [2**i for i in range(1, 5 + 1)],
+    # 'estimate__classifier__n_estimators': np.linspace(50, 1000, 10, dtype=int),
     # 'estimate__classifier__min_child_samples': scipy.stats.randint(1, 100),
     # 'estimate__classifier__max_depth': np.linspace(1, 30, 10, dtype=int),
 }
@@ -45,13 +42,21 @@ hp_grid_2 = {
     'estimate__apply_threshold__threshold': 'auto',  # Auto-resolving.
 }
 
+# Set hp ranges for optimization stage 3.
+hp_grid_3 = {
+    'pass_custom__kw_args': [
+        {'metric__custom': {'param_a': 1, 'param_b': 'c'}},
+        {'metric__custom': {'param_a': 2, 'param_b': 'd'}}
+    ],
+}
+
 
 def custom_score_metric(y_true, y_pred, **kw_args):
     """Custom precision metric with kw_args supporting."""
     if kw_args:
         # `pass_custom_kw_args` are passed here.
         # some logic.
-        print(kw_args)
+        print(f"Custom metric kw_args: {kw_args}", flush=True)
     tp = np.count_nonzero((y_true == 1) & (y_pred == 1))
     fp = np.count_nonzero((y_true == 0) & (y_pred == 1))
     score = tp/(fp+tp) if tp+fp != 0 else 0
@@ -63,7 +68,7 @@ def merge(self, dataset, left_id, right_id, **kwargs):
     left = dataset[left_id]
     right = dataset[right_id]
     raw = pd.merge(left, right, **kwargs)
-    # test dataset contains mistakes in column name.
+    # test dataset contains mistakes in column names.
     raw.columns = [i.replace('-', '_') for i in raw.columns]
     dataset['data'] = raw
     return dataset
@@ -86,11 +91,20 @@ CNFG = {
             'kwargs': {
                 'estimator_type': 'classifier',
                 'estimator': lightgbm.LGBMClassifier(
-                    objective='binary', n_estimators=500, num_leaves=32,
-                    min_child_samples=1, max_depth=13, learning_rate=0.03,
-                    boosting_type='gbdt', subsample_freq=3, subsample=0.9,
-                    reg_alpha=0.3, reg_lambda=0.3, colsample_bytree=0.9,
-                    silent=True, n_jobs=-1, random_state=42),
+                    colsample_bytree=0.9,
+                    learning_rate=0.03, max_depth=13,
+                    min_child_samples=1, min_child_weight=0.001,
+                    min_split_gain=0.0, n_estimators=500, n_jobs=-1,
+                    num_leaves=32, objective='binary',
+                    random_state=42, reg_alpha=0.3,
+                    reg_lambda=0.3, silent=True, subsample=0.9,
+                    subsample_for_bin=200000, subsample_freq=3),
+                # 'estimator': lightgbm.LGBMClassifier(
+                #     objective='binary', n_estimators=500, num_leaves=32,
+                #     min_child_samples=1, max_depth=13, learning_rate=0.03,
+                #     boosting_type='gbdt', subsample_freq=3, subsample=0.9,
+                #     reg_alpha=0.3, reg_lambda=0.3, colsample_bytree=0.9,
+                #     silent=True, n_jobs=-1, random_state=42),
                 'th_step': True,
             }
         },
@@ -121,7 +135,7 @@ CNFG = {
         },
         'custom': {
             'score_func': custom_score_metric,
-            'kwargs': {'greater_is_better': True, 'needs_custom_kwargs': True}
+            'kwargs': {'greater_is_better': True, 'needs_custom_kw_args': True}
         },
         'confusion_matrix': {
             'score_func': sklearn.metrics.confusion_matrix,
@@ -198,6 +212,10 @@ CNFG = {
                               'optimizer': mlshell.model_selection.MockOptimizer,
                               'resolve_params': 'resolve_params__stage_2'
                               }),
+                ('optimize', {'hp_grid': hp_grid_3,
+                              'gs_params': 'gs_params__stage_2',
+                              'optimizer': mlshell.model_selection.MockOptimizer,
+                              }),
                 ('validate',),
                 ('predict',),
                 ('dump',),
@@ -241,6 +259,7 @@ CNFG = {
         'stage_2': {
             'priority': 3,
             'init': {
+                'method': 'predict_proba',
                 'n_iter': None,
                 'n_jobs': 1,
                 'refit': 'metric__custom',
@@ -250,6 +269,20 @@ CNFG = {
                 'return_train_score': True,
             },
         },
+        'stage_3': {
+            'priority': 3,
+            'init': {
+                'method': 'predict_proba',
+                'n_iter': None,
+                'n_jobs': 1,
+                'refit': 'metric__custom',
+                'cv': sklearn.model_selection.TimeSeriesSplit(n_splits=3),
+                'verbose': 1000,
+                'pre_dispatch': 'n_jobs',
+                'return_train_score': True,
+            },
+        },
+
     },
 }
 

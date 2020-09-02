@@ -1,9 +1,12 @@
+# https://support.travis-ci.com/hc/en-us/articles/115002904174-Validating-travis-yml-files
+# https://config.travis-ci.com/explore
 # used by make and deploy
 language: python
+"os": ["linux"]
+"dist": "xenial"
 python:
     - "3.7"
 
-sudo: required
 services:
     - docker
 before_install:
@@ -18,16 +21,24 @@ script:
     - docker run -e CI=true nizaevka/mlshell pytest tests
 #    - make test
 
+# Currently deploy on push branch/tag with name {vX.X or vX.X.X}
 deploy:
     # pypi
     provider: pypi
     on:
-        branch: master
-        tags: true  # only on tagged commit git push --tags
-    user: "$PYPI_USERNAME"
-    password:
-      secure: "$PYPI_PASSWORD"
+        # Single branch
+        # branch: master
+        # For multiple branches:
+        # $TRAVIS_BRANCH =~ ^(staging|production)$
+        all_branches: true
+        condition: $TRAVIS_BRANCH =~ ^v[0-9].*$
+        # only on tagged direct (no PR) commit "git push origin --tags"
+        # If the `tags` key is specified, the `branch` ignored.
+        # tags: true
+    username: "$PYPI_USERNAME"
+    password: "$PYPI_PASSWORD"
     distributions: "sdist bdist_wheel"
+    # Skip already exist error.
     skip_existing: true
 #     # test PyPi
 #     provider: script
@@ -35,14 +46,20 @@ deploy:
 #     on:
 #        branch: feature
 
+# Only if deploy on pypi. Use $TRAVIS_BRANCH as version.
 after_deploy:
-    - docker build -t nizaevka/mlshell -f Dockerfile .
+    - docker build -t nizaevka/mlshell:$TRAVIS_BRANCH -f Dockerfile .
     # log in to the docker CLI
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_ID" --password-stdin
     # push to dockerhub
-    - docker push nizaevka/mlshell
+    - docker push nizaevka/mlshell:$TRAVIS_BRANCH
 
-# only on change to master
+# global whitelist.
+# start travis build (exec yml) only on change to specific branch/tag.
+# currently: master or {v1.3 / v1.4.5}
 branches:
   only:
     - master
+    - /^v[0-9].*$/
+# more specific, not work in $TRAVIS_BRANCH
+#    - /^v\d+\.\d+(\.\d+)?(-\S*)?$/

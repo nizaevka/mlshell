@@ -31,8 +31,7 @@ class Plotter(object):
 
         """
         # TODO: some logic.
-        logger.info('Plotter OK.')
-        pass
+        logger.warning('Plotter not implemented.')
 
 
 if __name__ == '__main__':

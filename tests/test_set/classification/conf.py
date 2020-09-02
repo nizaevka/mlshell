@@ -1,19 +1,4 @@
-"""Classification model tuning example.
-
-https://www.kaggle.com/c/ieee-fraud-detection
-
-Current configuration:
-* use 10000 rows subset of train and test.
-* use lgbm.
-* custom metric example to pass_custom__kw_args.
-* two-stage optimization:
-    1. default mlshell.model_selection.RandomizedSearchOptimizer on 'roc_auc':
-     'estimate__classifier__num_leaves'/ 'pass_custom__kw_args' hps.
-    2. efficient mlshell.model_selection.MockOptimizer on custom metric:
-     'estimate__apply_threshold__threshold', grid values (10 samples) auto
-     resolved with ROC curve on predictions of first stage best estimator.
-
-"""
+"""Classification test."""
 
 import lightgbm
 import mlshell
@@ -26,7 +11,8 @@ import pandas as pd
 
 # Set hp ranges for optimization stage 1.
 hp_grid_1 = {
-    # 'pass_custom__kw_args': [{'param_a': 1, 'param_b': 'c'}, {'param_a': 2, 'param_b': 'd'}, ],
+    'pass_custom__kw_args': [{'metric__custom': {'param_a': 1, 'param_b': 'c'}},
+                             {'metric__custom': {'param_a': 2, 'param_b': 'd'}}],
     # 'process_parallel__pipeline_numeric__impute__gaps__strategy': ['median', 'constant'],
     # 'process_parallel__pipeline_numeric__transform_normal__skip': [True],
     # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(0, 100), (1, 99)],
@@ -34,15 +20,27 @@ hp_grid_1 = {
 
     # # lgbm
     'estimate__predict_proba__classifier__n_estimators': np.linspace(50, 100, 2, dtype=int),
-    ## 'estimate__predict_proba__classifier__num_leaves': [2**i for i in range(1, 5 + 1)],
+    # 'estimate__predict_proba__classifier__num_leaves': [2**i for i in range(1, 5 + 1)],
     # 'estimate__classifier__min_child_samples': scipy.stats.randint(1, 100),
     # 'estimate__classifier__max_depth': np.linspace(1, 30, 10, dtype=int),
-    'estimate__apply_threshold__threshold': [0.5],
 }
 
-# Set hp ranges for optimization stage 2.
+# Set hp ranges for optimization stage 2 (threshold separate).
 hp_grid_2 = {
-    'estimate__apply_threshold__threshold': 'auto',  # Auto-resolving.
+    'estimate__apply_threshold__threshold': 'auto',
+}
+
+# Set hp ranges for optimization stage 3 (pass_custom separate)
+hp_grid_3 = {
+    'pass_custom__kw_args': [{'metric__custom': {'param_a': 1, 'param_b': 'c'}},
+                             {'metric__custom': {'param_a': 2, 'param_b': 'd'}}],
+}
+
+# Set hp ranges for optimization stage 4 (threshold and pass_custom together).
+hp_grid_4 = {
+    'estimate__apply_threshold__threshold': 'auto',
+    'pass_custom__kw_args': [{'metric__custom': {'param_a': 1, 'param_b': 'c'}},
+                             {'metric__custom': {'param_a': 2, 'param_b': 'd'}}],
 }
 
 
@@ -51,7 +49,7 @@ def custom_score_metric(y_true, y_pred, **kw_args):
     if kw_args:
         # `pass_custom_kw_args` are passed here.
         # some logic.
-        print(kw_args)
+        print(f"Custom metric kw_args: {kw_args}")
     tp = np.count_nonzero((y_true == 1) & (y_pred == 1))
     fp = np.count_nonzero((y_true == 0) & (y_pred == 1))
     score = tp/(fp+tp) if tp+fp != 0 else 0
@@ -125,7 +123,7 @@ CNFG = {
         },
         'custom': {
             'score_func': custom_score_metric,
-            'kwargs': {'greater_is_better': True, 'needs_custom_kwargs': True}
+            'kwargs': {'greater_is_better': True, 'needs_custom_kw_args': True}
         },
         'confusion_matrix': {
             'score_func': sklearn.metrics.confusion_matrix,
@@ -153,9 +151,9 @@ CNFG = {
         'patch': {'merge': merge},
         'train': {
             'steps': [
-                ('load', {'filepath': 'data/train_transaction_5k.csv',
+                ('load', {'filepath': './data/train_transaction_5k.csv',
                           'key': 'transaction'}),
-                ('load', {'filepath': 'data/train_identity_5k.csv',
+                ('load', {'filepath': './data/train_identity_5k.csv',
                           'key': 'identity'}),
                 ('merge', {'left_id': 'transaction', 'right_id': 'identity',
                            'left_index': True, 'right_index': True,
@@ -168,9 +166,9 @@ CNFG = {
         },
         'test': {
             'steps': [
-                ('load', {'filepath': 'data/test_transaction_5k.csv',
+                ('load', {'filepath': './data/test_transaction_5k.csv',
                           'key': 'transaction'}),
-                ('load', {'filepath': 'data/test_identity_5k.csv',
+                ('load', {'filepath': './data/test_identity_5k.csv',
                           'key': 'identity'}),
                 ('merge', {'left_id': 'transaction', 'right_id': 'identity',
                            'left_index': True, 'right_index': True,
@@ -197,11 +195,28 @@ CNFG = {
             'steps': [
                 ('optimize', {'hp_grid': hp_grid_1,
                               'gs_params': 'gs_params__stage_1'}),
+                # Threshold.
                 ('optimize', {'hp_grid': hp_grid_2,
                               'gs_params': 'gs_params__stage_2',
                               'optimizer': mlshell.model_selection.MockOptimizer,
                               'resolve_params': 'resolve_params__stage_2'
                               }),
+                # Pass custom.
+                ('optimize', {'hp_grid': hp_grid_3,
+                              'gs_params': 'gs_params__stage_3',
+                              'optimizer': mlshell.model_selection.MockOptimizer,
+                              }),
+                # Threshold + Pass custom.
+                ('optimize', {'hp_grid': hp_grid_4,
+                              'gs_params': 'gs_params__stage_2',
+                              'optimizer': mlshell.model_selection.MockOptimizer,
+                              'resolve_params': 'resolve_params__stage_2'
+                              }),
+                ('optimize', {'hp_grid': {},
+                              'gs_params': 'gs_params__stage_1'}),
+                ('optimize', {'hp_grid': {},
+                              'optimizer': mlshell.model_selection.MockOptimizer,
+                              'gs_params': 'gs_params__stage_2'}),
                 ('validate',),
                 ('predict',),
                 ('dump',),
@@ -217,8 +232,9 @@ CNFG = {
                 'estimate__apply_threshold__threshold': {
                     'cross_val_predict': {
                         'method': 'predict_proba',
-                        'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True,
-                                                    random_state=42),
+                        'cv': sklearn.model_selection.KFold(n_splits=3,
+                                                            shuffle=True,
+                                                            random_state=42),
                         'fit_params': {},
                     },
                     'calc_th_range': {
@@ -227,7 +243,7 @@ CNFG = {
                     },
                 },
             }
-        }
+        },
     },
     # Separate section for 'gs_params' kwarg in optimize.
     'gs_params': {
@@ -247,6 +263,21 @@ CNFG = {
         'stage_2': {
             'priority': 3,
             'init': {
+                'method': 'predict_proba',
+                'n_iter': None,
+                'n_jobs': 1,
+                'refit': 'metric__custom',
+                'cv': sklearn.model_selection.KFold(n_splits=3, shuffle=True,
+                                                    random_state=42),
+                'verbose': 1000,
+                'pre_dispatch': 'n_jobs',
+                'return_train_score': True,
+            },
+        },
+        'stage_3': {
+            'priority': 3,
+            'init': {
+                'method': 'predict_proba',
                 'n_iter': None,
                 'n_jobs': 1,
                 'refit': 'metric__custom',

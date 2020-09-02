@@ -6,18 +6,32 @@ meta-estimators.
 transform.
 :class:`mlshell.model_selection.ThresholdClassifier` applies classification
 threshold.
-:class:`mlshell.model_selection.MockEstimator` predicts features.
+:class:`mlshell.model_selection.MockClassifier` and :class:`mlshell.
+model_selection.MockRegressor` always predicts features.
 
 """
 
 import sklearn
 import numpy as np
 
-__all__ = ['MockEstimator', 'PredictionTransformer', 'ThresholdClassifier']
+__all__ = ['MockClassifier', 'MockRegressor', 'PredictionTransformer',
+           'ThresholdClassifier']
 
 
-class MockEstimator(sklearn.base.BaseEstimator):
-    """Estimator always predicts input features."""
+class MockClassifier(sklearn.base.BaseEstimator, sklearn.base.ClassifierMixin):
+    """Estimator always predicts train feature."""
+    def __init__(self):
+        pass
+
+    def fit(self, x, y, **fit_params):
+        return self
+
+    def predict(self, x):
+        return x
+
+
+class MockRegressor(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
+    """Estimator always predicts features."""
     def __init__(self):
         pass
 

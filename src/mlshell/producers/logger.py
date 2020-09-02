@@ -9,6 +9,7 @@ import copy
 import logging.config
 import os
 import sys
+import time
 
 import pycnfg
 
@@ -268,9 +269,6 @@ class LoggerProducer(pycnfg.Producer):
             os.makedirs(fullpath)
         if logger_name not in config["loggers"]:
             raise KeyError(f"Unknown logger name {logger_name}")
-        # [deprecated] use name in dictConfig, less confusing.
-        # if logger_name != 'default':
-        #     config["loggers"][logger_name] = config["loggers"].pop("default")
         # Update path for config/params in handlers.
         handlers = set()
         for handler_name in LOGGER_CONFIG["handlers"]:
@@ -291,6 +289,9 @@ class LoggerProducer(pycnfg.Producer):
         if 'http_handler' not in kwargs:
             # Delete http handler.
             self._del_handler(config, logger_name, handlers, 'http_handler')
+        # Otherwise logs mixing.
+        sys.stdout.flush()
+        time.sleep(0.1)
         # Create logger object (auto generate files).
         logging.config.dictConfig(config)
         logger = logging.getLogger(logger_name)

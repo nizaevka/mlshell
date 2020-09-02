@@ -323,7 +323,7 @@ class Resolver(object):
         axs[1].set_xlim([0.0, 1.0])
         axs[1].set_xlabel('Threshold')
         axs[1].set_ylabel('TPR/(TPR+FPR)')
-        axs[1].set_title('Selected th values near maximum')
+        axs[1].set_title('Selected th values objective maximum')
         # plt.plot(th_, fpr, 'red')
         plt.show()
 
