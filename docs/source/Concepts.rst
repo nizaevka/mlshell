@@ -40,9 +40,9 @@ See `Examples. <Examples.html>`_
     Arbitrary objects could be pre-accommodated in :func:`pycnfg.run`, so no
     need to always specify objects via configurations.
 
-    Each produce inherits from :class:`pycnfg.Producer` , that including
+    Each produce inherits from :class:`pycnfg.Producer` , that includes
     load_cache/dump_cache methods to load/dump intermediate object state.
-    The producers methods can be extended/rewrited either explicit in source
+    The producers methods can be extended/rewrote either explicit in source
     or through `patch` key in configuration. In most cases default
     implementation will be sufficient.
 
@@ -60,7 +60,8 @@ Sections
 Path
 ----
 
-Set string path to project directory. :func:`pycnfg.find_path` could be used.
+Set string path to project directory or :func:`pycnfg.find_path` could be used
+to auto-detect path.
 
 Section example:
 
@@ -68,12 +69,27 @@ Section example:
 
     import pycnfg
 
+    'path': {
+        'default': {
+            'init': pycnfg.find_path,
+            'producer': pycnfg.Producer,
+            'priority': 1,
+            'steps': [],
+        }
+        # Alternative.
+        'my_path': {
+            'init': '/home/user/project',
+            'producer': pycnfg.Producer,
+            'priority': 1,
+            'steps': [],
+        },
+    }
+
 Logger
 ------
 
-Set string name for logger.
-
-:class:`mlshell.LoggerProducer` executes steps on logger.
+Set string name in ``init`` and use :class:`mlshell.LoggerProducer` to create
+logger.
 
 :func:`mlshell.LoggerProducer.make` makes logger via :func:`logging.config.dictConfig` .
 See default logger configuration :data:`mlshell.LOGGER_CONFIG` for details.
@@ -85,6 +101,25 @@ Section example:
 .. code-block:: python
 
     import pycnfg
+    import logging
+
+    'logger': {
+        'default': {
+            'init': 'default',
+            'producer': mlshell.LoggerProducer,
+            'priority': 2,
+            'steps': [
+                ('make',),
+            ],
+        }
+        # Alternative.
+        'my_logger': {
+            'init': logging.getLogger('my_logger') ,
+            'producer': pycnfg.Producer,
+            'priority': 2,
+            'steps': [],
+        },
+    }
 
 Pipeline
 --------
@@ -147,22 +182,21 @@ Section example:
 .. code-block:: python
 
     import pycnfg
+    import lightgbm
 
-
-Alternative to multiple pipelines - specify one and rotate last step estimator:
-
-.. code-block::
-
-    hp_grid = {
-        'estimate__regressor': [
-            sklearn.linear_model.SGDRegressor(penalty='elasticnet', l1_ratio=1,
-                                              shuffle=False, max_iter=1000,
-                                              alpha=0.02),
-            lightgbm.LGBMRegressor(num_leaves=2, min_data_in_leaf=60,
-                                   n_estimators=200, max_depth=-1),
-        ]
+    'pipeline': {
+        'my_pipe': {
+            'init': mlshell.Pipeline,
+            'producer': mlshell.PipelineProducer,
+            'priority': 3,
+            'steps': [
+                ('make', {
+                    'estimator_type': 'regressor',
+                    'estimator': lightgbm.LGBMRegressor()
+                    }),
+            ],
+        },
     }
-
 .. .. `Examples <Concepts.html#Advanced#resolver>`_
 .. .. `mlshell.Pipeline <_pythonapi/mlshell.producers.pipeline.html#mlshell.producers.pipeline.Pipeline>`_
 .. .. `mlshell.PipelineProducer <_pythonapi/mlshell.producers.pipeline.PipelineProducer.html#mlshell.producers.pipeline.PipelineProducer>`_.
@@ -193,6 +227,22 @@ Section example:
 
     import pycnfg
 
+    'dataset': {
+        'my_data': {
+            'init': mlshell.Dataset,
+            'producer': mlshell.DatasetProducer,
+            'priority': 3,
+            'steps': [
+                ('load', {'filepath': 'data/train.csv',}),
+                ('preprocess', {
+                    'targets_names': ['loss'],
+                    'categor_names': [f'cat{i}' for i in range(1, 117)],
+                    }),
+                ('split', {'train_size': 0.7, 'shuffle': False}),
+            ],
+        },
+    }
+
 Metric
 ------
 
@@ -209,6 +259,20 @@ Section example:
 .. code-block:: python
 
     import pycnfg
+
+    'metric': {
+        'my_score': {
+            'init': mlshell.Metric,
+            'producer': mlshell.MetricProducer,
+            'priority': 3,
+            'steps': [
+                ('make', {
+                    'score_func': sklearn.metrics.r2_score,
+                    'greater_is_better': True
+                    }),
+            ],
+        }
+    }
 
 Workflow
 --------
@@ -237,6 +301,28 @@ Section example:
 
     import pycnfg
 
+    'workflow': {
+        'my_flow': {
+            'init': {},
+            'producer': mlshell.Workflow,
+            'priority': 4,
+            'global': {
+                'pipeline_id': 'pipeline__my_pipe',
+                'dataset_id': 'dataset__my_data',
+                'metric_id': ['metric__my_score'],
+                'hp_grid': {
+                    'estimate__regressor__n_estimators': np.linspace(50, 1000, 10, dtype=int),
+                },
+            },
+            'steps': [
+                ('optimize', ),
+                ('validate', ),
+                ('predict', ),
+                ('dump', ),
+            ],
+        },
+    }
+
 Hyperparameters
 ~~~~~~~~~~~~~~~
 
@@ -254,8 +340,9 @@ Any pipeline parameter ``hp`` can be optimized in grid search.
 .. code-block:: python
 
     hp_grid = {
-        # custom scorer param
-        'pass_custom__kw_args': [{'param_a': 1, 'param_b': 'c'}, {'param_a': 2, 'param_b': 'd'},],
+        # custom metric(s) param
+        'pass_custom__kw_args': [{'metric__id': {'param_a': 1, 'param_b': 'c'}},
+                                 {'metric__id': {'param_a': 2, 'param_b': 'd'}}],
         # transformers param
         'select_rows__kw_args': [{}],
         'process_parallel__pipeline_numeric__impute__gaps__strategy': ['constant'],
@@ -281,6 +368,21 @@ Any pipeline parameter ``hp`` can be optimized in grid search.
 
     Probaility distribution for ``hp_grid`` params are also possible, it should
     supports .rvs() sampling method.
+
+    It is possible to rotate last step estimator (alternative to multiple
+    pipeline configurations):
+
+    .. code-block::
+
+        hp_grid = {
+            'estimate__regressor': [
+                sklearn.linear_model.SGDRegressor(penalty='elasticnet', l1_ratio=1,
+                                                  shuffle=False, max_iter=1000,
+                                                  alpha=0.02),
+                lightgbm.LGBMRegressor(num_leaves=2, min_data_in_leaf=60,
+                                       n_estimators=200, max_depth=-1),
+            ]
+        }
 
 Resolver
 ~~~~~~~~
@@ -357,10 +459,7 @@ Set last pipeline step to:
         ]))
     ])
 
-.. In general,
-    * we can consider ``th_`` as hp,
-    * each fold in CV has it own best ``th_``, we try to find value good for all folds,
-    * ``th_`` search range can be got from ROC curve on classifier`s predict_proba.
+
 .. note::
 
     Mlshell supports multiple strategy for ``th_`` tuning:
@@ -439,7 +538,7 @@ Each optimization stage produces ``<timestamp>_runs.csv`` file. See
 
     import glob
 
-    files = glob.glob(f"{path}/*_runs.csv")
+    files = sorted(glob.glob(f"project/results/runs/*_runs.csv"))
     df_lis = list(range(len(files)))
     for i, f in enumerate(files):
         try:

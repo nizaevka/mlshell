@@ -12,60 +12,30 @@ Regression
 
 :github:`github repo </examples/regression>`
 
-**Grid search**
-^^^^^^^^^^^^^^^
 
-try different ideas:
+**conf.py**
+^^^^^^^^^^^
 
-* estimator: linear vs lightgbm vs xgboost.
-* features 'yeo-johnson' transformation.
-* features quantile scaler.
-* polynomial feature generation: degree 2 vs 3.
-* target transformer: None vs np.log vs y**0.25.
-* loss: mse vs mae vs `ln(cosh(x)) <https://www.kaggle.com/c/allstate-claims-severity/discussion/24520>`_.
-* estimator hyperparameters.
-
-If time is limited:
-
-    * use subset of data (`rows_limit` and `random_skip` implemented in classes.GetData example)
-    * use greedy approach:
-
-        * find approximately reasonable estimator` hps.
-        * try ideas.
-        * for the best refine estimator hps.
-
-**Example conf.py**
-^^^^^^^^^^^^^^^^^^^
-
-* use ``target_transformer`` instead of default.
-* GS ``add_polynomial__degree`` and ``transform_normal__skip``.
-* 10000 rows subset of data.
-
-.. https://docutils.sourceforge.io/docs/ref/rst/directives.html#including-an-external-document-fragment
 .. literalinclude:: /../../examples/regression/conf.py
    :language: python
-   :linenos:
 
+.. https://docutils.sourceforge.io/docs/ref/rst/directives.html#including-an-external-document-fragment
 .. .. code-block:: python
 
 **Results**
 ^^^^^^^^^^^
 
-**``info`` logs**
+`info logs <_static/text/regression_info.log>`_
 
-.. include:: ./_static/text/regressor_run_info.log
+`minimal logs <_static/text/regression_minimal.log>`_
+
+.. .. include:: ./_static/text/regressor_run_info.log
    :literal:
+.. .. :download:`minimal log <./_static/text/regressor_run_minimal.log>`
+.. **gui**
+.. base_plot is sorted target
 
-**``minimal`` logs**
-
-.. include:: ./_static/text/regressor_run_minimal.log
-   :literal:
-
-**gui**
-
-base_plot is sorted target
-
-.. image:: ./_static/images/gui_regression.png
+.. .. image:: ./_static/images/gui_regression.png
   :width: 1000
   :alt: error
 
@@ -75,71 +45,46 @@ Classification
 
 :github:`github repo </examples/classification>`
 
-**Grid search**
-^^^^^^^^^^^^^^^
-
-try different ideas:
-
-  * estimators.
-  * splitters.
-  * hps.
-
-
-**Example conf.py**
-^^^^^^^^^^^^^^^^^^^
-
-* GS ``estimate__classifier__num_leaves``.
-* 10000 rows subset of data.
+**conf.py**
+^^^^^^^^^^^
 
 .. literalinclude:: /../../examples/classification/conf.py
    :language: python
-   :linenos:
-
 
 **Results**
 ^^^^^^^^^^^
 
-**``info`` logs**
+`info logs <_static/text/classification_info.log>`_
 
-.. include:: ./_static/text/classifier_th_0_run_info.log
-   :literal:
+`minimal logs <_static/text/classification_minimal.log>`_
 
-For demonstrative purpose, set ``th_strategy`` to ``1``/``3``,
-so additional grid search CV for threshold applied:
+.. note::
 
-.. include:: ./_static/text/classifier_th_1_run_info.log
-   :literal:
-   :start-line: 120
+    - In second optimization stage ``th_`` range came from ROC curve on OOF predictions for positive label.
+     Number of points set in resolve_params configuration.
+     Positive label set either in dataset configuration, or auto-resolved as last one in np.unique(targets).
+    .. image:: ./_static/images/th_.png
+        :width: 1000
+        :alt: error
+    As expected: ROC AUC not depends on threshold (as evaluates on predict_proba).
+    Precision (and custom metric) depends on threshold. If positive class ``th_``
+    close to 1, all samples classified as negative class (TP=0 and FP=0), so
+    precision become ill-defined, score set to 0 as specified in 'zero_division'
+    argument fro precision metric.
 
-As you can see,
+    - In third optimization stage, ``kw_args`` tunned for cutom score function.
+    There could be arbitrary logic.
 
-- main ``score`` value (roc-auc) not depends on threshold values as expected (evaluates on predict_proba).
-- precision/custom precision depends on threshold.
 
-If positive class ``th_`` close to 1, all samples classified as negative class (TP=0 and FP=0),
-so precision become ill-defined, score set to 0 as specified in 'zero_division' argument in ``metrics``.
+see `Concepts: classifier threshold <Concepts.html#classifier-threshold>`_ for details.
 
-- gs ignore other metrics and select best run where main is maximum  (first  occurrence in that case).
+.. **gui**
 
-Threshold gridsearch is reasonable only for threshold-dependent metrics.
+.. base_plot is diagonal line
 
-- ``th_`` range came from roc_curve on OOF prediction.
-
-You can set number of poins ``th_points_number`` and trig plot roc_curve with ``th_plot_flag`` in conf.py.
-
-.. image:: ./_static/images/th_.png
+.. .. image:: ./_static/images/gui_classification.png
   :width: 1000
   :alt: error
 
-see `Concepts: Classification threshold <Concepts.html#classification-threshold>`_ for details.
-
-**gui**
-
-base_plot is diagonal line
-
-.. image:: ./_static/images/gui_classification.png
-  :width: 1000
-  :alt: error
-
-see `Concepts: Results <Concepts.html#gui>`_ for details.
+.. see `Concepts: Results <Concepts.html#gui>`_ for details.
 

@@ -11,6 +11,9 @@ Cookbook:
 ^, for subsubsections
 ", for paragraphs
 
+# good manual
+https://docutils.sourceforge.io/docs/ref/rst/directives.html#including-an-external-document-fragment
+
 # cheatsheet
 http://nipy.org/nipy/devel/guidelines/sphinx_helpers.html
 
