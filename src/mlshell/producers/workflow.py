@@ -73,32 +73,6 @@ class Workflow(pycnfg.Producer):
                                  logger_id=logger_id)
         self._optional()
 
-    def _optional(self):
-        # Turn on: inf as NaN.
-        pd.options.mode.use_inf_as_na = True
-        # Handle numpy errors.
-        np.seterr(all='call')
-        self._check_results_size(self.project_path)
-        self._np_error_stat = {}
-        np.seterrcall(self._np_error_callback)
-
-    def _check_results_size(self, project_path):
-        root_directory = pathlib.Path(f"{project_path}/results")
-        size = sum(f.stat().st_size for f in root_directory.glob('**/*')
-                   if f.is_file())
-        size_mb = size/(2**30)
-        n = 5  # Check if dir > n Mb.
-        if size_mb > n:
-            self.logger.warning(f"Warning: results/ directory size "
-                                f"{size_mb:.2f}Gb more than {n}Gb")
-
-    def _np_error_callback(self, *args):
-        """Numpy errors handler, count errors by type."""
-        if args[0] in self._np_error_stat.keys():
-            self._np_error_stat[args[0]] += 1
-        else:
-            self._np_error_stat[args[0]] = 1
-
     def fit(self, res, pipeline_id, dataset_id, subset_id='train',
             hp=None, resolver=None, resolve_params=None,
             fit_params=None):
@@ -518,6 +492,33 @@ class Workflow(pycnfg.Producer):
                                   daemon=False)
         thread.start()
         return res
+
+    # ========================== init =================================
+    def _optional(self):
+        # Turn on: inf as NaN.
+        pd.options.mode.use_inf_as_na = True
+        # Handle numpy errors.
+        np.seterr(all='call')
+        self._check_results_size(self.project_path)
+        self._np_error_stat = {}
+        np.seterrcall(self._np_error_callback)
+
+    def _check_results_size(self, project_path):
+        root_directory = pathlib.Path(f"{project_path}/results")
+        size = sum(f.stat().st_size for f in root_directory.glob('**/*')
+                   if f.is_file())
+        size_mb = size/(2**30)
+        n = 5  # Check if dir > n Mb.
+        if size_mb > n:
+            self.logger.warning(f"Warning: results/ directory size "
+                                f"{size_mb:.2f}Gb more than {n}Gb")
+
+    def _np_error_callback(self, *args):
+        """Numpy errors handler, count errors by type."""
+        if args[0] in self._np_error_stat.keys():
+            self._np_error_stat[args[0]] += 1
+        else:
+            self._np_error_stat[args[0]] = 1
 
     # ========================== fit/optimize =================================
     def _set_hp(self, hp, pipeline, resolver, dataset, resolve_params):

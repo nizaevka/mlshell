@@ -16,9 +16,9 @@ output = {
     'columns_diff': [],  # Columns diff because off func address diffs.
     'results_path': f"{currdir}/__id__/results",
     'logs_path': f"{currdir}/__id__/original/logs/test_{os_type}.log",
-    'pred_path': f"{currdir}/__id__/original/models/{os_type}_pred.csv",
+    'pred_path': f"{currdir}/__id__/original/models/*{os_type}*_pred.csv",
     'runs_path': f"{currdir}/__id__/original/runs",
-    'model_path': f"{currdir}/__id__/original/models/{os_type}.model",
+    'model_path': f"{currdir}/__id__/original/models/*{os_type}*.model",
 }
 
 
@@ -136,6 +136,32 @@ params = [
                         'pipeline__xgb': 'Pipeline',
                         'resolve_params__stage_2': 'dict',
                         'workflow__conf': 'dict'}
+        }),
+    ),
+    # Whole estimator.
+    (
+        2,
+        [f"{currdir}/whole/conf.py"],
+        {'dcnfg': mlshell.CNFG,
+         'objects': {'path__default': f"{currdir}/whole/"}},
+        sbst_id(output, 'whole', upd={
+            'columns_diff': [
+                'mean_fit_time',
+                'std_fit_time',
+                'mean_score_time',
+                'std_score_time',
+                'id',
+                'pipeline__hash'
+            ],
+            'objects': {
+                'path__default': 'str',
+                'logger__default': 'LoggerAdapter',
+                'dataset__test': 'Dataset',
+                'dataset__train': 'Dataset',
+                'gs_params__conf_1': 'dict',
+                'metric__mse': 'Metric',
+                'pipeline__sgd': 'Pipeline',
+                'workflow__conf': 'dict'}
         }),
     ),
 ]

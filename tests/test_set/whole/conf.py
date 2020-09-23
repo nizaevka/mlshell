@@ -1,61 +1,35 @@
-"""Shortened configuration example.
-
-pycnfg provides convenient features:
-    * to increase configuration readability.
-Specify verbose kwargs in separate sections ('gs_params' in example).
-    * to reduce boilerplate.
-Use ``global`` key on configuration, section and sub-configuration levels.
+"""
+Pipeline without steps:
+    no param resolving (no encoder, no gap filling)
+* hp_grid(some,empty) + Optimizer
+* hp_grid(some,empty) + MockOptimizer will raise Error "no steps".
 
 """
 
-import lightgbm
 import mlshell
 import pycnfg
 import sklearn
 
-target_transformer = sklearn.preprocessing.PowerTransformer(
-    method='yeo-johnson', standardize=True, copy=True)
-
 
 # Optimization hp ranges.
-hp_grid = {
-    # 'process_parallel__pipeline_numeric__transform_normal__skip': [False],
-    # 'process_parallel__pipeline_numeric__scale_column_wise__quantile_range': [(1, 99)],
-    'process_parallel__pipeline_numeric__add_polynomial__degree': [1, 2],
-    'estimate__transformer': [None, target_transformer],
-
-    # sgd
-    # 'estimate__regressor__alpha': np.logspace(-2, -1, 10),
-    # 'estimate__regressor__l1_ratio': np.linspace(0.1, 1, 10),
+hp_grid_1 = {
+    'alpha': [100, 1000],
+    'l1_ratio': [0, 1],
 }
 
 
 CNFG = {
-    # In ``pycnfg.run`` set default configuration :data:`mlshell.CNFG`, that
-    # has pre-defined path, logger sections and main sub-keys (see below).
     'pipeline': {
         'sgd': {
             'kwargs': {
-                'estimator_type': 'regressor',
+                'steps': [],  # Set direct.
                 'estimator': sklearn.linear_model.SGDRegressor(
                     penalty='elasticnet', l1_ratio=1, shuffle=False,
-                    max_iter=1000, alpha=0.02, random_state=42),
+                    alpha=0.02, early_stopping=True, random_state=42),
             }
         },
-        'lgbm': {
-            'kwargs': {
-                'estimator_type': 'regressor',
-                'estimator': lightgbm.LGBMRegressor(
-                    num_leaves=2, min_data_in_leaf=60, n_estimators=200,
-                    max_depth=-1, random_state=42),
-            }
-        }
     },
     'metric': {
-        'r2': {
-            'score_func': sklearn.metrics.r2_score,
-            'kwargs': {'greater_is_better': True},
-        },
         'mse': {
             'score_func': sklearn.metrics.mean_squared_error,
             'kwargs': {
@@ -75,7 +49,7 @@ CNFG = {
             'split__kwargs': {'train_size': 0.75, 'shuffle': False},
         },
         'test': {
-            'filepath': 'data/test.csv',
+            'filepath': './data/test.csv',
             'split__kwargs': {'train_size': 1},
         },
     },
@@ -87,14 +61,21 @@ CNFG = {
             'pipeline_id': 'pipeline__sgd',
             'dataset_id': 'dataset__train',
             'predict__dataset_id': 'dataset__test',
-            'hp': hp_grid,
-            'hp_grid': hp_grid,
-            'gs_params': 'gs_params__conf',
-            'metric_id': ['metric__r2', 'metric__mse'],
+            'hp': hp_grid_1,
+            'gs_params': 'gs_params__conf_1',
+            'metric_id': ['metric__mse'],
             'steps': [
                 ('fit',),
                 ('validate',),
-                ('optimize',),
+                ('optimize', {'hp_grid': hp_grid_1}),
+                ('optimize', {'hp_grid': {}}),
+                # raise AttributeError, needs steps.
+                # ('optimize', {'hp_grid': hp_grid_1,
+                #              'optimizer': mlshell.model_selection.MockOptimizer
+                #               }),
+                # ('optimize', {'hp_grid': {},
+                #               'optimizer': mlshell.model_selection.MockOptimizer
+                #               }),
                 ('validate',),
                 ('predict',),
                 ('dump',),
@@ -103,12 +84,12 @@ CNFG = {
     },
     # Separate section for 'gs_params' kwarg.
     'gs_params': {
-        'conf': {
+        'conf_1': {
             'priority': 3,
             'init': {
                 'n_iter': None,
                 'n_jobs': 1,
-                'refit': 'metric__r2',
+                'refit': 'metric__mse',
                 'cv': sklearn.model_selection.KFold(n_splits=3,
                                                     shuffle=True,
                                                     random_state=42),

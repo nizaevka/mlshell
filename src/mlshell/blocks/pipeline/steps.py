@@ -89,7 +89,7 @@ class Steps(object):
                 ])),
             ])),
             ('select_columns',   sklearn.feature_selection.SelectFromModel(estimator=CustomSelector(estimator_type=estimator_type, verbose=False, skip=True), prefit=False)),
-            ('reduce_dimension', CustomReducer(skip=True)),
+            ('reduce_dimensions', mlshell.decomposition.PCA(random_state=42, skip=True)),
             ('estimate', self.last_step(estimator, estimator_type, th_step=th_step)),
         ]
 
@@ -197,31 +197,6 @@ class CustomSelector(sklearn.base.BaseEstimator):
         # TODO: some logic
         self.feature_importances_ = np.full(x.shape[1], fill_value=1)
         return self
-
-
-class CustomReducer(sklearn.base.BaseEstimator,
-                    sklearn.base.TransformerMixin):
-    """Custom dimension reducer template."""
-
-    def __init__(self, skip=False):
-        self.skip = skip
-        if not skip:
-            raise NotImplementedError
-
-    def fit(self, x, y=None):
-        if self.skip:
-            return self
-        # TODO: unsupervised step to analyse/reduce dimension.
-        # sklearn.random_projection.johnson_lindenstrauss_min_dim
-        # cluster.FeatureAgglomeration
-        # sklearn.decomposition.PCA()
-        return self
-
-    def transform(self, x):
-        if self.skip:
-            return x
-        x_transformed = None
-        return x_transformed
 
 
 if __name__ == '__main__':

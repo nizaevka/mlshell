@@ -63,7 +63,7 @@ def test_run(id_, args, kwargs, expected):
         assert type(v).__name__ == objects_[k]
     # * Compare predictions csv.
     pred_path = glob.glob(f"{results_path}/models/*_pred.csv")[0]
-    pred_path_ = expected['pred_path']
+    pred_path_ = glob.glob(expected['pred_path'])[0]
     assert filecmp.cmp(pred_path, pred_path_)
     # * Compare test logs.
     logs_path = glob.glob(f"{results_path}/logs*/*_test.log")[0]
@@ -80,14 +80,13 @@ def test_run(id_, args, kwargs, expected):
     # dtype: bool
     df_diff = df.eq(df_).all()
     # Column names that are not equal.
-    columns = list(df_diff[df_diff==False].dropna().index)
+    columns = list(df_diff[df_diff == False].dropna().index)
     columns_ = expected['columns_diff']
-    print('Columns diff:\n', columns)
-    print('Columns diff:\n', columns_)
+    print('DIFF:\n', columns)
     time.sleep(1)
     assert columns == columns_
     # * Compare model.
     model_path = glob.glob(f"{results_path}/models/*.model")[0]
-    model_path_ = expected['model_path']
+    model_path_ = glob.glob(expected['model_path'])[0]
     assert filecmp.cmp(model_path, model_path_)
     return

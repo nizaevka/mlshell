@@ -97,7 +97,7 @@ CNFG = {
             'steps': [
                 ('make', {
                     'score_func': sklearn.metrics.mean_squared_error,
-                    'greater_is_better': True,
+                    'greater_is_better': False,
                     'squared': False
                 }),
             ],

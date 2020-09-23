@@ -12,9 +12,9 @@ numpydoc = "*"
 Sphinx = "==3.1.2"
 
 [packages]
-sklearn = "*"
 pycnfg = {editable = true,path = "./../pycnfg"}
 mlshell = {editable = true,path = "."}
+scikit-learn = "*"
 
 [requires]
 python_version = "3.7"

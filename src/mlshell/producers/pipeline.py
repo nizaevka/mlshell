@@ -111,7 +111,7 @@ class Pipeline(object):
 class PipelineProducer(pycnfg.Producer):
     """Factory to produce pipeline.
 
-    Interface: make, load, info.
+    Interface: set, make, load, info.
 
     Parameters
     ----------
@@ -145,6 +145,25 @@ class PipelineProducer(pycnfg.Producer):
         pycnfg.Producer.__init__(self, objects, oid, path_id=path_id,
                                  logger_id=logger_id)
 
+    def set(self, pipeline, estimator):
+        """Set estimator as pipeline.
+
+        Parameters
+        ----------
+        pipeline : :class:`mlshell.Pipeline`
+            Pipeline object, will be updated.
+        estimator : :mod:`sklearn` estimator
+            Estimator to set in :class:`mlshell.Pipeline` interface.
+
+        Returns
+        -------
+        pipeline : :class:`mlshell.Pipeline`
+            Resulted pipeline.
+
+        """
+        pipeline.pipeline = estimator
+        return pipeline
+
     def make(self, pipeline, steps=None, memory=None, **kwargs):
         """Create pipeline from steps.
 
@@ -152,10 +171,11 @@ class PipelineProducer(pycnfg.Producer):
         ----------
         pipeline : :class:`mlshell.Pipeline`
             Pipeline object, will be updated.
-        steps: list, class, optional (default=none)
-            Steps of pipeline, passed to :class:`sklearn.pipeline.Pipeline` .
-            If class, should support class(**kwargs).steps.
-            If None, :class:`mlshell.pipeline.Steps` is used.
+        steps: list, class, optional (default=None)
+            Pipeline steps to pass in :class:`sklearn.pipeline.Pipeline` .
+            Could be a class with ``steps`` attribute, will be initialized
+            ``steps(**kwargs)``. If None, :class:`mlshell.pipeline.Steps` is
+            used. Set ``[]``, to use kwargs['estimator'] direct as pipeline.
         memory : str, :class:`joblib.Memory` interface, optional (default=None)
             `memory` argument passed to :class:`sklearn.pipeline.Pipeline` .
             If 'auto', "project_path/.temp/pipeline" is used.
@@ -169,8 +189,11 @@ class PipelineProducer(pycnfg.Producer):
 
         """
         steps = self._steps_resolve(steps, kwargs)
-        memory = self._memory_resolve(memory)
-        pipeline.pipeline = sklearn.pipeline.Pipeline(steps, memory=memory)
+        if steps:
+            memory = self._memory_resolve(memory)
+            pipeline.pipeline = sklearn.pipeline.Pipeline(steps, memory=memory)
+        else:
+            pipeline.pipeline = kwargs['estimator']
         return pipeline
 
     def load(self, pipeline, filepath, **kwargs):

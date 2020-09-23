@@ -13,6 +13,7 @@ from .blocks import plot
 from .blocks import model_selection
 from .blocks import preprocessing
 from .blocks import decorator
+from .blocks import decomposition
 
 from .conf import CNFG
 
@@ -20,4 +21,5 @@ __all__ = ['DatasetProducer', 'PipelineProducer', 'MetricProducer',
            'LoggerProducer', 'Workflow',
            'Dataset', 'Pipeline', 'Metric',
            'pipeline', 'plot', 'model_selection', 'preprocessing', 'decorator',
+           'decomposition',
            'CNFG', 'LOGGER_CONFIG']

@@ -6,7 +6,7 @@
 Project*/
 .*/
 
-# Specific.
+# Specific (**-recursive).
 !src/mlshell/**
 
 src/mlshell/.temp

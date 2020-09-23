@@ -1,2 +1,2 @@
 __all__ = ['pipeline', 'plot', 'preprocessing', 'model_selection',
-           'decorator']
+           'decorator', 'decomposition']

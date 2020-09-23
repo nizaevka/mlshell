@@ -356,7 +356,7 @@ class MockOptimizer(RandomizedSearchOptimizer):
     in separate optimize step. For example: classification threshold or score
     function kwargs. 'MockOptimizer' avoids pipeline refit for such cases.
     Internally :class:`mlshell.model_selection.cross_val_predict` called with
-    specified ``method`` and score optimized on output prediction.
+    specified ``method`` and hp optimized on output prediction.
 
     Parameters
     ----------
@@ -364,14 +364,14 @@ class MockOptimizer(RandomizedSearchOptimizer):
         See corresponding argument for
         :class:`sklearn.model_selection.RandomizedSearchCV`.
     hp_grid : dict
-        Specify only ``hp`` supported mock optimization. If {}, used:
-        :class:`mlshell.custom.MockClassifier` or :class:`mlshell.custom.
-        MockRegressor` .
+        Specify only ``hp`` supported mock optimization: should not depends on
+        prediction. If {}, :class:`mlshell.custom.MockClassifier` or
+        :class:`mlshell.custom.MockRegressor` used for compliance.
     scoring: string, callable, list/tuple, dict, optional (default=None)
-        See corresponding argument for
-        :class:`sklearn.model_selection.RandomizedSearchCV`.
+        See corresponding argument in :class:`sklearn.model_selection.
+        RandomizedSearchCV`.
     method : str {'predict_proba', 'predict'}, optional (default='predict')
-        Set ``predict_proba`` if classifier supports and any metric
+        Set ``predict_proba`` if classifier supported and if any metric
         ``needs_proba``. See corresponding argument for
         :class:`mlshell.model_selection.cross_val_predict`.
     **kwargs : dict
@@ -391,28 +391,6 @@ class MockOptimizer(RandomizedSearchOptimizer):
         self._check_method(method, scoring)
         self.method = method
         self.pipeline = pipeline
-        # [deprecated]
-        # if hp_grid == {}:
-        #     if sklearn.base.is_regressor(estimator=pipeline):
-        #         mock = mlshell.model_selection.prediction.MockRegressor()
-        #     elif method == 'predict':
-        #         mock = mlshell.model_selection.prediction.MockClassifier()
-        #     elif method == 'predict_proba':
-        #         # Would be problem if no ThCl, classes not resolved.
-        #         # [alternative] extract in fit from y (sklearn logic), but no
-        #         # pos_label.
-        #         if not hasattr(pipeline, 'params'):
-        #             raise ValueError("Needs ThresholdClassifier "
-        #                              "in pipeline steps.")
-        #         # mock = mlshell.model_selection.prediction.ThresholdClassifier(
-        #         #     pipeline.params, pipeline.threshold)
-        #     else:
-        #         raise ValueError(f"Unknown method {method}")
-        #     mock_pipeline = mock
-        # elif hasattr(pipeline, 'steps'):
-        #     mock_pipeline = self._mock_pipeline(pipeline, hp_grid)
-        # else:
-        #     mock_pipeline = pipeline
         mock_pipeline = self._mock_pipeline(pipeline, hp_grid)
         super().__init__(mock_pipeline, hp_grid, scoring, **kwargs)
 
@@ -484,7 +462,7 @@ class MockOptimizer(RandomizedSearchOptimizer):
                     # Delete.
                     del_inds.append(ind)
                 elif subpath in hp_grid:
-                    # Remain full element, no need to level up, otherwised
+                    # Remain full element, no need to level up, otherwise
                     # will remove all inside the step
                     # for example 'estimate'.
                     continue
@@ -498,7 +476,14 @@ class MockOptimizer(RandomizedSearchOptimizer):
                 del steps[ind]
             return
 
-        r_steps = copy.deepcopy(pipeline.steps)
+        if hasattr(pipeline, 'steps'):
+            r_steps = copy.deepcopy(pipeline.steps)
+        else:
+            # Can`t separate any hp to brut force.
+            raise AttributeError(
+                "MockOptimizer: pipeline should contain steps, "
+                "otherwise efficient optimization not possible."
+            )
         recursion(r_steps, '')
 
         flag = False

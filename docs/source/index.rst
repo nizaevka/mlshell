@@ -10,12 +10,11 @@ Welcome to MLshell's documentation!
     :width: 1000
     :alt: error
 
-**Easy ML framework.**
+**Simple ML framework.**
 
 - Auto ML.
 - Unified pipeline.
 - Stable CV scheme.
-- Common EDA techniques.
 - One configuration file.
 - Multi-stage optimization.
 
