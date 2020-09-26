@@ -237,7 +237,7 @@ class Workflow(pycnfg.Producer):
             resolve_params = {}
         if fit_params is None:
             fit_params = {}
-        if fit_params is None:
+        if gs_params is None:
             gs_params = {}
         if optimizer is None:
             optimizer = mlshell.model_selection.RandomizedSearchOptimizer
@@ -525,9 +525,9 @@ class Workflow(pycnfg.Producer):
         """Get => update => resolve => set pipeline hp."""
         _hp_full = pipeline.get_params()
         _hp_full.update(self._get_zero_position(hp))
-        hp = self._resolve_hp(_hp_full, pipeline, resolver, dataset,
-                              resolve_params)
-        pipeline.set_params(**hp)
+        hps = self._resolve_hp(_hp_full, pipeline, resolver, dataset,
+                               resolve_params)
+        pipeline.set_params(**hps)
         return pipeline
 
     def _get_zero_position(self, hp):

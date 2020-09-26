@@ -164,7 +164,7 @@ class PipelineProducer(pycnfg.Producer):
         pipeline.pipeline = estimator
         return pipeline
 
-    def make(self, pipeline, steps=None, memory=None, **kwargs):
+    def make(self, pipeline, steps=None, estimator=None, memory=None, **kwargs):
         """Create pipeline from steps.
 
         Parameters
@@ -174,8 +174,11 @@ class PipelineProducer(pycnfg.Producer):
         steps: list, class, optional (default=None)
             Pipeline steps to pass in :class:`sklearn.pipeline.Pipeline` .
             Could be a class with ``steps`` attribute, will be initialized
-            ``steps(**kwargs)``. If None, :class:`mlshell.pipeline.Steps` is
-            used. Set ``[]``, to use kwargs['estimator'] direct as pipeline.
+            ``steps(estimator, **kwargs)``. If None, :class:`mlshell.pipeline.
+            Steps` is used. Set ``[]`` to use``estimator`` direct as pipeline.
+        estimator : :mod:`sklearn` estimator
+            Estimator to use in the last step if ``steps`` is a class or direct
+            if ``steps=[]``.
         memory : str, :class:`joblib.Memory` interface, optional (default=None)
             `memory` argument passed to :class:`sklearn.pipeline.Pipeline` .
             If 'auto', "project_path/.temp/pipeline" is used.
@@ -188,12 +191,12 @@ class PipelineProducer(pycnfg.Producer):
             Resulted pipeline.
 
         """
-        steps = self._steps_resolve(steps, kwargs)
+        steps = self._steps_resolve(steps, estimator=estimator, **kwargs)
         if steps:
             memory = self._memory_resolve(memory)
             pipeline.pipeline = sklearn.pipeline.Pipeline(steps, memory=memory)
         else:
-            pipeline.pipeline = kwargs['estimator']
+            pipeline.pipeline = estimator
         return pipeline
 
     def load(self, pipeline, filepath, **kwargs):
@@ -243,7 +246,7 @@ class PipelineProducer(pycnfg.Producer):
         return pipeline
 
     # ================================ make ===================================
-    def _steps_resolve(self, steps, kwargs):
+    def _steps_resolve(self, steps, **kwargs):
         """Prepare pipeline steps.
 
         Returns

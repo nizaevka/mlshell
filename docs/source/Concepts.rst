@@ -369,6 +369,7 @@ Any pipeline parameter ``hp`` can be optimized in grid search.
     Probaility distribution for ``hp_grid`` params are also possible, it should
     supports .rvs() sampling method.
 
+..
     It is possible to rotate last step estimator (alternative to multiple
     pipeline configurations):
 
@@ -383,6 +384,7 @@ Any pipeline parameter ``hp`` can be optimized in grid search.
                                        n_estimators=200, max_depth=-1),
             ]
         }
+..
 
 Resolver
 ~~~~~~~~

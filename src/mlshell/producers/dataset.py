@@ -137,12 +137,17 @@ class Dataset(dict):
             return self
 
         df = self['data']
-        index = self['subsets'][subset_id]
-        # Inherit only meta.
-        dataset = Dataset(dict(self, **{'data': df.loc[index],
-                                        'subsets': {},
-                                        '_oid': f"{self['_oid']}__{subset_id}"}
-                               ))
+        index = self['subsets'][subset_id]  # subset of meta['inices']
+        # Inherit only meta (except indices).
+        # dict(self) will inherit by ref.
+        dataset = Dataset(**{
+            'meta': copy.deepcopy(self.meta),
+            'data': df.loc[index],
+            'subsets': {},
+            '_oid': f"{self['_oid']}__{subset_id}"})
+        # Update indices in meta.
+        dataset.meta['indices'] = index
+        # if reset_index: np.array(dataset.meta['indices'])[index].tolist()
         return dataset
 
     def dump_pred(self, filepath, y_pred, **kwargs):
@@ -293,9 +298,9 @@ class DataPreprocessor(object):
             List of categorical features(also binary) identifiers in raw
             dataset. If None, empty list.
         pos_labels: list, optional (default=None)
-            Classification only, list of "positive" labels in target(s).
+            Classification only, list of "positive" label(s) in target(s).
             Could be used in :func:`sklearn.metrics.roc_curve` for
-            threshold analysis  and metrics evaluation when classifier supports
+            threshold analysis and metrics evaluation when classifier supports
             ``predict_proba``. If None, for each target last label in
             :func:`numpy.unique` is used . For regression set [] to prevent
             evaluation.
@@ -308,8 +313,8 @@ class DataPreprocessor(object):
             Resulted dataset. Key updated: 'data'. Keys added:
 
             'subsets': dict
-                Storage for data subset(s) index, fills for example in split
-                {'subset_id': index }.
+                Storage for data subset(s) indices (filled in split method)
+                {'subset_id': indices}.
             'meta' : dict
                 Extracted auxiliary information from data:
                 {

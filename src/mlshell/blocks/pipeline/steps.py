@@ -32,8 +32,9 @@ class Steps(object):
                     ])``
         If ``estimator_type=classifier`` and ``th_step=False``:
         ``sklearn.pipeline.Pipeline(steps=[('classifier', `estimator`)])``
-    estimator_type : str {'classifier`, 'regressor'}
-         Either regression or classification task.
+    estimator_type : str {'classifier`, 'regressor'}, optional (default=None)
+         Either regression or classification task. If None, get from
+         :func:``sklearn.base.is_classifier`` on ``estimator``.
     th_step : bool
         If True and ``estimator_type=classifier``: ``mlshell.model_selection.
         ThresholdClassifier`` sub-step added, otherwise ignored.
@@ -65,7 +66,11 @@ class Steps(object):
     """
     _required_parameters = ['estimator', 'estimator_type']
 
-    def __init__(self, estimator, estimator_type, th_step=False):
+    def __init__(self, estimator, estimator_type=None, th_step=False):
+        if estimator_type is None:
+            estimator_type = 'classifier' if sklearn.base.is_classifier(estimator)\
+                else 'regressor'
+
         self._steps = [
             ('pass_custom',      mlshell.preprocessing.FunctionTransformer(func=self.scorer_kwargs, validate=False, skip=True, kw_args={})),
             ('select_rows',      mlshell.preprocessing.FunctionTransformer(func=self.subrows, validate=False, skip=True)),

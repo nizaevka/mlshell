@@ -1,13 +1,13 @@
 """Configuration example - tune LGBM on iris dataset.
 
-Each sub-configuration produces object (pipeline/metric/dataset/workflow)
+The single configuration CNFG controls the whole ml task.
+Each section sub-configurations produce object (pipeline/metric/dataset/workflow)
 pipeline-wise:
     object init state
         => transform object with steps (producer methods)
             => store result
 Sub-configuration with greater priority (workflow) could utilize previously
 created objects.
-
 
 """
 import lightgbm
@@ -68,12 +68,15 @@ CNFG = {
     # Dataset section - dataset loading/preprocessing/splitting.
     'dataset': {
         'train': {
-            'init': mlshell.Dataset({'data': sklearn.datasets.load_iris(as_frame=True).frame}),
+            'init': mlshell.Dataset({
+                'data': sklearn.datasets.load_iris(as_frame=True).frame
+            }),
             'producer': mlshell.DatasetProducer,
             'priority': 5,
             'steps': [
                 ('preprocess', {'targets_names': ['target']}),
-                ('split', {'train_size': 0.75, 'shuffle': False, }),
+                ('split', {'train_size': 0.75, 'shuffle': True,
+                           'random_state': 42}),
             ],
         },
     },

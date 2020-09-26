@@ -49,7 +49,8 @@ params = [
         {'dcnfg': mlshell.CNFG,
          'objects': {'path__default': f"{currdir}/regression/"}},
         sbst_id(output, 'regression', upd={
-            'columns_diff': [
+            # merged runs.csv columns that are differ between original/current.
+            'columns_diff': sorted([
                 'steps', 'pass_custom', 'select_rows',
                 'process_parallel', 'pass_custom__func', 'select_rows__func',
                 'process_parallel__transformer_list',
@@ -74,7 +75,8 @@ params = [
                 'estimate__transformer__validate',
                 'mean_fit_time', 'std_fit_time', 'mean_score_time',
                 'std_score_time', 'id', 'pipeline__hash'
-            ],
+            ]),
+            # print of objects result.
             'objects': {'path__default': 'str',
                         'logger__default': 'LoggerAdapter',
                         'dataset__test': 'Dataset',
@@ -95,7 +97,7 @@ params = [
         {'dcnfg': mlshell.CNFG,
          'objects': {'path__default': f"{currdir}/classification/"}},
         sbst_id(output, 'classification', upd={
-            'columns_diff': [
+            'columns_diff': sorted([
                 'steps',
                 'pass_custom',
                 'select_rows',
@@ -118,7 +120,7 @@ params = [
                 'mean_score_time',
                 'std_score_time',
                 'id', 'pipeline__hash'
-            ],
+            ]),
             'objects': {'path__default': 'str',
                         'logger__default': 'LoggerAdapter',
                         'dataset__test': 'Dataset',
@@ -138,21 +140,21 @@ params = [
                         'workflow__conf': 'dict'}
         }),
     ),
-    # Whole estimator.
+    # Whole estimator (whith out steps).
     (
         2,
         [f"{currdir}/whole/conf.py"],
         {'dcnfg': mlshell.CNFG,
          'objects': {'path__default': f"{currdir}/whole/"}},
         sbst_id(output, 'whole', upd={
-            'columns_diff': [
+            'columns_diff': sorted([
                 'mean_fit_time',
                 'std_fit_time',
                 'mean_score_time',
                 'std_score_time',
                 'id',
                 'pipeline__hash'
-            ],
+            ]),
             'objects': {
                 'path__default': 'str',
                 'logger__default': 'LoggerAdapter',
@@ -161,6 +163,51 @@ params = [
                 'gs_params__conf_1': 'dict',
                 'metric__mse': 'Metric',
                 'pipeline__sgd': 'Pipeline',
+                'workflow__conf': 'dict'}
+        }),
+    ),
+    # multiclass-multioutput.
+    (
+        3,
+        [f"{currdir}/multiclass/conf.py"],
+        {'dcnfg': mlshell.CNFG,
+         'objects': {'path__default': f"{currdir}/multiclass/"}},
+        sbst_id(output, 'multiclass', upd={
+            'columns_diff': sorted([
+                'steps',
+                'pass_custom',
+                'select_rows',
+                'process_parallel', 'pass_custom__func',
+                'select_rows__func', 'process_parallel__transformer_list',
+                'process_parallel__pipeline_categoric',
+                'process_parallel__pipeline_numeric',
+                'process_parallel__pipeline_categoric__steps',
+                'process_parallel__pipeline_categoric__select_columns',
+                'process_parallel__pipeline_categoric__select_columns__func',
+                'process_parallel__pipeline_numeric__steps',
+                'process_parallel__pipeline_numeric__select_columns',
+                'process_parallel__pipeline_numeric__compose_columns',
+                'process_parallel__pipeline_numeric__select_columns__func',
+                'process_parallel__pipeline_numeric__impute__indicators__missing_values',
+                'process_parallel__pipeline_numeric__impute__gaps__missing_values',
+                'process_parallel__pipeline_numeric__compose_columns__transformers',
+                'mean_fit_time',
+                'std_fit_time',
+                'mean_score_time',
+                'std_score_time',
+                'id', 'pipeline__hash'
+            ]),
+            'objects': {
+                'dataset__train': 'Dataset',
+                'gs_params__stage_1': 'dict',
+                'gs_params__stage_2': 'dict',
+                'gs_params__stage_3': 'dict',
+                'logger__default': 'LoggerAdapter',
+                'metric__accuracy': 'Metric',
+                'metric__confusion_matrix': 'Metric',
+                'path__default': 'str',
+                'pipeline__lgbm': 'Pipeline',
+                'resolve_params__stage_2': 'dict',
                 'workflow__conf': 'dict'}
         }),
     ),

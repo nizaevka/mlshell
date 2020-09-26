@@ -58,9 +58,11 @@ def test_run(id_, args, kwargs, expected):
     # Compare results:
     # * Compare objects (keys and str of values).
     objects_ = expected['objects']
-    for k, v in objects.items():
-        assert k in objects_
-        assert type(v).__name__ == objects_[k]
+    objects = {k: type(v).__name__ for k, v in objects.items()}
+    assert objects == objects_
+    # for k, v in objects.items():
+    #     assert k in objects_
+    #     assert type(v).__name__ == objects_[k]
     # * Compare predictions csv.
     pred_path = glob.glob(f"{results_path}/models/*_pred.csv")[0]
     pred_path_ = glob.glob(expected['pred_path'])[0]
@@ -68,7 +70,7 @@ def test_run(id_, args, kwargs, expected):
     # * Compare test logs.
     logs_path = glob.glob(f"{results_path}/logs*/*_test.log")[0]
     logs_path_ = expected['logs_path']
-    assert filecmp.cmp(logs_path_, logs_path)
+    assert filecmp.cmp(logs_path, logs_path_)
     # * Compare runs dataframe, non-universe columns.
     runs_path = f"{results_path}/runs"
     runs_path_ = expected['runs_path']
@@ -80,7 +82,8 @@ def test_run(id_, args, kwargs, expected):
     # dtype: bool
     df_diff = df.eq(df_).all()
     # Column names that are not equal.
-    columns = list(df_diff[df_diff == False].dropna().index)
+    columns = sorted(list(df_diff[df_diff==False].dropna().index))
+    # columns_eq = sorted(list(df_diff[df_diff==True].dropna().index))
     columns_ = expected['columns_diff']
     print('DIFF:\n', columns)
     time.sleep(1)

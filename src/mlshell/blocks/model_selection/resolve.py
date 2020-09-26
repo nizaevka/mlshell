@@ -132,7 +132,7 @@ class Resolver(object):
         kwargs_ctr = kwargs.get('calc_th_range', {})
         if kwargs_cvp.get('method', None) is not 'predict_proba':
             raise ValueError("cross_val_predict 'method'"
-                             " should be 'predict_proba'.")
+                             " should be 'predict_proba' to resolve th_ range.")
         if 'y' in kwargs_cvp:
             del kwargs_cvp['y']
 
@@ -154,7 +154,8 @@ class Resolver(object):
         return th_range
 
     def calc_th_range(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,
-                      metric=None, samples=10, sampler=None, plot_flag=False):
+                      metric=None, samples=10, sampler=None, plot_flag=False,
+                      **roc_auc_kwargs):
         """Calculate threshold range from OOF ROC curve.
 
         Parameters
@@ -175,13 +176,15 @@ class Resolver(object):
             corresponding ``th_`` index and vector for metric visualization
             ofshape [n_samples,]. If None, ``tpr/(fpr+tpr)`` is used.
         samples : int, optional (default=10)
-            Number of threshold values to sample.
+            Number of unique threshold values to sample (should be enough data).
         sampler : callable, optional (default=None)
             ``sampler(optimum, th_, samples)`` should returns: (sub-range of
             th_, original index of sub-range).If None, linear sample from
             ``[optimum/100; 2*optimum]`` with limits ``[np.min(th_), 1]``.
         plot_flag : bool, optional (default=False)
             If True, plot ROC curve and resulted th range.
+        roc_auc_kwargs : dict
+            Additional kwargs to pass in :func:``sklearn.metrics.roc_auc_score`` .
 
         Returns
         -------
@@ -217,7 +220,7 @@ class Resolver(object):
             if plot_flag:
                 self._th_plot(y_true[:, i], y_pred_proba[i], pos_labels[i],
                               pos_labels_ind[i], best_th_, q, tpr, fpr,
-                              th_, th_range, index)
+                              th_, th_range, index, roc_auc_kwargs)
             res.append(th_range)
         th_range = res[0] if len(res) == 1 else res
         return th_range
@@ -293,21 +296,31 @@ class Resolver(object):
         desired = np.linspace(max(best_th_ / 100, np.min(th_)),
                               min(best_th_ * 2, 1), samples)
         # Find index of nearest from th_reverse (a[i-1] < v <= a[i]).
-        index_rev = np.searchsorted(th_[::-1], desired, side='left')
+        index_rev = np.searchsorted(th_[::-1], desired, side='left')  # Asc.
+        # If not enough data, th could duplicate (remove).
+        index_rev = np.unique(index_rev)
         index = len(th_) - index_rev - 1
         th_range = np.clip(th_[index], a_min=None, a_max=1)
         return th_range, index
 
     def _th_plot(self, y_true, y_pred_proba, pos_label, pos_label_ind,
-                 best_th_, q, tpr, fpr, th_, th_range, index):
-        """Plot ROC curve and metric."""
+                 best_th_, q, tpr, fpr, th_, th_range, index, roc_auc_kwargs):
+        """Plot ROC curve and metric for current target."""
         fig, axs = plt.subplots(nrows=2, ncols=1)
         fig.set_size_inches(10, 10)
+        # Roc score.
+        y_type = sklearn.utils.multiclass.type_of_target(y_true)
+        if y_type == "binary":
+            roc_auc = sklearn.metrics.roc_auc_score(
+                y_true, y_pred_proba[:, pos_label_ind], **roc_auc_kwargs)
+        elif y_type == "multiclass":
+            roc_auc = sklearn.metrics.roc_auc_score(
+                y_true, y_pred_proba, **roc_auc_kwargs)
+        else:
+            assert False, f"Unhandled y_type {y_type}"
         # Roc curve.
-        roc_auc = sklearn.metrics.roc_auc_score(y_true,
-                                                y_pred_proba[:, pos_label_ind])
         axs[0].plot(fpr, tpr, 'darkorange',
-                    label=f"ROC curve (area = {roc_auc:.3f})")
+                    label=f"ROC curve (AUC = {roc_auc:.3f}).")
         axs[0].scatter(fpr[index], tpr[index], c='b', marker="o")
         axs[0].plot([0, 1], [0, 1], color='navy', linestyle='--')
         axs[0].set_xlabel('False Positive Rate')

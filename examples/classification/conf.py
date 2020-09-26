@@ -282,7 +282,6 @@ CNFG = {
                 'return_train_score': True,
             },
         },
-
     },
 }
 
