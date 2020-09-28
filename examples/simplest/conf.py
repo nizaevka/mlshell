@@ -80,7 +80,7 @@ CNFG = {
     # Metric section - specify metric creation/loading.
     'metric': {
         'r2': {
-            'priority': 3,
+            'priority': 4,
             'init': mlshell.Metric,
             'producer': mlshell.MetricProducer,
             'steps': [
@@ -91,7 +91,7 @@ CNFG = {
             ],
         },
         'mse': {
-            'priority': 3,
+            'priority': 4,
             'init': mlshell.Metric,
             'producer': mlshell.MetricProducer,
             'steps': [
@@ -106,7 +106,7 @@ CNFG = {
     # Dataset section - specify dataset loading/preprocessing/splitting.
     'dataset': {
         'train': {
-            'priority': 3,
+            'priority': 5,
             'init': mlshell.Dataset,
             'producer': mlshell.DatasetProducer,
             'steps': [
@@ -120,7 +120,7 @@ CNFG = {
             ],
         },
         'test': {
-            'priority': 3,
+            'priority': 5,
             'init': mlshell.Dataset,
             'producer': mlshell.DatasetProducer,
             'steps': [
@@ -137,7 +137,7 @@ CNFG = {
     # metrics.
     'workflow': {
         'conf': {
-            'priority': 4,
+            'priority': 6,
             'init': {},
             'producer': mlshell.Workflow,
             'steps': [

@@ -34,7 +34,7 @@ class Steps(object):
         ``sklearn.pipeline.Pipeline(steps=[('classifier', `estimator`)])``
     estimator_type : str {'classifier`, 'regressor'}, optional (default=None)
          Either regression or classification task. If None, get from
-         :func:``sklearn.base.is_classifier`` on ``estimator``.
+         :func:`sklearn.base.is_classifier` on ``estimator``.
     th_step : bool
         If True and ``estimator_type=classifier``: ``mlshell.model_selection.
         ThresholdClassifier`` sub-step added, otherwise ignored.

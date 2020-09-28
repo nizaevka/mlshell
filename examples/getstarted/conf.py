@@ -32,11 +32,10 @@ CNFG = {
             'priority': 3,
             'steps': [
                 ('make', {
-                    'estimator_type': 'classifier',
                     'steps': mlshell.pipeline.Steps,
                     'estimator': lightgbm.sklearn.LGBMClassifier(
                         num_leaves=5, max_depth=5, n_estimators=100,
-                        random_state=42),  # last stage of pipeline.
+                        random_state=42),  # last step of pipeline.
                 }),
             ],
         }
@@ -69,7 +68,7 @@ CNFG = {
     'dataset': {
         'train': {
             'init': mlshell.Dataset({
-                'data': sklearn.datasets.load_iris(as_frame=True).frame
+                'data': sklearn.datasets.load_iris(as_frame=True).frame,
             }),
             'producer': mlshell.DatasetProducer,
             'priority': 5,

@@ -28,37 +28,9 @@ class LevelFilter(object):
             return False
 
 
-# class CustomFormatter(logging.Formatter):
-#     """Custom formatter."""
-#     def __init__(self, *args, **kwargs):
-#         super(CustomFormatter, self).__init__(*args, **kwargs)
-#         self.format = self.decor(self.format)
-#
-#     def decor(self, s):
-#         s.replace('|__ ', '\u25CF ')
-#         s.replace('    |__ ', '\u25CF \u25B6 ')
-#         return s
-
-
 class CustomFormatter(logging.Formatter):
     def format(self, record):
-        record.message = record.getMessage()
-        if self.usesTime():
-            record.asctime = self.formatTime(record, self.datefmt)
-        s = self.formatMessage(record)
-        if record.exc_info:
-            # Cache the traceback text to avoid converting it multiple times
-            # (it's constant anyway)
-            if not record.exc_text:
-                record.exc_text = self.formatException(record.exc_info)
-        if record.exc_text:
-            if s[-1:] != "\n":
-                s = s + "\n"
-            s = s + record.exc_text
-        if record.stack_info:
-            if s[-1:] != "\n":
-                s = s + "\n"
-            s = s + self.formatStack(record.stack_info)
+        s = super().format(record)
         s = s.replace('    |__ ', '     \u25B6 ')
         s = s.replace('|__ ', '\u25CF ')
         return s

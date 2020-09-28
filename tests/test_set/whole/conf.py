@@ -4,11 +4,21 @@ Pipeline without steps:
 * hp_grid(some,empty) + Optimizer
 * hp_grid(some,empty) + MockOptimizer will raise Error "no steps".
 
+Also
+    @time_profiler
+    @memory_profiler
 """
 
+import atexit
+
+import line_profiler
 import mlshell
 import pycnfg
 import sklearn
+from memory_profiler import profile as memory_profiler
+
+time_profiler = line_profiler.LineProfiler()
+atexit.register(time_profiler.print_stats, output_unit=1)
 
 
 # Optimization hp ranges.
@@ -67,7 +77,8 @@ CNFG = {
             'steps': [
                 ('fit',),
                 ('validate',),
-                ('optimize', {'hp_grid': hp_grid_1}),
+                ('optimize', {'hp_grid': hp_grid_1}, [time_profiler,
+                                                      memory_profiler]),
                 ('optimize', {'hp_grid': {}}),
                 # raise AttributeError, needs steps.
                 # ('optimize', {'hp_grid': hp_grid_1,

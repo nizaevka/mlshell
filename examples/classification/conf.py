@@ -77,50 +77,35 @@ def merge(self, dataset, left_id, right_id, **kwargs):
 CNFG = {
     'pipeline': {
         'sgd': {
-            'kwargs': {
-                'estimator_type': 'classifier',
-                'estimator': sklearn.linear_model.SGDClassifier(
-                    penalty='elasticnet', l1_ratio=0.01, alpha=0.01,
-                    shuffle=False, max_iter=1000, early_stopping=True,
-                    learning_rate='invscaling', power_t=0.25, eta0=0.01,
-                    verbose=1, random_state=42),
-                'th_step': True,
-            }
+            'estimator': sklearn.linear_model.SGDClassifier(
+                penalty='elasticnet', l1_ratio=0.01, alpha=0.01,
+                shuffle=False, max_iter=1000, early_stopping=True,
+                learning_rate='invscaling', power_t=0.25, eta0=0.01,
+                verbose=1, random_state=42),
+            'kwargs': {'th_step': True}
         },
         'lgbm': {
-            'kwargs': {
-                'estimator_type': 'classifier',
-                'estimator': lightgbm.LGBMClassifier(
-                    colsample_bytree=0.9,
-                    learning_rate=0.03, max_depth=13,
-                    min_child_samples=1, min_child_weight=0.001,
-                    min_split_gain=0.0, n_estimators=500, n_jobs=-1,
-                    num_leaves=32, objective='binary',
-                    random_state=42, reg_alpha=0.3,
-                    reg_lambda=0.3, silent=True, subsample=0.9,
-                    subsample_for_bin=200000, subsample_freq=3),
-                # 'estimator': lightgbm.LGBMClassifier(
-                #     objective='binary', n_estimators=500, num_leaves=32,
-                #     min_child_samples=1, max_depth=13, learning_rate=0.03,
-                #     boosting_type='gbdt', subsample_freq=3, subsample=0.9,
-                #     reg_alpha=0.3, reg_lambda=0.3, colsample_bytree=0.9,
-                #     silent=True, n_jobs=-1, random_state=42),
-                'th_step': True,
-            }
+            'estimator': lightgbm.LGBMClassifier(
+                colsample_bytree=0.9,
+                learning_rate=0.03, max_depth=13,
+                min_child_samples=1, min_child_weight=0.001,
+                min_split_gain=0.0, n_estimators=500, n_jobs=-1,
+                num_leaves=32, objective='binary',
+                random_state=42, reg_alpha=0.3,
+                reg_lambda=0.3, silent=True, subsample=0.9,
+                subsample_for_bin=200000, subsample_freq=3),
+            'kwargs': {'th_step': True}
         },
         'xgb': {
-            'kwargs': {
-                'estimator_type': 'classifier',
-                'estimator': xgboost.XGBClassifier(
-                    objective='binary:hinge', **{
-                        'min_child_weight': 1, 'eta': 0.01,
-                        'n_estimators': 100, 'colsample_bytree': 0.5,
-                        'max_depth': 12, 'subsample': 0.8, 'alpha': 1,
-                        'gamma': 1, 'silent': 1, 'verbose_eval': True,
-                        'seed': 42,
-                    }),
-                'th_step': True,
-            }
+            'estimator': xgboost.XGBClassifier(
+                objective='binary:hinge', **{
+                    'min_child_weight': 1, 'eta': 0.01,
+                    'n_estimators': 100, 'colsample_bytree': 0.5,
+                    'max_depth': 12, 'subsample': 0.8, 'alpha': 1,
+                    'gamma': 1, 'silent': 1, 'verbose_eval': True,
+                    'seed': 42,
+                }),
+            'kwargs': {'th_step': True}
         },
     },
     'metric': {

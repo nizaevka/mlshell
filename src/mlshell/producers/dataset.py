@@ -118,7 +118,7 @@ class Dataset(dict):
         meta = self['meta']
         # return df[meta['targets']].values
         res = df.loc[:, meta['targets']].values.ravel() \
-            if len(meta['targets']) == 1 else df.loc[:, meta['targets']]
+            if len(meta['targets']) == 1 else df.loc[:, meta['targets']].values
         return res
 
     @property
@@ -170,8 +170,10 @@ class Dataset(dict):
         """
         meta = self.meta
         # Recover original index and names.
-        dic = dict(zip(meta['targets'],
-                   [y_pred] if len(meta['targets']) == 1 else y_pred))
+        dic = dict(zip(
+            meta['targets'],
+            [y_pred] if len(meta['targets']) == 1 else np.array(y_pred).T
+        ))
         obj = pd.DataFrame(index=meta['indices'],
                            data=dic).rename_axis(meta['index'], axis=0)
         fullpath = f"{filepath}_pred.csv"
@@ -300,7 +302,7 @@ class DataPreprocessor(object):
         pos_labels: list, optional (default=None)
             Classification only, list of "positive" label(s) in target(s).
             Could be used in :func:`sklearn.metrics.roc_curve` for
-            threshold analysis and metrics evaluation when classifier supports
+            threshold analysis and metrics evaluation if classifier supports
             ``predict_proba``. If None, for each target last label in
             :func:`numpy.unique` is used . For regression set [] to prevent
             evaluation.

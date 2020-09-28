@@ -169,8 +169,10 @@ def cross_val_predict(*args, **kwargs):
     Returns
     -------
     y_pred_oof : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
-        OOF probability predictions of shape [n_test_samples, n_classes]
-        or [n_outputs, n_test_samples, n_classes] for multi-output.
+        If method=predict_proba: OOF probability predictions of shape
+        [n_test_samples, n_classes] or [n_outputs, n_test_samples, n_classes]
+        for multi-output. If method=predict OOF predict of shape [n_test_samples]
+        or [n_test_samples, n_outputs].
     index_oof : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
         Samples reset indices where predictions available of shape
         [n_test_samples,].

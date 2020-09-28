@@ -2,29 +2,35 @@
 binary iris dataset.
 MULTIOUTPUT
 * Regression
-    ** from the box
+    - ** from the box(no such estimators in sklearn)
     ** MultiOutputRegressor
 * Classification
     ** from the box with th_step
-    ** MultiOutputClassifier
+    ** MultiOutputClassifierx with th_step
+    - ** multiclass-multioutput (RandomForestClassifier, no such metrics in sklearn)
+
 """
 import lightgbm
 import mlshell
 import pycnfg
 import sklearn.multioutput
 import sklearn.datasets
+import sklearn.ensemble
 
 
 iris_df = sklearn.datasets.load_iris(as_frame=True).frame
-# Cast to binary sklearn not support multiclass-multioutput.
-iris_df.loc[(iris_df.target > 1), 'target'] = 1
+# Cast to binary (rare support multiclass-multioutput).
 # Multioutput
 iris_df.insert(0, 'target2', iris_df['target'])
+# binary
+iris_bin_df = iris_df.copy(deep=True)
+iris_bin_df.loc[(iris_df.target > 1), 'target'] = 1
+iris_bin_df.loc[(iris_df.target2 > 1), 'target2'] = 1
 
-regressor_box = sklearn.linear_model.SGDRegressor()
+# There is no multioutput regression from the box.
 regressor = lightgbm.sklearn.LGBMRegressor(
     num_leaves=5, max_depth=5, n_estimators=100, random_state=42)
-classifier_box = sklearn.linear_model.SGDClassifier()
+classifier_box = sklearn.ensemble.RandomForestClassifier(random_state=42)  # support multiclass-multioutput
 classifier = lightgbm.sklearn.LGBMClassifier(
     num_leaves=5, max_depth=5, n_estimators=100, random_state=42)
 
@@ -70,24 +76,16 @@ CNFG = {
     # Pipeline section - make pipeline object(s).
     'pipeline': {
         '1': {
-            'estimator': sklearn.multioutput.MultiOutputClassifier(classifier)
+            'estimator': sklearn.multioutput.MultiOutputClassifier(classifier),
+            'kwargs': {'th_step': True},
         },
         '2': {
-            'estimator': sklearn.multioutput.MultiOutputRegressor(regressor)
+            'estimator': classifier_box,
+            'kwargs': {'th_step': True},
         },
         '3': {
-            'estimator': sklearn.compose.TransformedTargetRegressor(regressor=regressor_box)
+            'estimator': sklearn.multioutput.MultiOutputRegressor(regressor)
         },
-        '4': {
-            'estimator': sklearn.pipeline.Pipeline(steps=[
-                ('predict_proba',
-                    mlshell.model_selection.PredictionTransformer(classifier_box)),
-                ('apply_threshold',
-                    mlshell.model_selection.ThresholdClassifier(
-                        params='auto', threshold=None)),
-                ])
-        },
-
     },
     # Metric section - make scorer object(s).
     'metric': {
@@ -102,20 +100,26 @@ CNFG = {
                 }),
             ],
         },
-        'confusion_matrix': {
-            'init': mlshell.Metric,
-            'producer': mlshell.MetricProducer,
-            'priority': 4,
-            'steps': [
-                ('make', {
-                    'score_func': sklearn.metrics.confusion_matrix,
-                }),
-            ],
+        'r2': {
+            'score_func': sklearn.metrics.r2_score,
+            'kwargs': {'greater_is_better': True},
         },
     },
     # Dataset section - dataset loading/preprocessing/splitting.
     'dataset': {
-        'train': {
+        'binary': {
+            'init': mlshell.Dataset({
+                'data': iris_bin_df,
+            }),
+            'producer': mlshell.DatasetProducer,
+            'priority': 5,
+            'steps': [
+                ('preprocess', {'targets_names': ['target', 'target2']}),
+                ('split', {'train_size': 0.75, 'shuffle': True,
+                           'random_state': 42}),
+            ],
+        },
+        'multiclass': {
             'init': mlshell.Dataset({
                 'data': iris_df,
             }),
@@ -127,6 +131,7 @@ CNFG = {
                            'random_state': 42}),
             ],
         },
+
     },
     # Workflow section
     # - fit/predict pipelines on datasets,
@@ -134,7 +139,7 @@ CNFG = {
     # - predict/dump predictions on datasets.
     'workflow': {
         'global': {
-            'dataset_id': 'dataset__train',
+            'dataset_id': 'dataset__binary',
             'subset_id': 'train',
             'metric_id': ['metric__accuracy'],
         },
@@ -170,21 +175,43 @@ CNFG = {
             ('dump',),
             ('validate', {
                 'subset_id': ['train', 'test'],
-                'metric_id': ['metric__accuracy',
-                              'metric__confusion_matrix'],
             }),
         ],
+        # classification MultiOutput(binary)
         '1': {
+            'priority': 6,
             'pipeline_id': 'pipeline__1',
         },
+        # classification from the box (multioutput)
         '2': {
+            'priority': 6,
+            # 'dataset_id': 'dataset__multiclass', (no such metrics)
             'pipeline_id': 'pipeline__2',
         },
+        # regression MultiOutput
         '3': {
+            'priority': 6,
             'pipeline_id': 'pipeline__3',
-        },
-        '4': {
-            'pipeline_id': 'pipeline__4',
+            'metric_id': ['metric__r2'],
+            'gs_params': 'gs_params__stage_4',
+            'steps': [
+                ('fit', {'hp': hp_grid_1}),
+                ('optimize', {'hp_grid': hp_grid_1}),
+                # Pass custom.
+                ('optimize', {'hp_grid': hp_grid_3,
+                              'optimizer': mlshell.model_selection.MockOptimizer,
+                              }),
+                ('optimize', {'hp_grid': {}}),
+                ('optimize', {'hp_grid': {},
+                              'optimizer': mlshell.model_selection.MockOptimizer,
+                              }),
+                ('validate',),
+                ('predict',),
+                ('dump',),
+                ('validate', {
+                    'subset_id': ['train', 'test'],
+                }),
+            ],
         },
     },
     'resolve_params': {
@@ -202,7 +229,7 @@ CNFG = {
                     'calc_th_range': {
                         'samples': 10,
                         'plot_flag': False,
-                        'multi_class': 'ovr',
+                        # 'multi_output': 'product',
                     },
                 },
             }
@@ -210,6 +237,7 @@ CNFG = {
     },
     # Separate section for 'gs_params' kwarg in optimize.
     'gs_params': {
+        # classification
         'stage_1': {
             'priority': 3,
             'init': {
@@ -254,6 +282,21 @@ CNFG = {
                 'return_train_score': True,
             },
         },
+        # regression
+        'stage_4': {
+            'priority': 3,
+            'init': {
+                'n_iter': None,
+                'n_jobs': 1,
+                'refit': 'metric__r2',
+                'cv': sklearn.model_selection.KFold(n_splits=3,
+                                                    shuffle=True,
+                                                    random_state=42),
+                'verbose': 1,
+                'pre_dispatch': 'n_jobs',
+                'return_train_score': True,
+            },
+        },
     },
 }
 
@@ -261,4 +304,4 @@ CNFG = {
 if __name__ == '__main__':
     # mlshell.CNFG contains default section / configuration keys for typical ml
     # task, including pretty logger and project path detection.
-    objects = pycnfg.run(CNFG, dcnfg=mlshell.CNFG, update_expl=False)
+    objects = pycnfg.run(CNFG, dcnfg=mlshell.CNFG)

@@ -401,7 +401,13 @@ class MockOptimizer(RandomizedSearchOptimizer):
         y_pred, index = mlshell.model_selection.cross_val_predict(
             self.pipeline, x, y=y, fit_params=fit_params,
             groups=None, cv=optimizer.cv, method=self.method)
-        optimizer.fit(y_pred, y[index], **fit_params)
+        # Multioutput compliance (otherwise error length x,y inconsistent).
+        if self.method == 'predict_proba':
+            pseudo_x = y_pred if not isinstance(y_pred, list) \
+                else np.dstack(y_pred)  # list(zip(*y_pred))
+        else:
+            pseudo_x = y_pred
+        optimizer.fit(pseudo_x, y[index], **fit_params)
 
         optimizer = self._mock_optimizer(optimizer, x, y, fit_params)
         self.optimizer = optimizer
@@ -467,8 +473,15 @@ class MockOptimizer(RandomizedSearchOptimizer):
                     # for example 'estimate'.
                     continue
                 elif hasattr(substep[1], 'steps'):
-                    # Level down.
-                    recursion(substep[1].steps, subpath)
+                    if substep[1].steps:
+                        # Level down.
+                        recursion(substep[1].steps, subpath)
+                        if not substep[1].steps:
+                            # if remove all from steps.
+                            del_inds.append(ind)
+                    else:
+                        # Delete full element (empty steps).
+                        del_inds.append(ind)
                 else:
                     # Remain full element(no level up and in paths)
                     pass
@@ -495,6 +508,7 @@ class MockOptimizer(RandomizedSearchOptimizer):
             if not hasattr(mock_pipeline, 'predict'):
                 # No estimator.
                 flag = True
+
         if flag:
             # Add MockEstimator step (non modifier, not change cv_results_).
             mock = self._mock_estimator(pipeline)

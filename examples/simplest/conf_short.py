@@ -35,20 +35,14 @@ CNFG = {
     # has pre-defined path, logger sections and main sub-keys (see below).
     'pipeline': {
         'sgd': {
-            'kwargs': {
-                'estimator_type': 'regressor',
-                'estimator': sklearn.linear_model.SGDRegressor(
-                    penalty='elasticnet', l1_ratio=1, shuffle=False,
-                    max_iter=1000, alpha=0.02, random_state=42),
-            }
+            'estimator': sklearn.linear_model.SGDRegressor(
+                penalty='elasticnet', l1_ratio=1, shuffle=False,
+                max_iter=1000, alpha=0.02, random_state=42),
         },
         'lgbm': {
-            'kwargs': {
-                'estimator_type': 'regressor',
-                'estimator': lightgbm.LGBMRegressor(
-                    num_leaves=2, min_data_in_leaf=60, n_estimators=200,
-                    max_depth=-1, random_state=42),
-            }
+            'estimator': lightgbm.LGBMRegressor(
+                num_leaves=2, min_data_in_leaf=60, n_estimators=200,
+                max_depth=-1, random_state=42),
         }
     },
     'metric': {

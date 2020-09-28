@@ -191,7 +191,6 @@ Section example:
             'priority': 3,
             'steps': [
                 ('make', {
-                    'estimator_type': 'regressor',
                     'estimator': lightgbm.LGBMRegressor()
                     }),
             ],
@@ -311,7 +310,8 @@ Section example:
                 'dataset_id': 'dataset__my_data',
                 'metric_id': ['metric__my_score'],
                 'hp_grid': {
-                    'estimate__regressor__n_estimators': np.linspace(50, 1000, 10, dtype=int),
+                    'estimate__regressor__n_estimators':
+                        np.linspace(50, 1000, 10, dtype=int),
                 },
             },
             'steps': [
@@ -370,6 +370,7 @@ Any pipeline parameter ``hp`` can be optimized in grid search.
     supports .rvs() sampling method.
 
 ..
+    [commented]
     It is possible to rotate last step estimator (alternative to multiple
     pipeline configurations):
 

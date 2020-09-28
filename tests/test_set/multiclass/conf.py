@@ -169,7 +169,7 @@ CNFG = {
                     'calc_th_range': {
                         'samples': 10,
                         'plot_flag': False,
-                        'multi_class': 'ovr',
+                        'roc_auc_kwargs': {'multi_class': 'ovr'},
                     },
                 },
             }
@@ -228,4 +228,4 @@ CNFG = {
 if __name__ == '__main__':
     # mlshell.CNFG contains default section / configuration keys for typical ml
     # task, including pretty logger and project path detection.
-    objects = pycnfg.run(CNFG, dcnfg=mlshell.CNFG, update_expl=False)
+    objects = pycnfg.run(CNFG, dcnfg=mlshell.CNFG)

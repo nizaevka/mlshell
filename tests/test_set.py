@@ -63,10 +63,12 @@ def test_run(id_, args, kwargs, expected):
     # for k, v in objects.items():
     #     assert k in objects_
     #     assert type(v).__name__ == objects_[k]
-    # * Compare predictions csv.
-    pred_path = glob.glob(f"{results_path}/models/*_pred.csv")[0]
-    pred_path_ = glob.glob(expected['pred_path'])[0]
-    assert filecmp.cmp(pred_path, pred_path_)
+    # * Compare predictions csv(all available).
+    pred_path = glob.glob(f"{results_path}/models/*_pred.csv")
+    pred_path_ = glob.glob(expected['pred_path'])
+    assert len(pred_path) == len(pred_path_)
+    for act, exp in zip(sorted(pred_path), sorted(pred_path_)):
+        assert filecmp.cmp(act, exp)
     # * Compare test logs.
     logs_path = glob.glob(f"{results_path}/logs*/*_test.log")[0]
     logs_path_ = expected['logs_path']
@@ -89,7 +91,9 @@ def test_run(id_, args, kwargs, expected):
     time.sleep(1)
     assert columns == columns_
     # * Compare model.
-    model_path = glob.glob(f"{results_path}/models/*.model")[0]
-    model_path_ = glob.glob(expected['model_path'])[0]
-    assert filecmp.cmp(model_path, model_path_)
+    model_path = glob.glob(f"{results_path}/models/*.model")
+    model_path_ = glob.glob(expected['model_path'])
+    assert len(model_path) == len(model_path_)
+    for act, exp in zip(sorted(model_path), sorted(model_path_)):
+        assert filecmp.cmp(act, exp)
     return

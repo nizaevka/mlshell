@@ -616,8 +616,14 @@ class Workflow(pycnfg.Producer):
 
     # ========================== dump/predict =================================
     def _prefix(self, res, dirpath, pipeline, pipeline_id,
-                pred_dataset=None, pred_dataset_id=''):
-        """Generate informative file prefix."""
+                pred_dataset=None, pred_dataset_id='', add_hash=False):
+        """Generate informative file prefix.
+
+        Parameters
+        ----------
+        add_hash : bool, optional (default=False)
+            Insert pipeline/dataset(s) hashes into prefix.
+        """
         pred_dataset_hash = None if pred_dataset is None else hash(pred_dataset)
         fit_dataset_id = getattr(pipeline, 'dataset_id', None)
         # Could be dataset a__b or subset a__b__c.
@@ -631,10 +637,15 @@ class Workflow(pycnfg.Producer):
                             .get(f"{pipeline_id}|{fit_dataset_id}", {})
                             .get('best_score_', '')
                          ).lower()
-        filepath = f"{dirpath}/{self.oid}|{pipeline_id}|{fit_dataset_id}|" \
-                   f"{best_score}|{hash(pipeline)}|{fit_dataset_hash}|" \
-                   f"{pred_dataset_id}|{pred_dataset_hash}|" \
-                   f"{platform.system()}|{int(time.time())}"
+        if add_hash:
+            filepath = f"{dirpath}/{self.oid}|{pipeline_id}|{fit_dataset_id}|" \
+                       f"{best_score}|{hash(pipeline)}|{fit_dataset_hash}|" \
+                       f"{pred_dataset_id}|{pred_dataset_hash}|" \
+                       f"{platform.system()}|{int(time.time())}"
+        else:
+            filepath = f"{dirpath}/{self.oid}|{pipeline_id}|{fit_dataset_id}|" \
+                       f"{best_score}|{pred_dataset_id}|" \
+                       f"{platform.system()}|{int(time.time())}"
         return filepath
 
 

@@ -6,6 +6,7 @@ hp before optimization.
 Adapt :func:`mlshell.Resolver.resolve` to support more hp.
 """
 
+import itertools
 import operator
 
 import matplotlib.pyplot as plt
@@ -125,7 +126,11 @@ class Resolver(object):
         -------
         th_range : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
             Thresholds array sorted ascending of shape [samples] or
-            [n_outputs, samples] for multi-output.
+            [n_outputs * samples]/[samples, n_outputs] for multi-output. In
+            multi-output case each target has separate th_range of length
+            ``samples``, output contains concatenate / merge or combined ranges
+            depends on :func:`mlshell.model_selection.Resolver.calc_th_range`
+            ``multi_output`` argument.
 
         """
         kwargs_cvp = kwargs.get('cross_val_predict', {})
@@ -154,8 +159,8 @@ class Resolver(object):
         return th_range
 
     def calc_th_range(self, y_true, y_pred_proba, pos_labels, pos_labels_ind,
-                      metric=None, samples=10, sampler=None, plot_flag=False,
-                      **roc_auc_kwargs):
+                      metric=None, samples=10, sampler=None, multi_output='concat',
+                      plot_flag=False, roc_auc_kwargs=None):
         """Calculate threshold range from OOF ROC curve.
 
         Parameters
@@ -181,22 +186,35 @@ class Resolver(object):
             ``sampler(optimum, th_, samples)`` should returns: (sub-range of
             th_, original index of sub-range).If None, linear sample from
             ``[optimum/100; 2*optimum]`` with limits ``[np.min(th_), 1]``.
+        multi_output: str {'merge','product','concat'}, optional (default='concat')
+            For multi-output case, either merge th_range for each target or
+            find all combination or concatenate ranges. See notes below.
         plot_flag : bool, optional (default=False)
             If True, plot ROC curve and resulted th range.
-        roc_auc_kwargs : dict
-            Additional kwargs to pass in :func:``sklearn.metrics.roc_auc_score`` .
+        roc_auc_kwargs : dict, optional (default=None)
+            Additional kwargs to pass in :func:`sklearn.metrics.roc_auc_score` .
+            If None, {}.
 
         Returns
         -------
         th_range : :class:`numpy.ndarray`, list of :class:`numpy.ndarray`
             Thresholds array sorted ascending of shape [samples] or
-            [n_outputs, samples]  for multi-output.
+            [n_outputs * samples]  for multi-output.
+
+        Notes
+        -----
+        For multi-output if  th_range_1 = [0.1,0.2], th_range_1 = [0.3, 0.4]:
+        concat => [(0.1, 0.3), (0.2, 0.4)]
+        product => [(0.1, 0.3), (0.1, 0.4), (0.2, 0.3), (0.2, 0.4)]
+        merge => [(0.1, 0.1), (0.2, 0.2), (0.3, 0.3), (0.4, 0.4)]
 
         """
         if metric is None:
             metric = self._metric
         if sampler is None:
             sampler = self._sampler
+        if roc_auc_kwargs is None:
+            roc_auc_kwargs = {}
         if y_true.ndim == 1:
             # Add dimension, for compliance to multi-output.
             y_true = y_true[..., None]
@@ -222,7 +240,19 @@ class Resolver(object):
                               pos_labels_ind[i], best_th_, q, tpr, fpr,
                               th_, th_range, index, roc_auc_kwargs)
             res.append(th_range)
-        th_range = res[0] if len(res) == 1 else res
+        if len(res) == 1:
+            return  res[0]
+        # multi-output
+        if multi_output == 'concat':
+            th_range = list(zip(*res))
+        elif multi_output == 'merge':
+            merged = np.unique([j for i in res for j in i])
+            th_range = [(el, el) for el in merged]
+        elif multi_output == 'product':
+            th_range = list(itertools.product(*res))
+        else:
+            raise ValueError(f"Unknown argument value:"
+                             f" multi_output={multi_output}")
         return th_range
 
     def _metric(self, fpr, tpr, th_):

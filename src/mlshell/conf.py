@@ -9,77 +9,67 @@ __all__ = ['CNFG']
 
 
 PATHS = {
-    'default': {
-        'init': pycnfg.find_path,
-        'producer': pycnfg.Producer,
-        'priority': 1,
-        'steps': [],
-    }
+    'init': pycnfg.find_path,
+    'producer': pycnfg.Producer,
+    'priority': 1,
+    'steps': [],
+    'default': {},
 }
 
 
 LOGGERS = {
-    'default': {
-        'init': 'default',
-        'producer': mlshell.LoggerProducer,
-        'priority': 2,
-        'steps': [
-            ('make',),
-        ],
-    }
+    'init': 'default',
+    'producer': mlshell.LoggerProducer,
+    'priority': 2,
+    'steps': [
+        ('make',),
+    ],
+    'default': {},
 }
 
 
 PIPELINES = {
-    'default': {
-        'init': mlshell.Pipeline,
-        'producer': mlshell.PipelineProducer,
-        'priority': 3,
-        'steps': [
-            ('make', ),
-        ],
-    },
+    'init': mlshell.Pipeline,
+    'producer': mlshell.PipelineProducer,
+    'priority': 3,
+    'steps': [
+        ('make', ),
+    ],
 }
 
 
 METRICS = {
-    'default': {
-        'init': mlshell.Metric,
-        'producer': mlshell.MetricProducer,
-        'priority': 3,
-        'steps': [
-            ('make', ),
-        ],
-    },
+    'init': mlshell.Metric,
+    'producer': mlshell.MetricProducer,
+    'priority': 4,
+    'steps': [
+        ('make', ),
+    ],
 }
 
 
 DATASETS = {
-    'default': {
-        'init': mlshell.Dataset,
-        'producer': mlshell.DatasetProducer,
-        'priority': 3,
-        'steps': [
-            ('load', ),
-            ('info', ),
-            ('preprocess', ),
-            ('split',),
-        ],
-    },
+    'init': mlshell.Dataset,
+    'producer': mlshell.DatasetProducer,
+    'priority': 5,
+    'steps': [
+        ('load', ),
+        ('info', ),
+        ('preprocess', ),
+        ('split',),
+    ],
 }
 
 WORKFLOWS = {
-    'default': {
-        'init': {},
-        'producer': mlshell.Workflow,
-        'priority': 4,
-        'steps': [
-            ('optimize', ),
-            ('validate', ),
-            ('predict', ),
-            ('dump', ),
-        ],
-    },
+    'init': {},
+    'producer': mlshell.Workflow,
+    'priority': 6,
+    'steps': [
+        ('optimize', ),
+        ('validate', ),
+        ('predict', ),
+        ('dump', ),
+    ],
 }
 
 

@@ -116,18 +116,24 @@ class ThresholdClassifier(sklearn.base.BaseEstimator,
 
     def predict(self, x):
         # x - predict_proba (n_outputs, n_samples, n_classes).
-        if not isinstance(x, list):
-            # Compliance to multi-output.
-            x = [x]
-            threshold = [self.threshold]
-        else:
-            threshold = self.threshold
         classes = self.params['classes']
         pos_labels = self.params['pos_labels']
         pos_labels_ind = self.params['pos_labels_ind']
         if any(not isinstance(i, np.ndarray) for i in classes):
             raise ValueError("Target classes should be numpy.ndarray.")
-        assert len(x) == len(classes), "Multi-output inconsistent."
+
+        if not isinstance(x, list):
+            # Compliance to multi-output.
+            x = [x]
+            threshold = [self.threshold]
+        else:
+            if len(x) != len(classes):
+                # Probably come from MockOptimizer
+                # todo: problem if n_samples=n_outputs, assert.
+                x = [i.T for i in x]  # list(zip(*x))
+                assert len(x) == len(classes), "Multi-output inconsistent."
+            threshold = self.threshold if self.threshold is not None \
+                else [None] * len(x)
 
         res = []
         for i in range(len(x)):
@@ -163,7 +169,7 @@ class ThresholdClassifier(sklearn.base.BaseEstimator,
                     np.where(x[i][..., pos_labels_ind[i]] > threshold[i],
                              [pos_labels[i]], neg_labels)
                 )
-        return res if len(res) > 1 else res[0]
+        return np.array(res).T if len(res) > 1 else res[0]
 
     def predict_proba(self, x):
         return x

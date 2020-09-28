@@ -149,7 +149,7 @@ CNFG = {
             'priority': 3,
             'init': {
                 'n_iter': None,
-                'n_jobs': 1,
+                'n_jobs': 2,
                 'refit': 'metric__mae',
                 'cv': sklearn.model_selection.KFold(n_splits=3,
                                                     shuffle=True,

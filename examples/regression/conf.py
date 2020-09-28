@@ -62,36 +62,27 @@ hp_grid = {
 CNFG = {
     'pipeline': {
         'sgd': {
-            'kwargs': {
-                'estimator_type': 'regressor',
-                'estimator': sklearn.linear_model.SGDRegressor(
-                    penalty='elasticnet', l1_ratio=0.01, alpha=0.01,
-                    shuffle=False, max_iter=1000, early_stopping=True,
-                    learning_rate='invscaling', power_t=0.25, eta0=0.01,
-                    verbose=1, random_state=42),
-            }
+            'estimator': sklearn.linear_model.SGDRegressor(
+                penalty='elasticnet', l1_ratio=0.01, alpha=0.01,
+                shuffle=False, max_iter=1000, early_stopping=True,
+                learning_rate='invscaling', power_t=0.25, eta0=0.01,
+                verbose=1, random_state=42),
         },
         'lgbm': {
-            'kwargs': {
-                'estimator_type': 'regressor',
-                'estimator': lightgbm.LGBMRegressor(
-                    objective='fair', num_leaves=2, min_data_in_leaf=1,
-                    n_estimators=250, max_depth=-1, silent=False,
-                    random_state=42),
-            }
+            'estimator': lightgbm.LGBMRegressor(
+                objective='fair', num_leaves=2, min_data_in_leaf=1,
+                n_estimators=250, max_depth=-1, silent=False,
+                random_state=42),
         },
         'xgb': {
-            'kwargs': {
-                'estimator_type': 'regressor',
-                'estimator': xgboost.XGBRegressor(
-                    objective="reg:squarederror", **{
-                        'min_child_weight': 1, 'eta': 0.01,
-                        'n_estimators': 500, 'colsample_bytree': 0.5,
-                        'max_depth': 12, 'subsample': 0.8, 'alpha': 1,
-                        'gamma': 1, 'silent': 1, 'verbose_eval': True,
-                        'seed': 42,
-                    }),
-            }
+            'estimator': xgboost.XGBRegressor(
+                objective="reg:squarederror", **{
+                    'min_child_weight': 1, 'eta': 0.01,
+                    'n_estimators': 500, 'colsample_bytree': 0.5,
+                    'max_depth': 12, 'subsample': 0.8, 'alpha': 1,
+                    'gamma': 1, 'silent': 1, 'verbose_eval': True,
+                    'seed': 42,
+                }),
         },
     },
     'metric': {
