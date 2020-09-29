@@ -51,14 +51,22 @@ class Optimizer(object):
     def __init__(self):
         self.optimizer = None
 
+    def __hash__(self):
+        return str(self.optimizer)
+
     def __getattr__(self, name):
         """Redirect unknown methods to optimizer object."""
         def wrapper(*args, **kwargs):
             getattr(self.optimizer, name)(*args, **kwargs)
         return wrapper
 
-    def __hash__(self):
-        return str(self.optimizer)
+    def __getstate__(self):
+        # Allow pickle.
+        return self.__dict__
+
+    def __setstate__(self, d):
+        # Allow unpickle.
+        self.__dict__ = d
 
     def update_best(self, prev):
         """Combine results from multi-stage optimization.

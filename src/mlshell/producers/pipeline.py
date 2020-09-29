@@ -59,15 +59,23 @@ class Pipeline(object):
         self.oid = oid
         self.dataset_id = dataset_id
 
+    def __hash__(self):
+        s = str(self.pipeline.get_params())
+        return hash(s)
+
     def __getattr__(self, name):
         """Redirect unknown methods to pipeline object."""
         def wrapper(*args, **kwargs):
             return getattr(self.pipeline, name)(*args, **kwargs)
         return wrapper
 
-    def __hash__(self):
-        s = str(self.pipeline.get_params())
-        return hash(s)
+    def __getstate__(self):
+        # Allow pickle.
+        return self.__dict__
+
+    def __setstate__(self, d):
+        # Allow unpickle.
+        self.__dict__ = d
 
     def fit(self, *args, **kwargs):
         """Fit pipeline."""

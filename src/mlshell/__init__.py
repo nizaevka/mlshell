@@ -17,9 +17,11 @@ from .blocks import decomposition
 
 from .conf import CNFG
 
+from pycnfg import run  # alias to pycnfg.run
+
 __all__ = ['DatasetProducer', 'PipelineProducer', 'MetricProducer',
            'LoggerProducer', 'Workflow',
            'Dataset', 'Pipeline', 'Metric',
            'pipeline', 'plot', 'model_selection', 'preprocessing', 'decorator',
            'decomposition',
-           'CNFG', 'LOGGER_CONFIG']
+           'CNFG', 'LOGGER_CONFIG', 'run']

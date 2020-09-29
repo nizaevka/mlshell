@@ -3,20 +3,25 @@ import filecmp
 import glob
 import importlib.util
 import shutil
+import sys
 
 import pandas as pd
 import pycnfg
 import pytest
+cnfg_default = None
 
 
-def get_params():
+def get_params(pyfile, module_name, obj_name=None):
     """Import test params."""
-    conf = f"{__file__.replace('.py', '')}/params.py"
-    spec = importlib.util.spec_from_file_location(f"temp", f"{conf}")
+    conf = pyfile
+    spec = importlib.util.spec_from_file_location(module_name, f"{conf}")
     conf_file = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(conf_file)
-    params = conf_file.params
-    return params
+    if obj_name is not None:
+        obj = getattr(conf_file, obj_name)   # conf_file.params.
+    else:
+        obj = conf_file
+    return obj
 
 
 def runs_loader(path):
@@ -39,7 +44,9 @@ def runs_loader(path):
     return df
 
 
-@pytest.mark.parametrize("id_,args,kwargs,expected", get_params())
+@pytest.mark.parametrize("id_,args,kwargs,expected",
+                         get_params(f"{__file__.replace('.py', '')}/params.py",
+                                    'temp', 'params'))
 def test_run(id_, args, kwargs, expected):
     """
     - Delete previous test output if exist.
@@ -51,7 +58,12 @@ def test_run(id_, args, kwargs, expected):
     results_path = expected['results_path']
     shutil.rmtree(results_path, ignore_errors=True)
     # Start code.
-    objects = pycnfg.run(*args, **kwargs)
+    # [future] attempts to run classification with n_jobs>1
+    # global cnfg_default
+    # sys.modules['cnfg_default'] = get_params(args[0], 'cnfg_default')
+    # import cnfg_default
+    # #from cnfg_default import custom_score_metric
+    objects = pycnfg.run(oid='default', *args, **kwargs)
     tmp = {k: type(v).__name__ for k, v in objects.items()}
     print('OBJECTS:')
     print(tmp)
@@ -97,3 +109,9 @@ def test_run(id_, args, kwargs, expected):
     for act, exp in zip(sorted(model_path), sorted(model_path_)):
         assert filecmp.cmp(act, exp)
     return
+
+
+# Otherwise can`t pickle when n_jobs>1, need import to address scope.
+# custom_score_metric = get_params('classification/conf.py',
+#                                  'custom_score_metric')
+# sys.modules[f'custom_score_metric'] = custom_score_metric

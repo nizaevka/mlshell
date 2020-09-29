@@ -88,8 +88,19 @@ class Metric(object):
     def __getattr__(self, name):
         """Redirect unknown methods to scorer object."""
         def wrapper(*args, **kwargs):
+            # if name == '__getstate__' or name == '__setstate__':
+            #     # Otherwise error on pickle/unpickle.
+            #     return False
             return getattr(self.scorer, name)(*args, **kwargs)
         return wrapper
+
+    def __getstate__(self):
+        # Allow pickle.
+        return self.__dict__
+
+    def __setstate__(self, d):
+        # Allow unpickle.
+        self.__dict__ = d
 
     @property
     def kw_args(self):
@@ -134,6 +145,7 @@ class Metric(object):
             for step in estimator.steps:
                 if step[0] == 'pass_custom':
                     temp = step[1].kw_args.get(self.oid, {})
+                    # self.kw_args = self.kw_args
                     self.kw_args.update(temp)
 
 
@@ -174,7 +186,8 @@ class MetricProducer(pycnfg.Producer):
         pycnfg.Producer.__init__(self, objects, oid, path_id=path_id,
                                  logger_id=logger_id)
 
-    def make(self, scorer, score_func, score_func_vector=None,
+    @classmethod
+    def make(cls, scorer, score_func, score_func_vector=None,
              needs_custom_kw_args=False, **kwargs):
         """Make scorer from metric callable.
 

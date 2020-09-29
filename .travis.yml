@@ -34,7 +34,7 @@ deploy:
         condition: $TRAVIS_BRANCH =~ ^v[0-9].*$
         # only on tagged direct (no PR) commit "git push origin --tags"
         # If the `tags` key is specified, the `branch` ignored.
-        # tags: true
+        tags: true
     username: "$PYPI_USERNAME"
     password: "$PYPI_PASSWORD"
     distributions: "sdist bdist_wheel"

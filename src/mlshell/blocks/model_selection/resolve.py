@@ -241,10 +241,10 @@ class Resolver(object):
                               th_, th_range, index, roc_auc_kwargs)
             res.append(th_range)
         if len(res) == 1:
-            return  res[0]
+            return res[0]
         # multi-output
         if multi_output == 'concat':
-            th_range = list(zip(*res))
+            th_range = list(zip(*res))  # min length.
         elif multi_output == 'merge':
             merged = np.unique([j for i in res for j in i])
             th_range = [(el, el) for el in merged]
