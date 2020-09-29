@@ -14,8 +14,6 @@ import mlshell
 import numpy as np
 import pycnfg
 import sklearn
-import xgboost
-import pathlib
 
 
 def target_func(y):
@@ -74,19 +72,6 @@ CNFG = {
                     num_leaves=2, min_data_in_leaf=1,
                     n_estimators=250, max_depth=-1, silent=False,
                     random_state=42),
-            }
-        },
-        'xgb': {
-            'kwargs': {
-                'estimator_type': 'regressor',
-                'estimator': xgboost.XGBRegressor(
-                    objective="reg:squarederror", **{
-                        'min_child_weight': 1, 'eta': 0.01,
-                        'n_estimators': 500, 'colsample_bytree': 0.5,
-                        'max_depth': 12, 'subsample': 0.8, 'alpha': 1,
-                        'gamma': 1, 'silent': 1, 'verbose_eval': True,
-                        'seed': 42,
-                    }),
             }
         },
     },

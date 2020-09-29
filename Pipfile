@@ -4,17 +4,23 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
-pytest = "==5.3.5"
+pytest = "*"
 sphinxcontrib-napoleon = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-rtd-theme = "*"
 numpydoc = "*"
-Sphinx = "==3.1.2"
+line-profiler = "*"
+memory-profiler = "*"
+Sphinx = "*"
+lightgbm = "*"
 
 [packages]
-mlshell = {editable = true,path = "."}
-scikit-learn = "*"
 pycnfg = "*"
+jsbeautifier = "*"
+scikit-learn = "*"
+pandas = "*"
+tabulate = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.7"

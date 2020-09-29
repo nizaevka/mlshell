@@ -272,7 +272,7 @@ class LoggerProducer(pycnfg.Producer):
         for hadler in clean:
             with open(config["handlers"][hadler]["filename"], 'w'):
                 pass
-        logger.log(25, '\n' + '<>' * 50)
+        logger.log(25, '<>' * 40)
         return logger
 
     def _del_handler(self, config, logger_name, handlers, handler_name):

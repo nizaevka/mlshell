@@ -24,7 +24,6 @@ import mlshell
 import numpy as np
 import pycnfg
 import sklearn
-import xgboost
 import pandas as pd
 
 
@@ -94,17 +93,6 @@ CNFG = {
                 random_state=42, reg_alpha=0.3,
                 reg_lambda=0.3, silent=True, subsample=0.9,
                 subsample_for_bin=200000, subsample_freq=3),
-            'kwargs': {'th_step': True}
-        },
-        'xgb': {
-            'estimator': xgboost.XGBClassifier(
-                objective='binary:hinge', **{
-                    'min_child_weight': 1, 'eta': 0.01,
-                    'n_estimators': 100, 'colsample_bytree': 0.5,
-                    'max_depth': 12, 'subsample': 0.8, 'alpha': 1,
-                    'gamma': 1, 'silent': 1, 'verbose_eval': True,
-                    'seed': 42,
-                }),
             'kwargs': {'th_step': True}
         },
     },

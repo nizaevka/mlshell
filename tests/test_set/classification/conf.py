@@ -5,7 +5,6 @@ import mlshell
 import numpy as np
 import pycnfg
 import sklearn
-import xgboost
 import pandas as pd
 
 
@@ -93,20 +92,6 @@ CNFG = {
                     reg_lambda=0.0, silent=False, subsample=1.0,
                     subsample_for_bin=200000, subsample_freq=0
                 ),
-                'th_step': True,
-            }
-        },
-        'xgb': {
-            'kwargs': {
-                'estimator_type': 'classifier',
-                'estimator': xgboost.XGBClassifier(
-                    objective='binary:hinge', **{
-                        'min_child_weight': 1, 'eta': 0.01,
-                        'n_estimators': 100, 'colsample_bytree': 0.5,
-                        'max_depth': 12, 'subsample': 0.8, 'alpha': 1,
-                        'gamma': 1, 'silent': 1, 'verbose_eval': True,
-                        'seed': 42,
-                    }),
                 'th_step': True,
             }
         },

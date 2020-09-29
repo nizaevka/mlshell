@@ -86,7 +86,6 @@ params = [
                         'metric__r2': 'Metric',
                         'pipeline__lgbm': 'Pipeline',
                         'pipeline__sgd': 'Pipeline',
-                        'pipeline__xgb': 'Pipeline',
                         'workflow__conf': 'dict'}
         }),
     ),
@@ -135,7 +134,6 @@ params = [
                         'metric__roc_auc': 'Metric',
                         'pipeline__lgbm': 'Pipeline',
                         'pipeline__sgd': 'Pipeline',
-                        'pipeline__xgb': 'Pipeline',
                         'resolve_params__stage_2': 'dict',
                         'workflow__conf': 'dict'}
         }),
