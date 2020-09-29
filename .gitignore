@@ -4,7 +4,6 @@
 !*/
 
 Project*/
-.*/
 
 # Specific (**-recursive).
 !src/mlshell/**
@@ -67,3 +66,6 @@ vssver.scc
 vssver2.scc
 deprecated.py
 notes.md
+
+# Ignore all dir start with "." (should be the last)
+.*/
