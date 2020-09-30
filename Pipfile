@@ -5,31 +5,22 @@ verify_ssl = true
 
 [dev-packages]
 pytest = "*"
-sphinx = "*"
 sphinxcontrib-napoleon = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-rtd-theme = "*"
-
-[packages]
-e1839a8 = {editable = true,path = "."}
-mlshell = {editable = true,path = "."}
-joblib = "*"
-sklearn = "*"
-jsbeautifier = "*"
-numpy = "*"
-pandas = "*"
-numba = "*"
-seaborn = "*"
-tabulate = "*"
-ipython = "*"
-matplotlib = "*"
-statsmodels = "*"
-lightgbm = "*"
+numpydoc = "*"
 line-profiler = "*"
 memory-profiler = "*"
-setuptools = "*"
-wheel = "*"
-xgboost = "*"
+Sphinx = "*"
+lightgbm = "*"
+
+[packages]
+pycnfg = "*"
+jsbeautifier = "*"
+scikit-learn = "*"
+pandas = "*"
+tabulate = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.7"

@@ -6,17 +6,25 @@ Installation Guide
     :local:
     :backlinks: none
 
-MLshell is compatible with: Python 3.6+.
+
+|project| is compatible with: Python 3.6+.
 
 PyPi
 ~~~~
 |PyPI|
 
-command to install package:
+command to install package latest version:
 
-.. code-block:: none
+.. parsed-literal::
 
-    pip install -U mlshell
+    pip install -U |project|
+
+command to install version with additional dev dependencies:
+
+.. parsed-literal::
+
+    pip install -U |project|\[dev]
+
 
 Docker hub
 ~~~~~~~~~~
@@ -24,11 +32,12 @@ Docker hub
 
 command to create container with pre-installed package and run shell:
 
-.. code-block:: none
+.. parsed-literal::
 
-    docker run -it nizaevka/mlshell
+    docker run -it |author|/|project|
 
-
+.. not easy to substitute author/project here.
+    https://stackoverflow.com/questions/20513972/restructured-text-sphinx-substitution-in-a-file-name
 .. |PyPI| image:: https://img.shields.io/pypi/v/mlshell.svg
    :target: https://pypi.org/project/mlshell/
 

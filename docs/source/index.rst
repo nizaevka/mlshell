@@ -6,17 +6,17 @@
 Welcome to MLshell's documentation!
 ===================================
 
-**MLshell** is a framework for ML research and development:
+.. image:: ./_static/images/logo.png
+    :width: 1000
+    :alt: error
 
-- Fast and simple pipeline prototyping and parameters tuning.
-- Unified ml pipeline.
+**Simple ML framework.**
+
+- Auto ML.
+- Unified pipeline.
 - Stable CV scheme.
-- Production ready.
-- One conf file rule all.
-- Simple result analyse.
-- Unified plots.
-- Common EDA techniques.
-- Pure python.
+- One configuration file.
+- Multi-stage optimization.
 
 For more details, please refer to
 `Concepts <Concepts.html>`_.
@@ -28,9 +28,9 @@ For more details, please refer to
    Installation <Installation>
    Get started <Get-started>
    Concepts <Concepts>
+   Examples <Examples>
    Default configuration <Default-configuration>
    Python API <Python-API>
-   Examples <Examples>
    Documentation <README>
 
 .. toctree::

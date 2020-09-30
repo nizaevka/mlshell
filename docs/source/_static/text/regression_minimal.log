@@ -1,0 +1,44 @@
+<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+===============================================================================
+No target column(s) found in df:
+    ['loss']
+===============================================================================
+CV best configuration:
+    {
+    'process_parallel__pipeline_numeric__transform_normal__skip': False,
+    'process_parallel__pipeline_numeric__add_polynomial__degree': 2,
+    'estimate__transformer': FunctionTransformer(func = < function target_func at 0x7fd2eaa4a7a0 > ,
+        inverse_func = < function target_inverse_func at 0x7fd2c87a08c0 > )
+}
+===============================================================================
+CV best mean test score metric__mae:
+    -1291.2210830214026
+===============================================================================
+Save run(s) results to file:
+    /home/nizaevka/Desktop/repos/mlshell/examples/regression/results/runs/1601393617_Linux_runs.csv
+===============================================================================
+Best run id:
+    7c8568c8-ce55-426f-bc76-ea4198174246
+===============================================================================
+metric__mae:
+===============================================================================
+    dataset__train__train:
+    1270.5241213213403
+===============================================================================
+    dataset__train__test:
+    1296.391698054401
+===============================================================================
+metric__r2:
+===============================================================================
+    dataset__train__train:
+    0.4492708075959926
+===============================================================================
+    dataset__train__test:
+    0.42443279405004264
+===============================================================================
+Save predictions for dataset__test to file:
+    /home/nizaevka/Desktop/repos/mlshell/examples/regression/results/models/workflow__conf|pipeline__lgbm|dataset__train__train|('metric__mae', -1291.2210830214026)|dataset__test|Linux|1601393618_pred.csv
+===============================================================================
+Save fitted model to file:
+    /home/nizaevka/Desktop/repos/mlshell/examples/regression/results/models/workflow__conf|pipeline__lgbm|dataset__train__train|('metric__mae', -1291.2210830214026)||Linux|1601393618.model
+===============================================================================

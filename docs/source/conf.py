@@ -1,34 +1,89 @@
-# -*- coding: utf-8 -*-
-#
-# Configuration file for the Sphinx documentation builder.
-#
-# This file does only contain a selection of the most common options. For a
-# full list see the documentation:
-# http://www.sphinx-doc.org/en/master/config
+"""
+Configuration file for the Sphinx documentation builder.
+http://www.sphinx-doc.org/en/master/config
+
+Cookbook:
+
+# with overline, for parts
+* with overline, for chapters
+=, for sections
+-, for subsections
+^, for subsubsections
+", for paragraphs
+
+# good manual
+https://docutils.sourceforge.io/docs/ref/rst/directives.html#including-an-external-document-fragment
+
+# cheatsheet
+http://nipy.org/nipy/devel/guidelines/sphinx_helpers.html
+
+# [NOT work, error can`t find module, try to hide all command under:
+# if __main__!=autosummary(find out)]
+# Ignoring third-party packages to build documentation ['name'].
+# autosummary_mock_imports = autodoc_mock_imports by default
+# Get text.
+# with open(os.path.abspath('../../requirements.txt'),
+# "r", encoding='utf-8') as f:
+#     temp = f.read().splitlines()
+# exclude = [i.split('==')[0] if '==' in i else i for i in temp]
+# autodoc_mock_imports = exclude
+
+# Add module attribute annotation:
+# def iad_add_directive_header(self, sig):
+#     ClassLevelDocumenter.add_directive_header(self, sig)
+# InstanceAttributeDocumenter.add_directive_header = iad_add_directive_header
+
+# 'sphinx.ext.linkcode':
+# https://github.com/scikit-learn/scikit-learn/blob/master/doc/conf.py#L469
+# https://www.sphinx-doc.org/en/master/usage/extensions/linkcode.html
+
+# sphinx can`t wrap docstring under decorator:
+https://github.com/sphinx-doc/sphinx/issues/3783\
+
+# dict.
+https://stackoverflow.com/questions/7250659/how-to-use-python-to-programmatically-generate-part-of-sphinx-documentation
+https://stackoverflow.com/questions/62226358/how-to-reference-a-dict-with-sphinx-autodoc
+
+"""
+
 
 # -- Path setup --------------------------------------------------------------
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#
+
+
 import os
 import sys
 
-# from sphinx.ext.autodoc import (ClassLevelDocumenter, InstanceAttributeDocumenter)
 
-sys.path.insert(0, os.path.abspath('../../src'))  # two levels up from conf.py '../..'
+# Two levels up from conf.py '../..'.
+sys.path.insert(0, os.path.abspath('../../src'))
 
 # -- Project information -----------------------------------------------------
 
 project = 'mlshell'
-copyright = '2020, nizaevka'
+copyright = '∞, nizaevka'
 author = 'nizaevka'
 
-# The short X.Y version
-version = ''
 # The full version, including alpha/beta/rc tags
-release = 'alpha'
+# The short X.Y version.
+if 'READTHEDOCS' in os.environ:
+    # When build on READTHEDOCS get from environment variable.
+    # https: // docs.readthedocs.io / en / stable / builds.html
+    version = os.environ.get('READTHEDOCS_VERSION', 'undef')
+else:
+    # Get version from __version__.py.
+    try:
+        res = {}
+        with open("../../src/{}/__version__.py".format(project)) as f:
+            exec(f.read(), res)
+        version = res['__version__']
+    except:
+        print("No __version__.py, set 'master'.")
+        version = 'master'
+release = ''
 
 # -- General configuration ---------------------------------------------------
 
@@ -50,57 +105,20 @@ extensions = [
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'sphinx.ext.extlinks',
+    'sphinx.ext.autosectionlabel',
+
     'sphinxcontrib.napoleon',
     'sphinx_autodoc_typehints',
+
+    'numpydoc',
 ]
-
-# Looks for objects in external projects. Api dependent, not work in general, need checks
-intersphinx_mapping = {
-    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/reference/index.html', None),
-    'sklearn': ('https://scikit-learn.org/stable/', None),
-    'numpy': ('https://docs.scipy.org/doc/numpy/reference/', None),
-    'scipy': ('https://docs.scipy.org/doc/scipy/reference/', None),
-}
-
-napoleon_use_param = True
-
-autodoc_default_options = {
-    "members": True,
-    "inherited-members": True,
-    "show-inheritance": True,
-}
-# Combine class and constructor doctrings
-autoclass_content = 'both'
-
-# Generate autosummary pages. Output should be set with: `:toctree: pythonapi/`
-autosummary_generate = ['Python-API.rst']
-autosummary_imported_members = True  # need document imported in mmodule?
-
-# ignoring third-party packages to build documentation ['name']
-# autosummary_mock_imports = autodoc_mock_imports by default
-# [NOT work, error can`t find module, try to hide all command under if __main__!=autosummary(find out)]
-# get text
-# with open(os.path.abspath('../../requirements.txt'), "r", encoding='utf-8') as f:
-#     temp = f.read().splitlines()
-# exclude = [i.split('==')[0] if '==' in i else i for i in temp]
-# autodoc_mock_imports = exclude
-
-# add module attribute annotation
-# def iad_add_directive_header(self, sig):
-#     ClassLevelDocumenter.add_directive_header(self, sig)
-#
-#
-# InstanceAttributeDocumenter.add_directive_header = iad_add_directive_header
-
-# If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
-#
 # source_suffix = ['.rst', '.md']
 source_suffix = '.rst'
 
@@ -120,7 +138,7 @@ language = None
 exclude_patterns = []
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = None
+pygments_style = 'sphinx'
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -154,7 +172,7 @@ html_static_path = ['_static']
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'mlshelldoc'
+htmlhelp_basename = f'{project}doc'
 
 # -- Options for LaTeX output ------------------------------------------------
 
@@ -180,8 +198,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'mlshell.tex', 'mlshell Documentation',
-     'nizaevka', 'manual'),
+    (master_doc, f'{project}.tex', f'{project} Documentation',
+     {author}, 'manual'),
 ]
 
 # -- Options for manual page output ------------------------------------------
@@ -189,7 +207,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'mlshell', 'mlshell Documentation',
+    (master_doc, f'{project}', f'{project} Documentation',
      [author], 1)
 ]
 
@@ -199,8 +217,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'mlshell', 'mlshell Documentation',
-     author, 'mlshell', 'One line description of project.',
+    (master_doc, f'{project}', f'{project} Documentation',
+     author, f'{project}', 'One line description of project.',
      'Miscellaneous'),
 ]
 
@@ -223,12 +241,193 @@ epub_exclude_files = ['search.html']
 
 # -- Extension configuration -------------------------------------------------
 
+# Add ref on headers in document:
+# :ref:`Concepts:classification`
+# :ref:`default CNFG <Default-configuration:CNFG>`
+autosectionlabel_prefix_document = True
+
+napoleon_use_param = True
+
+# numpydoc screws around with autosummary.
+# https://github.com/numpy/numpydoc/issues/69
+numpydoc_class_members_toctree = False
+
+# https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
+autodoc_default_options = {
+    "members": True,
+    "inherited-members": True,
+    "show-inheritance": True,
+    'member-order': 'bysource'
+}
+# Combine docstrings from class and constructor (class/init/both).
+autoclass_content = 'class'
+
+# Generate autosummary pages.
+# Output should be set with: `:toctree: pythonapi/`
+autosummary_generate = ['Python-API.rst']
+# A boolean flag indicating whether to document classes and
+# functions imported in modules.
+autosummary_imported_members = True
+# Make analog to autodoc inherited-members (complicated):
+# https://stackoverflow.com/questions/43983799/how-to-avoid-inherited-members-using-autosummary-and-custom-templates
+# https://stackoverflow.com/questions/28147432/how-to-customize-sphinx-ext-autosummary-rst-template
+# https://www.sphinx-doc.org/en/master/usage/extensions/autosummary.html
+# Autosummary methods currently only alphabetical possible.
+# https://github.com/sphinx-doc/sphinx/issues/5379
+
 # -- Options for intersphinx extension ---------------------------------------
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+# Looks for objects in external projects (Libs` api dependent).
+# For example:
+#   dict
+#   :class:`exhale.graph.ExhaleRoot`
+#   :term:`sklearn:scorer`
+#   full list of supported:
+#   https://www.sphinx-doc.org/en/master/usage/restructuredtext/domains.html#cross-referencing-python-objects
+#   https://my-favorite-documentation-test.readthedocs.io/en/latest/using_intersphinx.html
+#   https://stackoverflow.com/questions/30939867/how-to-properly-write-cross-references-to-external-documentation-with-intersphin/30981554
+#   https://developer.lsst.io/v/DM-15183/python/numpydoc.html
+# Each API have own syntax, check:
+#   python -m sphinx.ext.intersphinx 'uri/objects.inv'
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/{.major}'.format(
+        sys.version_info), None),
+    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy/reference', None),
+    'matplotlib': ('https://matplotlib.org/', None),
+    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
+    'joblib': ('https://joblib.readthedocs.io/en/latest/', None),
+    'seaborn': ('https://seaborn.pydata.org/', None),
+    'sklearn': ('https://scikit-learn.org/stable/', None),
+    'pycnfg': ('https://pycnfg.readthedocs.io/en/feature/', None),
+}
 
 # -- Options for todo extension ----------------------------------------------
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
+todo_include_todos = False
+
+
+# -- Directives --------------------------------------------------------------
+# exec
+from os.path import basename
+
+from docutils import nodes, statemachine
+from docutils.parsers.rst import Directive
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
+
+
+class ExecDirective(Directive):
+    """Execute python code and insert the output into the document.
+
+    For example to pretty print dict:
+    .. exec::
+        import pprint
+        from some_module import dic
+        pprint(dic)
+    """
+    has_content = True
+
+    def run(self):
+        old_stdout, sys.stdout = sys.stdout, StringIO()
+
+        tab_width = self.options.get(
+            'tab-width', self.state.document.settings.tab_width)
+        source = self.state_machine.input_lines.source(
+            self.lineno - self.state_machine.input_offset - 1)
+        try:
+            exec('\n'.join(self.content))
+            text = sys.stdout.getvalue()
+            lines = statemachine.string2lines(text, tab_width,
+                                              convert_whitespace=True)
+            self.state_machine.insert_input(lines, source)
+            return []
+        except Exception:
+            return [nodes.error(
+                None,
+                nodes.paragraph(text=f"Unable to execute python code at "
+                                     f"{basename(source)}:{self.lineno}"),
+                nodes.paragraph(text=str(sys.exc_info()[1])))]
+        finally:
+            sys.stdout = old_stdout
+
+
+# pprint
+from importlib import import_module
+from docutils import nodes
+from sphinx import addnodes
+from inspect import getsource
+from docutils.parsers.rst import Directive
+
+
+class PrettyPrintIterable(Directive):
+    required_arguments = 1
+
+    def run(self):
+        def _get_iter_source(src, varname):
+            # 1. identifies target iterable by variable name,(cannot be spaced)
+            # 2. determines iter source code start & end by tracking brackets
+            # 3. returns source code between found start & end
+            start = end = None
+            open_brackets = closed_brackets = 0
+            for i, line in enumerate(src):
+                if line.startswith(varname):
+                    if start is None:
+                        start = i
+                if start is not None:
+                    open_brackets   += sum(line.count(b) for b in "([{")
+                    closed_brackets += sum(line.count(b) for b in ")]}")
+
+                if open_brackets > 0 \
+                        and (open_brackets - closed_brackets == 0):
+                    end = i + 1
+                    break
+            return '\n'.join(src[start:end])
+
+        module_path, member_name = self.arguments[0].rsplit('.', 1)
+        src = getsource(import_module(module_path)).split('\n')
+        code = _get_iter_source(src, member_name)
+
+        literal = nodes.literal_block(code, code)
+        literal['language'] = 'python'
+
+        return [addnodes.desc_name(text=member_name),
+                addnodes.desc_content('', literal)]
+
+
+def setup(app):
+    app.add_directive('exec', ExecDirective)
+    app.add_directive('pprint', PrettyPrintIterable)
+
+
+# -- Variables ---------------------------------------------------------------
+# Make variables available in .rst, but not possible to set in links.
+# Access:
+#   |variable|
+# can be used under parsed-literal
+# https://stackoverflow.com/questions/49016433/is-it-possible-to-reuse-hyperlink-defined-in-another-file-in-restructuredtext-o
+rst_epilog = f"""
+.. |version| replace:: {version}
+.. |project| replace:: {project}
+.. |author| replace:: {author}
+"""
+# If also need reference:
+# .. _version: http://google.com
+# .. _project: http://google.com
+
+# Make variable dependent links.
+# Access (replace %s on 123):
+#     :github:`ref text <123>`
+
+
+extlinks = {
+    'github': (f'https://github.com/{author}/{project}/tree/{version}%s', ''),
+    'pypi': (f'https://pypi.org/project/{project}%s', ''),
+    'readthedocs': (f'https://{project}.readthedocs.io/%s', ''),
+
+    # 'docker': (f'https://github.com/{author}/{project}/tree/{version}%s', '')
+}

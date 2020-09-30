@@ -1,16 +1,14 @@
-# Ignore everything
+# Ignore everything.
 *
-# not ignore subdir
+# Not ignore subdir.
 !*/
 
 Project*/
-.*/
 
-# except dirs
+# Specific (**-recursive).
 !src/mlshell/**
-src/mlshell/temp
 
-!pictures/**
+src/mlshell/.temp
 
 !docs/source/**
 !docs/make.bat
@@ -57,8 +55,17 @@ examples/classification/data
 .git
 .hg
 .svn
+.coverage
+.pytest_cache
+.notes
 CVS/
 __pycache__/
 _svn/
+results/
 vssver.scc
 vssver2.scc
+deprecated.py
+notes.md
+
+# Ignore all dir start with "." (should be the last)
+.*/
