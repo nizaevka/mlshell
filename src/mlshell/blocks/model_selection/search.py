@@ -233,8 +233,14 @@ class Optimizer(object):
             # Internally always masked array.
             # Unmask, check if not homo.
             val = val.data
-            if not np.all(val == val[0]):
-                modifiers.append(key.replace('param_', '', 1))
+            for el in val:
+                if el != val[0]:
+                    modifiers.append(key.replace('param_', '', 1))
+                    break
+            # [deprecated] work, but deprecation warning
+            # also can`t use unique(object are not comparable).
+            # if not np.all(val == val[0]):
+            #     modifiers.append(key.replace('param_', '', 1))
         return modifiers
 
     def _dump_runs(self, logger, dirpath, pipeline, dataset, runs, best_ind,

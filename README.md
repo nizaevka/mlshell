@@ -193,7 +193,6 @@ if __name__ == '__main__':
     # task, including pretty logger and project path detection.
     objects = pycnfg.run(CNFG, dcnfg=mlshell.CNFG)
 ```
-
 </p>
 </details>
 
