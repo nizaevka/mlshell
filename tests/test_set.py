@@ -1,14 +1,36 @@
-import time
+import difflib
 import filecmp
 import glob
 import importlib.util
 import shutil
 import sys
+import time
 
 import pandas as pd
 import pycnfg
 import pytest
+
 cnfg_default = None
+
+
+def file_diff(filepath1, filepath2):
+    filename1 = filepath1.split('/')[-1]
+    filename2 = filepath2.split('/')[-1]
+    with open(filepath1, 'r') as hosts0:
+        with open(filepath2, 'r') as hosts1:
+            diff = difflib.unified_diff(
+                hosts0.readlines(),
+                hosts1.readlines(),
+                fromfile=filename1,
+                tofile=filename2,
+                n=0,
+            )
+            for line in diff:
+                for prefix in ('---', '+++', '@@'):
+                    if line.startswith(prefix):
+                        break
+                else:
+                    sys.stdout.write(line[1:])
 
 
 def get_params(pyfile, module_name, obj_name=None):
@@ -80,6 +102,7 @@ def test_run(id_, args, kwargs, expected):
     pred_path_ = glob.glob(expected['pred_path'])
     assert len(pred_path) == len(pred_path_)
     for act, exp in zip(sorted(pred_path), sorted(pred_path_)):
+        file_diff(act, exp)
         assert filecmp.cmp(act, exp)
     # * Compare test logs.
     logs_path = glob.glob(f"{results_path}/logs*/*_test.log")[0]
