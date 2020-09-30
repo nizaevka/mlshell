@@ -93,6 +93,8 @@ def test_run(id_, args, kwargs, expected):
     # * Compare objects (keys and str of values).
     objects_ = expected['objects']
     objects = {k: type(v).__name__ for k, v in objects.items()}
+    if objects != objects_:
+        print(set(objects.items()) ^ set(objects_.items()))
     assert objects == objects_
     # for k, v in objects.items():
     #     assert k in objects_
@@ -107,6 +109,7 @@ def test_run(id_, args, kwargs, expected):
     # * Compare test logs.
     logs_path = glob.glob(f"{results_path}/logs*/*_test.log")[0]
     logs_path_ = expected['logs_path']
+    file_diff(logs_path, logs_path_)
     assert filecmp.cmp(logs_path, logs_path_)
     # * Compare runs dataframe, non-universe columns.
     runs_path = f"{results_path}/runs"

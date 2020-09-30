@@ -20,6 +20,7 @@ exploration techniques available.
 
 
 import copy
+import os
 
 import jsbeautifier
 import numpy as np
@@ -177,9 +178,12 @@ class Dataset(dict):
         obj = pd.DataFrame(index=meta['indices'],
                            data=dic).rename_axis(meta['index'], axis=0)
         fullpath = f"{filepath}_pred.csv"
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            if 'float_format' not in kwargs:
+                kwargs['float_format'] = '%.8f'
         with open(fullpath, 'w', newline='') as f:
-            obj.to_csv(f, mode='w', header=True,
-                       index=True, sep=',', line_terminator='\n', **kwargs)
+            obj.to_csv(f, mode='w', header=True, index=True, sep=',',
+                       line_terminator='\n', **kwargs)
         return fullpath
 
 

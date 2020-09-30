@@ -17,6 +17,7 @@ pipeline refit to probe.
 """
 
 import copy
+import os
 import platform
 import time
 import uuid
@@ -286,9 +287,12 @@ class Optimizer(object):
         df[object_labels] = df[object_labels].astype(str)
         # Dump.
         filepath = f"{dirpath}/{int(time.time())}_{platform.system()}_runs.csv"
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            if 'float_format' not in kwargs:
+                kwargs['float_format'] = '%.8f'
         with open(filepath, 'a', newline='') as f:
             df.to_csv(f, mode='a', header=f.tell() == 0, index=False,
-                      line_terminator='\n')
+                      line_terminator='\n', **kwargs)
         logger.log(25, f"Save run(s) results to file:\n    {filepath}")
         logger.log(25, f"Best run id:\n    {id_list[best_ind]}")
 
