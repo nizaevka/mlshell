@@ -48,11 +48,13 @@ See `Examples. <Examples.html>`_
 
     Pycnfg configuration allows to set decorators for any step. It could be
     usefull for time/memory profiling and checking parameter consistence.
+
+..
     For example built-in :func:`mlshell.decorator.checker` print:
 
         * objects hash alteration.
         * numpy errors.
-
+..
 
 Sections
 ^^^^^^^^
