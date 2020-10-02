@@ -1,7 +1,7 @@
 Concepts
 ========
 
-.. image:: ./_static/images/scheme.png
+.. image:: ./_static/images/scheme_detailed.png
     :width: 1000
     :alt: error
 
