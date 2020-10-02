@@ -85,11 +85,10 @@ Plot
 
     plot
 
+.. Decorators
+.. ----------
 
-Decorators
-----------
-
-.. autosummary::
+.. .. autosummary::
     :toctree: _pythonapi/
 
-    decorator
+..     decorator

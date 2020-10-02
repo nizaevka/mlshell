@@ -27,9 +27,9 @@ def checker(func, options=None):
             pfunc = self.logger.info
         else:
             pfunc = print
-        hash_before = {key: hash(val) for key, val in self.object.items()}
+        hash_before = {key: hash(val) for key, val in self.objects.items()}
         result = func(*args, **kwargs)
-        hash_after = {key: hash(val) for key, val in self.object.items()}
+        hash_after = {key: hash(val) for key, val in self.objects.items()}
         hash_diff = {key: {'before': hash_before[key],
                            'after': hash_after[key]}
                      for key in hash_before
