@@ -23,7 +23,7 @@ All parameters controlled from single Python configuration.
 <!--
 ![Workflow](https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/images/scheme.png?raw=true)
 -->
-<img src="https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/images/scheme_simple.png?raw=true" height="350">
+<img src="https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/images/scheme_simple.png?raw=true" height="450" align="center">
 
 For details, please refer to
  [Concepts](https://mlshell.readthedocs.io/en/latest/Concepts.html).
