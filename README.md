@@ -20,8 +20,10 @@
 
 Mlshell based on [Pycnfg](https://github.com/nizaevka/pycnfg) library.
 All parameters controlled from single Python configuration.
-
+<!--
 ![Workflow](https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/images/scheme.png?raw=true)
+-->
+<img src="https://github.com/nizaevka/mlshell/blob/master/docs/source/_static/images/scheme_simple.png?raw=true" height="350">
 
 For details, please refer to
  [Concepts](https://mlshell.readthedocs.io/en/latest/Concepts.html).
