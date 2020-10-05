@@ -80,7 +80,7 @@ CNFG = {
                 ('optimize', {'hp_grid': hp_grid_1}, [time_profiler,
                                                       memory_profiler,
                                                       ]),
-                ('optimize', {'hp_grid': {}}, [mlshell.decorator.checker]),
+                ('optimize', {'hp_grid': {}}, ), # [mlshell.decorator.checker]
                 # raise AttributeError, needs steps.
                 # ('optimize', {'hp_grid': hp_grid_1,
                 #              'optimizer': mlshell.model_selection.MockOptimizer

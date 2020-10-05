@@ -84,7 +84,7 @@ hp_grid = {
 The single configuration CNFG controls whole ml task.
 Each section sub-configurations produce object (pipeline/metric/dataset/workflow)
 pipeline-wise:
-    object init state
+    => object init state
         => transform object with steps (producer methods)
             => store result
 Sub-configuration with greater priority (workflow) could utilize previously
